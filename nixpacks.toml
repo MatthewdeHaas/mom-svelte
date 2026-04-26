@@ -1,5 +1,5 @@
 [variables]
-NIXPACKS_NODE_VERSION = "20.19.0"
+NIXPACKS_NODE_VERSION = "20.19.1"
 
 [phases.install]
 cmds = ["npm ci"]
