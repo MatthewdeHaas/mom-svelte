@@ -7,3 +7,5 @@ set -e
 docker compose up --build -d web
 
 echo "Dev environment up at http://localhost:5173"
+
+docker compose logs -f web

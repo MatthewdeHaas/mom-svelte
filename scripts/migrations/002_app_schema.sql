@@ -152,7 +152,7 @@ CREATE TABLE orders (
     status              TEXT NOT NULL DEFAULT 'pending'
                             CHECK (status IN ('pending', 'confirmed', 'fulfilled', 'cancelled')),
     meal_category       TEXT,
-    amount              NUMERIC(10, 2) NOT NULL CHECK (quantity > 0),
+    amount              NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
     serving_date        DATE NOT NULL,
     shipment_date       DATE NOT NULL,
     frozen              BOOLEAN NOT NULL DEFAULT FALSE,
