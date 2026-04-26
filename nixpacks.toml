@@ -1,8 +1,8 @@
 [variables]
-NIXPACKS_NODE_VERSION = "20.19.1"
+NIXPACKS_NODE_VERSION = "22.13.0"
 
 [phases.install]
-cmds = ["npm ci --ignore-scripts --ignore-engines"]
+cmds = ["npm ci"]
 
 [phases.build]
 cmds = [
