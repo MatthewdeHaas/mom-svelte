@@ -6,9 +6,8 @@ cmds = ["npm ci"]
 
 [phases.build]
 cmds = [
-  "npm run migrate",
   "npm run build"
 ]
 
 [start]
-cmd = "node build"
+cmd = "npm run migrate && node build"
