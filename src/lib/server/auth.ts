@@ -1,6 +1,13 @@
 import { betterAuth } from 'better-auth';
-import { pool } from '$lib/server/db';
+import { admin } from 'better-auth/plugins';
+import { pool } from './db';
 
 export const auth = betterAuth({
-    database: pool
+	database: pool,
+	emailAndPassword: {
+		enabled: true
+	},
+	plugins: [
+		admin()
+	]
 });
