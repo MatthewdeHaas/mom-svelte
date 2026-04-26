@@ -1,6 +1,9 @@
 [variables]
 NIXPACKS_NODE_VERSION = "25"
 
+[phases.setup]
+nixPkgs = ["nodejs_25"]
+
 [phases.install]
 cmds = ["npm ci"]
 
