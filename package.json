@@ -52,6 +52,7 @@
 		"vitest-browser-svelte": "^2.1.0"
 	},
 	"dependencies": {
-		"pg": "^8.20.0"
+		"pg": "^8.20.0",
+		"resend": "^6.12.2"
 	}
 }
