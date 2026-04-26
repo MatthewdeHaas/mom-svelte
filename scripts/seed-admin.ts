@@ -15,7 +15,10 @@ await auth.api.createUser({
 		name: 'Admin',
 		email,
 		password,
-		role: 'admin'
+		role: 'admin',
+		data: {
+			emailVerified: true
+		}
 	}
 });
 
