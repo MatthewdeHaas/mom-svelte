@@ -6,6 +6,12 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
     if (url.pathname !== '/login') {
       redirect(302, '/login');
     }
+    return { user: null };
   }
+
+  if (locals.user.role !== 'admin') {
+    redirect(302, '/login');
+  }
+
   return { user: locals.user };
 };

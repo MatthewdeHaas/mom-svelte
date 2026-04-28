@@ -2,6 +2,13 @@ import { betterAuth } from 'better-auth';
 import { admin, magicLink } from 'better-auth/plugins';
 import { pool } from './db';
 
+
+// No need to change existing singular environment variable
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')
+  .split(',')
+  .map(e => e.trim())
+  .filter(Boolean);
+
 export const auth = betterAuth({
   database: pool,
   secret: process.env.BETTER_AUTH_SECRET,
@@ -10,7 +17,7 @@ export const auth = betterAuth({
     admin(),
     magicLink({
       sendMagicLink: async ({ email, url }) => {
-        if (email !== process.env.ADMIN_EMAIL) return;
+				if (!ADMIN_EMAILS.includes(email)) return;
         const { Resend } = await import('resend');
         const resend = new Resend(process.env.RESEND_API_KEY);
         await resend.emails.send({
