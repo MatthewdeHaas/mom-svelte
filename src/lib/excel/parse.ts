@@ -1,0 +1,83 @@
+import ExcelJS from 'exceljs';
+
+function toYMD(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function coerceCell(value: ExcelJS.CellValue): string | number | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) return toYMD(value);
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return value;
+  // RichText object
+  if (typeof value === 'object' && 'richText' in (value as object)) {
+    return (value as ExcelJS.CellRichTextValue).richText.map((r) => r.text).join('');
+  }
+  return String(value);
+}
+
+export function parseExcelBuffer(buffer: Buffer): Record<string, unknown>[] {
+  const workbook = new ExcelJS.Workbook();
+
+  const data = buffer;
+
+  throw new Error(
+    'Use parseExcelBufferAsync instead — ExcelJS requires async parsing.',
+  );
+}
+
+/**
+ * Parses an ExcelJS workbook buffer and returns one record per data row.
+ *
+ * - Only the first sheet is read.
+ * - Row 1 is treated as the header row.
+ * - Fully empty rows are filtered out.
+ * - Date cells are converted to YYYY-MM-DD strings via UTC methods.
+ * - Headers are preserved exactly as they appear in the sheet.
+ */
+export async function parseExcelBufferAsync(
+  buffer: Buffer,
+): Promise<Record<string, unknown>[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+
+  // Extract headers from row 1
+  const headerRow = sheet.getRow(1);
+  const headers: string[] = [];
+  headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+    headers[colNumber - 1] = coerceCell(cell.value) as string ?? '';
+  });
+
+  const rows: Record<string, unknown>[] = [];
+
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return; // skip header
+
+    const values: unknown[] = [];
+    let hasValue = false;
+
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      const coerced = coerceCell(cell.value);
+      values[colNumber - 1] = coerced;
+      if (coerced !== null) hasValue = true;
+    });
+
+    // Filter fully empty rows
+    if (!hasValue) return;
+
+    const record: Record<string, unknown> = {};
+    headers.forEach((header, i) => {
+      if (header) record[header] = values[i] ?? null;
+    });
+
+    rows.push(record);
+  });
+
+  return rows;
+}

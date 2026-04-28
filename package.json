@@ -53,6 +53,7 @@
 	},
 	"dependencies": {
 		"@sveltejs/adapter-node": "^5.5.4",
+		"exceljs": "^4.4.0",
 		"pg": "^8.20.0",
 		"resend": "^6.12.2"
 	}
