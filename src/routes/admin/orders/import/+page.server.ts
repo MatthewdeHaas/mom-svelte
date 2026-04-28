@@ -1,6 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { db } from '$lib/server/db';
+import { pool } from '$lib/server/db';
 import { parseExcelBuffer } from '$lib/excel/parse';
 import { importOrdersFromRows } from '$lib/server/queries/imports';
 
@@ -72,7 +72,7 @@ export const actions: Actions = {
     // STEP 3 — Validate + resolve + insert
     // ----------------------------------------------------------
     try {
-      const result = await importOrdersFromRows(db, rawRows, session.user.id);
+      const result = await importOrdersFromRows(pool, rawRows, session.user.id);
 
       if (result.errors.length > 0) {
         // Validation or resolution errors — return them to the page
