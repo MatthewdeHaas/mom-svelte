@@ -7,7 +7,6 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
   if (building) return resolve(event);
 
 	const session = await auth.api.getSession({ headers: event.request.headers });
-	console.log('session user:', JSON.stringify(session?.user));
   event.locals.user = session?.user ?? null;
   event.locals.session = session?.session ?? null;
 

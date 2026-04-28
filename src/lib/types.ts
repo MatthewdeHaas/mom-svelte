@@ -252,7 +252,7 @@ export interface ExcelRowParsed {
   shipment_date: string;  // YYYY-MM-DD
   meal_category: string;
   amount: number;
-  storage: 'frozen' | 'chilled';
+  storage: 'frozen' | 'chilled' | null;
   notes: string | null;
 }
 
