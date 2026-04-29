@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import type { OrderDetail } from '$lib/types';
-import { getOrders, getOrderById } from '$lib/server/queries';
+import { getOrders, getOrderById } from '$lib/server/queries/orders';
+import { getRecipeWithIngredients } from '$lib/server/queries/recipes';
 import type { Pool } from 'pg';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -125,8 +126,8 @@ function renderSlip(doc: PDFKit.PDFDocument, group: SlipGroup, isFirst: boolean)
       .text(order.recipe.name, MARGIN, y, { width: CONTENT_WIDTH - 80 });
 
     // Frozen / Chilled badge — top-right of recipe line
-    const badge = order.recipe.frozen ? 'FROZEN' : 'CHILLED';
-    const badgeColor = order.recipe.frozen ? '#1D4ED8' : '#0F766E';
+		const badge = order.frozen ? 'FROZEN' : 'CHILLED';
+		const badgeColor = order.frozen ? '#1D4ED8' : '#0F766E';
     doc.save()
       .roundedRect(PAGE_WIDTH - MARGIN - 60, y - 1, 60, 16, 3)
       .fill(badgeColor)
@@ -183,10 +184,10 @@ export async function generatePackingSlips(
   const { from, to } = weekBounds(referenceDate);
 
   // 1. Fetch all orders for the week
-  const orders = await getOrders(db, {
-    serving_date_from: from,
-    serving_date_to: to,
-  });
+	const orders = await getOrders(pool, {
+		serving_date_from: new Date(from),
+		serving_date_to: new Date(to),
+	});
 
   // 2. Fetch full OrderDetail for each order
   const details = await Promise.all(

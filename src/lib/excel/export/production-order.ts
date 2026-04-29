@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import type { RecipeWithIngredients } from '$lib/types';
-import { getOrders, getRecipeWithIngredients } from '$lib/server/queries';
+import { getOrdersByShipmentDate } from '$lib/server/queries/orders';
+import { getRecipeWithIngredients } from '$lib/server/queries/recipes';
 import type { Pool } from 'pg';
 
 export async function generateProductionOrderSheet(
@@ -8,7 +9,8 @@ export async function generateProductionOrderSheet(
   shipmentDate: string
 ): Promise<ExcelJS.Buffer> {
   // 1. Fetch all orders for the shipment date
-  const orders = await getOrders(db, { shipment_date: shipmentDate });
+	const orders = await getOrdersByShipmentDate(db, new Date(shipmentDate));
+
 
   // 2. Collect unique recipe IDs across all orders
   const recipeIds = [...new Set(orders.map((o) => o.recipe_id))];
@@ -50,8 +52,8 @@ export async function generateProductionOrderSheet(
         recipe: recipe.name,
         mealCategory: recipe.meal_category,
         amount: 0,
-        frozen: recipe.frozen,
-        chilled: !recipe.frozen,
+				frozen: order.frozen,
+				chilled: order.chilled,
         allergens: allergenNames.join(', '),
       });
     }
