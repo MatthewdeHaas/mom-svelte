@@ -48,14 +48,14 @@ export async function generateProductionOrderSheet(
         ),
       ].sort();
 
-      rowMap.set(order.recipe_id, {
-        recipe: recipe.name,
-        mealCategory: recipe.meal_category,
-        amount: 0,
+			rowMap.set(order.recipe_id, {
+				recipe: recipe.name,
+				mealCategory: order.meal_category,
+				amount: 0,
 				frozen: order.frozen,
 				chilled: order.chilled,
-        allergens: allergenNames.join(', '),
-      });
+				allergens: allergenNames.join(', '),
+			});
     }
 
     rowMap.get(order.recipe_id)!.amount += order.amount;
