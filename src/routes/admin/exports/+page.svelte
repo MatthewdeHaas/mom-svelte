@@ -1,35 +1,84 @@
 <script lang="ts">
-  // Export hrefs — wire these up once the backend routes are built.
-  // See TODO.md for the planned route structure.
+  import { fade } from 'svelte/transition';
+
   const EXPORTS = [
     {
-      id: 'shopping-list',
-      title: 'Shopping list',
-      description: 'Consolidated ingredient quantities across all confirmed orders for a given date range. Used for purchasing.',
-      format: 'Excel (.xlsx)',
-      icon: 'cart',
-      // TODO: replace with real route e.g. /admin/exports/shopping-list?from=...&to=...
-      href: null,
-    },
-    {
-      id: 'kitchen-prep',
-      title: 'Kitchen prep list',
-      description: 'Per-recipe production quantities broken down by meal category and serving date. Used by the kitchen team.',
+      id: 'productionOrder',
+      endpoint: 'production-order',
+      title: 'Production order',
+      description: 'Per-recipe production quantities broken down by meal category. Used by the kitchen team.',
       format: 'Excel (.xlsx)',
       icon: 'utensils',
-      // TODO: replace with real route e.g. /admin/exports/kitchen-prep?date=...
-      href: null,
+      dateLabel: 'Shipment date',
     },
     {
-      id: 'packing-slips',
+      id: 'shoppingList',
+      endpoint: 'shopping-list',
+      title: 'Shopping list',
+      description: 'Consolidated ingredient quantities across all orders for a given shipment date. Used for purchasing.',
+      format: 'Excel (.xlsx)',
+      icon: 'cart',
+      dateLabel: 'Shipment date',
+    },
+    {
+      id: 'packingSlips',
+      endpoint: 'packing-slips',
       title: 'Packing slips',
-      description: 'Per-company packing slips for a given shipment date, ready for printing and dispatch.',
+      description: 'Per-company packing slips for the week containing the selected date, ready for printing and dispatch.',
       format: 'PDF',
       icon: 'document',
-      // TODO: replace with real route e.g. /admin/exports/packing-slips?shipment_date=...
-      href: null,
+      dateLabel: 'Any date in the week',
     },
   ] as const;
+
+  type PreviewData =
+    | { recipes: number; totalMeals: number }           // production order
+    | { ingredients: number; orders: number }            // shopping list
+    | { slips: number; companies: number };              // packing slips
+
+  type CardState =
+    | { phase: 'idle' }
+    | { phase: 'loading' }
+    | { phase: 'preview'; data: PreviewData }
+    | { phase: 'error'; message: string };
+
+  let states = $state<CardState[]>(EXPORTS.map(() => ({ phase: 'idle' })));
+  let dates = $state(['', '', '']);
+
+  async function fetchPreview(i: number, endpoint: string) {
+    const date = dates[i];
+    if (!date) return;
+
+    states[i] = { phase: 'loading' };
+
+    try {
+      const res = await fetch(
+        `/admin/exports/${endpoint}/preview?shipment_date=${date}`
+      );
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      states[i] = { phase: 'preview', data };
+    } catch (e) {
+      states[i] = { phase: 'error', message: 'Could not load preview. Try again.' };
+    }
+  }
+
+  function reset(i: number) {
+    states[i] = { phase: 'idle' };
+  }
+
+  function previewLines(endpoint: string, data: PreviewData): string[] {
+    if (endpoint === 'production-order' && 'recipes' in data) {
+      return [`${data.recipes} recipes`, `${data.totalMeals} total meals`];
+    }
+    if (endpoint === 'shopping-list' && 'ingredients' in data) {
+      return [`${data.ingredients} ingredients`, `across ${data.orders} orders`];
+    }
+    if (endpoint === 'packing-slips' && 'slips' in data) {
+      return [`${data.slips} packing slips`, `for ${data.companies} companies`];
+    }
+    return [];
+  }
 </script>
 
 <style>
@@ -45,21 +94,6 @@
     color: var(--motm-text-muted);
     margin-top: 3px;
   }
-
-  .notice {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 13px 16px;
-    background: #FEF9EC;
-    border: 1px solid #F5D97A;
-    border-radius: 8px;
-    font-size: 13px;
-    color: #7A5800;
-    line-height: 1.55;
-    margin-bottom: 28px;
-  }
-  .notice svg { flex-shrink: 0; margin-top: 1px; }
 
   .export-grid {
     display: grid;
@@ -125,15 +159,112 @@
     padding: 14px 22px;
     border-top: 1px solid var(--motm-border);
     background: #FAF8F6;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
-  /* Download button — active */
+  .date-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--motm-text-muted);
+    margin-bottom: 2px;
+    display: block;
+  }
+
+  .date-input {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--motm-border);
+    border-radius: 7px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--motm-text);
+    background: #fff;
+    box-sizing: border-box;
+  }
+  .date-input:focus {
+    outline: none;
+    border-color: var(--motm-pink);
+  }
+
+  .preview-box {
+    background: #F0F7FF;
+    border: 1px solid #C7DEFF;
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .preview-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #3B6FC4;
+    margin-bottom: 4px;
+  }
+  .preview-line {
+    font-size: 13px;
+    color: var(--motm-text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .preview-line::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #3B6FC4;
+    flex-shrink: 0;
+  }
+  .preview-empty {
+    font-size: 13px;
+    color: var(--motm-text-muted);
+    font-style: italic;
+  }
+  .error-box {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #B91C1C;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .preview-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    font-weight: 500;
+    font-family: inherit;
+    background: #fff;
+    color: var(--motm-text);
+    border: 1.5px solid var(--motm-border);
+    cursor: pointer;
+    transition: border-color 120ms;
+  }
+  .preview-btn:hover:not(:disabled) { border-color: var(--motm-pink); }
+  .preview-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
   .download-btn {
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 7px;
-    width: 100%;
     padding: 9px 16px;
     border-radius: 8px;
     font-size: 13.5px;
@@ -147,33 +278,22 @@
     transition: background 120ms;
   }
   .download-btn:hover { background: var(--motm-pink-dark); }
+  .download-btn.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
 
-  /* Stub button — not yet available */
-  .stub-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    width: 100%;
-    padding: 9px 16px;
-    border-radius: 8px;
-    font-size: 13.5px;
-    font-weight: 500;
+  .reset-btn {
+    background: none;
+    border: none;
+    font-size: 11.5px;
+    color: var(--motm-text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
     font-family: inherit;
-    background: transparent;
-    color: var(--motm-text-muted);
-    border: 1.5px dashed var(--motm-border);
-    cursor: not-allowed;
   }
-  .stub-label {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--motm-text-muted);
-    opacity: 0.7;
-    margin-left: 4px;
-  }
+  .reset-btn:hover { color: var(--motm-text); }
 </style>
 
 <div class="page-header">
@@ -181,15 +301,9 @@
   <p class="page-sub">Download production and logistics documents</p>
 </div>
 
-<div class="notice">
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
-  </svg>
-  Export endpoints are not yet built. The buttons below are placeholders — wire up the <code style="font-family: monospace; font-size: 12px; background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px;">href</code> values in <code style="font-family: monospace; font-size: 12px; background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px;">+page.svelte</code> once the routes exist.
-</div>
-
 <div class="export-grid">
-  {#each EXPORTS as exp}
+  {#each EXPORTS as exp, i}
+    {@const state = states[i]}
     <div class="export-card">
       <div class="export-card-body">
         <div class="export-icon">
@@ -237,8 +351,60 @@
       </div>
 
       <div class="export-card-footer">
-        {#if exp.href}
-          <a href={exp.href} download class="download-btn">
+        {#if state.phase === 'idle' || state.phase === 'loading' || state.phase === 'error'}
+          <label>
+            <span class="date-label">{exp.dateLabel}</span>
+            <input
+              class="date-input"
+              type="date"
+              bind:value={dates[i]}
+              onchange={() => reset(i)}
+            />
+          </label>
+        {/if}
+
+        {#if state.phase === 'error'}
+          <div class="error-box" transition:fade={{ duration: 150 }}>
+            {state.message}
+          </div>
+        {/if}
+
+        {#if state.phase === 'preview'}
+          <div class="preview-box" transition:fade={{ duration: 150 }}>
+            <p class="preview-label">Preview — {dates[i]}</p>
+            {#each previewLines(exp.endpoint, state.data) as line}
+              <span class="preview-line">{line}</span>
+            {/each}
+            {#if previewLines(exp.endpoint, state.data).length === 0}
+              <span class="preview-empty">No orders found for this date.</span>
+            {/if}
+          </div>
+          <button class="reset-btn" onclick={() => reset(i)}>← Change date</button>
+        {/if}
+
+        <div class="btn-row">
+          {#if state.phase !== 'preview'}
+            <button
+              class="preview-btn"
+              disabled={!dates[i] || state.phase === 'loading'}
+              onclick={() => fetchPreview(i, exp.endpoint)}
+            >
+              {#if state.phase === 'loading'}
+                Checking…
+              {:else}
+                Preview
+              {/if}
+            </button>
+          {/if}
+
+         <a 
+            href={state.phase === 'preview' && dates[i]
+              ? `/admin/exports/${exp.endpoint}?shipment_date=${dates[i]}`
+              : undefined}
+            class="download-btn"
+            class:disabled={state.phase !== 'preview'}
+            data-sveltekit-reload
+          >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <polyline points="8 17 12 21 16 17"/>
               <line x1="12" y1="12" x2="12" y2="21"/>
@@ -246,16 +412,7 @@
             </svg>
             Download
           </a>
-        {:else}
-          <div class="stub-btn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            Download
-            <span class="stub-label">Not yet available</span>
-          </div>
-        {/if}
+        </div>
       </div>
     </div>
   {/each}

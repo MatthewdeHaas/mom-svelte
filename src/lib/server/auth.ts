@@ -13,6 +13,20 @@ export const auth = betterAuth({
   database: pool,
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          await pool.query(
+            `INSERT INTO users (id, email, role)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (id) DO NOTHING`,
+            [user.id, user.email, user.role ?? 'admin']
+          );
+        },
+      },
+    },
+  },
   plugins: [
     admin(),
     magicLink({

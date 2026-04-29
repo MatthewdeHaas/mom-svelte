@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { pool } from '$lib/server/db';
-import { parseExcelBuffer } from '$lib/excel/parse';
+import { parseExcelBufferAsync } from '$lib/excel/parse';
 import { importOrdersFromRows } from '$lib/server/queries/imports';
 
 // Surface a minimal load so the page has access to prior import
@@ -12,11 +12,9 @@ export const load: PageServerLoad = async () => {
 
 export const actions: Actions = {
   default: async ({ request, locals }) => {
-    const session = await locals.auth.api.getSession({ headers: request.headers });
-
-    if (!session?.user) {
-      return fail(401, { error: 'Unauthorised' });
-    }
+		if (!locals.user) {
+			return fail(401, { error: 'Unauthorised' });
+		}
 
     // ----------------------------------------------------------
     // STEP 1 — Extract file from form data
@@ -53,8 +51,8 @@ export const actions: Actions = {
     let rawRows: Record<string, unknown>[];
 
     try {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      rawRows = parseExcelBuffer(buffer);
+			const buffer = Buffer.from(await file.arrayBuffer());
+			rawRows = await parseExcelBufferAsync(buffer);
     } catch (err) {
       console.error('[import] parse error', err);
       return fail(400, {
@@ -72,7 +70,8 @@ export const actions: Actions = {
     // STEP 3 — Validate + resolve + insert
     // ----------------------------------------------------------
     try {
-      const result = await importOrdersFromRows(pool, rawRows, session.user.id);
+			const headers = rawRows.length > 0 ? Object.keys(rawRows[0]) : [];
+			const result = await importOrdersFromRows(pool, rawRows, locals.user.id, headers);
 
       if (result.errors.length > 0) {
         // Validation or resolution errors — return them to the page
