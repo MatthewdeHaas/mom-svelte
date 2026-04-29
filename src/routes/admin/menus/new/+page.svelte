@@ -118,7 +118,6 @@
           value={form?.values?.name ?? ''}
           placeholder="e.g. Summer 2026"
           required
-          autofocus
         />
         {#if form?.errors?.name}
           <span class="field-error">{form.errors.name}</span>

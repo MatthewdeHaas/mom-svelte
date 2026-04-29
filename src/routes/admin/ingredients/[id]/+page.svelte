@@ -267,6 +267,7 @@
       </div>
 
       <div class="field">
+        <!-- svelte-ignore a11y_label_has_associated_control -->
         <label>Allergens</label>
         <p class="field-hint">Select all that apply</p>
         {#if data.allergens.length === 0}
@@ -289,17 +290,20 @@
       </div>
     </div>
 
-    <div class="card-footer">
-      {#if !data.ingredient.active}
-        <span style="font-size: 12.5px; color: var(--motm-text-muted);">Inactive ingredients cannot be edited</span>
-        <form method="POST" action="?/reactivate" use:enhance>
-          <button type="submit" class="btn btn-primary">Reactivate ingredient</button>
-        </form>
-      {:else}
+    {#if data.ingredient.active}
+      <div class="card-footer">
         <button type="submit" class="btn btn-primary">Save changes</button>
-      {/if}
-    </div>
+      </div>
+    {/if}
   </form>
+  {#if !data.ingredient.active}
+    <div class="card-footer" style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-size: 12.5px; color: var(--motm-text-muted);">Inactive ingredients cannot be edited</span>
+      <form method="POST" action="?/reactivate" use:enhance>
+        <button type="submit" class="btn btn-primary">Reactivate ingredient</button>
+      </form>
+    </div>
+  {/if}
 </div>
 
 <!-- Danger zone — only shown when active -->

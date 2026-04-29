@@ -83,6 +83,8 @@
 
 <!-- ───────────────────────── CSS custom properties ───────────────────────── -->
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;600&display=swap');
+
   :root {
     /* Warm off-white base — never pure #fff */
     --motm-bg:         #FAF8F6;
@@ -336,9 +338,6 @@
     .topbar { padding: 0 16px; }
     .page-slot { padding: 16px; }
   }
-
-  /* Font import */
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;600&display=swap');
 </style>
 
 <!-- ───────────────────────── Markup ──────────────────────────────────────── -->
@@ -362,7 +361,7 @@
     <nav class="nav-body">
       {#each nav as section, i}
         {#if i > 0}
-          <div class="nav-divider" />
+          <div class="nav-divider"></div>
         {/if}
         <div class="nav-section">
           <p class="nav-section-title">{section.title}</p>
@@ -386,7 +385,7 @@
     </nav>
 
     <div class="sidebar-footer">
-      <button class="logout-btn" on:click={handleLogout}>
+      <button class="logout-btn" onclick={handleLogout}>
         <LogOut />
         Sign out
       </button>
@@ -415,7 +414,7 @@
                       href={item.href}
                       class="nav-item"
                       class:active={isRootActive(item.href)}
-                      on:click={() => (mobileOpen = false)}
+                      onclick={() => (mobileOpen = false)}
                     >
                       <svelte:component this={item.icon} />
                       {item.label}

@@ -613,16 +613,19 @@
       </div>
     </div>
     <div class="card-footer">
-      {#if !data.menu.is_active}
-        <span style="font-size: 12.5px; color: var(--motm-text-muted);">Inactive menus cannot be edited</span>
-        <form method="POST" action="?/reactivate" use:enhance>
-          <button type="submit" class="btn btn-ghost btn-sm" style="width: auto;">Reactivate menu</button>
-        </form>
-      {:else}
+      {#if data.menu.is_active}
         <button type="submit" class="btn btn-primary btn-sm" style="width: auto;">Save details</button>
       {/if}
     </div>
   </form>
+  {#if !data.menu.is_active}
+    <div class="card-footer" style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-size: 12.5px; color: var(--motm-text-muted);">Inactive menus cannot be edited</span>
+      <form method="POST" action="?/reactivate" use:enhance>
+        <button type="submit" class="btn btn-ghost btn-sm" style="width: auto;">Reactivate menu</button>
+      </form>
+    </div>
+  {/if}
 </div>
 
 <!-- Cycle grid card -->
@@ -715,7 +718,7 @@
 <!-- Slide-over overlay -->
 {#if panelOpen && panelTarget}
   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="overlay" onclick={closePanel}></div>
+  <div class="overlay" onclick={closePanel} role="presentation"></div>
 
   <div class="panel">
     <div class="panel-header">
@@ -747,7 +750,6 @@
           type="search"
           placeholder="Search recipes…"
           bind:value={recipeSearch}
-          autofocus
         />
       </div>
       <p class="search-count">

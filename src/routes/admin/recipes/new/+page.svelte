@@ -110,7 +110,6 @@
           value={form?.values?.name ?? ''}
           placeholder="e.g. Chicken Caesar Salad"
           required
-          autofocus
         />
         {#if form?.errors?.name}
           <span class="field-error">{form.errors.name}</span>

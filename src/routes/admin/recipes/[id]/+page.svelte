@@ -168,12 +168,6 @@
   .btn-primary { background: var(--motm-pink); color: #fff; }
   .btn-primary:hover { background: var(--motm-pink-dark); }
   .btn-sm { padding: 5px 10px; font-size: 12px; }
-  .btn-ghost {
-    background: transparent;
-    color: var(--motm-text-muted);
-    border: 1px solid var(--motm-border);
-  }
-  .btn-ghost:hover { background: #FAF8F6; color: var(--motm-text); }
   .btn-remove {
     background: transparent;
     color: #A32D2D;
@@ -307,15 +301,15 @@
         <p class="field-error">{form.errors.name}</p>
       {/if}
     </div>
-    {#if !data.recipe.active}
-      <div class="card-footer">
-        <span style="font-size: 12.5px; color: var(--motm-text-muted);">Inactive recipes cannot be edited</span>
-        <form method="POST" action="?/reactivate" use:enhance>
-          <button type="submit" class="btn btn-primary btn-sm">Reactivate recipe</button>
-        </form>
-      </div>
-    {/if}
   </form>
+  {#if !data.recipe.active}
+    <div class="card-footer" style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-size: 12.5px; color: var(--motm-text-muted);">Inactive recipes cannot be edited</span>
+      <form method="POST" action="?/reactivate" use:enhance>
+        <button type="submit" class="btn btn-primary btn-sm">Reactivate recipe</button>
+      </form>
+    </div>
+  {/if}
 </div>
 
 <!-- Ingredients card -->
