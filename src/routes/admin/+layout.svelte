@@ -74,7 +74,8 @@
   }
 
   async function handleLogout() {
-    await goto('/auth/logout');
+    await fetch('/logout', { method: 'POST' });
+    await goto('/');
   }
 
   let mobileOpen = false;
