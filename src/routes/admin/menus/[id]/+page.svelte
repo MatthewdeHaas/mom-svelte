@@ -5,13 +5,13 @@
   const { data, form }: { data: PageData; form: ActionData } = $props();
 
   const DAYS = [
-    { label: 'Mon', value: 0 },
-    { label: 'Tue', value: 1 },
-    { label: 'Wed', value: 2 },
-    { label: 'Thu', value: 3 },
-    { label: 'Fri', value: 4 },
-    { label: 'Sat', value: 5 },
-    { label: 'Sun', value: 6 },
+    { label: 'Mon', value: 'monday' },
+    { label: 'Tue', value: 'tuesday' },
+    { label: 'Wed', value: 'wednesday' },
+    { label: 'Thu', value: 'thursday' },
+    { label: 'Fri', value: 'friday' },
+    { label: 'Sat', value: 'saturday' },
+    { label: 'Sun', value: 'sunday' },
   ];
 
   const MEAL_CATEGORIES = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
@@ -21,7 +21,7 @@
   // Slide-over state
   type PanelTarget = {
     cycle_week: number;
-    day_of_week: number;
+    day_of_week: string;
     meal_category: string;
     current_recipe_id: string | null;
     current_recipe_name: string | null;

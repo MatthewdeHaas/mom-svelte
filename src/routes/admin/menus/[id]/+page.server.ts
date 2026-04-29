@@ -54,11 +54,11 @@ export const actions: Actions = {
     const form = await request.formData();
 
     const cycle_week    = parseInt(form.get('cycle_week')?.toString() ?? '');
-    const day_of_week   = parseInt(form.get('day_of_week')?.toString() ?? '');
+    const day_of_week   = form.get('day_of_week')?.toString() ?? '';
     const meal_category = form.get('meal_category')?.toString() ?? '';
     const recipe_id     = form.get('recipe_id')?.toString() ?? '';
 
-    if (!recipe_id || isNaN(cycle_week) || isNaN(day_of_week) || !meal_category) {
+    if (!recipe_id || isNaN(cycle_week) || !meal_category) {
       return fail(422, { action: 'assignSlot', error: 'Invalid slot data' });
     }
 
