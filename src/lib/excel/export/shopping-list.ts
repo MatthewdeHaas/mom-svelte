@@ -6,10 +6,14 @@ import type { Pool } from 'pg';
 
 export async function generateShoppingList(
   db: Pool,
-  shipmentDate: string
+  from: string,
+  to: string
 ): Promise<ExcelJS.Buffer> {
-  // 1. Fetch all orders for the shipment date
-	const orders = await getOrdersByShipmentDate(db, new Date(shipmentDate));
+
+  const orders = await getOrders(db, {
+    serving_date_from: new Date(from),
+    serving_date_to: new Date(to),
+  });
 
 
   // 2. Resolve unique recipes

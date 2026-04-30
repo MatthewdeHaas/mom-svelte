@@ -1,5 +1,12 @@
 <script lang="ts">
   import { fade } from 'svelte/transition';
+  import {
+    todayEST,
+    weekBoundsEST,
+    formatDateDisplay,
+    formatWeekDisplay,
+    shiftDate,
+  } from '$lib/utils/dates';
 
   const EXPORTS = [
     {
@@ -15,7 +22,7 @@
       id: 'shoppingList',
       endpoint: 'shopping-list',
       title: 'Shopping list',
-      description: 'Consolidated ingredient quantities across all orders for a given shipment date. Used for purchasing.',
+      description: 'Consolidated ingredient quantities across all orders. Used for purchasing.',
       format: 'Excel (.xlsx)',
       icon: 'cart',
       dateLabel: 'Shipment date',
@@ -24,17 +31,19 @@
       id: 'packingSlips',
       endpoint: 'packing-slips',
       title: 'Packing slips',
-      description: 'Per-company packing slips for the week containing the selected date, ready for printing and dispatch.',
+      description: 'Per-company packing slips for the selected week, ready for printing and dispatch.',
       format: 'PDF',
       icon: 'document',
       dateLabel: 'Any date in the week',
     },
   ] as const;
 
+  type Mode = 'week' | 'day';
+
   type PreviewData =
-    | { recipes: number; totalMeals: number }           // production order
-    | { ingredients: number; orders: number }            // shopping list
-    | { slips: number; companies: number };              // packing slips
+    | { recipes: number; totalMeals: number }
+    | { ingredients: number; orders: number }
+    | { slips: number; companies: number };
 
   type CardState =
     | { phase: 'idle' }
@@ -42,23 +51,69 @@
     | { phase: 'preview'; data: PreviewData }
     | { phase: 'error'; message: string };
 
-  let states = $state<CardState[]>(EXPORTS.map(() => ({ phase: 'idle' })));
-  let dates = $state(['', '', '']);
+  // Per-card state
+  let modes   = $state<Mode[]>(EXPORTS.map(() => 'week'));
+  let dates   = $state<string[]>(EXPORTS.map(() => todayEST()));  // anchor date for both modes
+  let states  = $state<CardState[]>(EXPORTS.map(() => ({ phase: 'idle' })));
+
+  // Derived week bounds for a card
+  function weekOf(i: number) {
+    return weekBoundsEST(dates[i]);
+  }
+
+  // The param sent to the server
+  function buildUrl(i: number, path: string): string {
+    const base = `/admin/exports/${path}`;
+    if (modes[i] === 'week') {
+      return `${base}?week_of=${dates[i]}`;
+    }
+    return `${base}?shipment_date=${dates[i]}`;
+  }
+
+  // Shortcut buttons
+  function jumpToday(i: number) {
+    modes[i]  = 'day';
+    dates[i]  = todayEST();
+    states[i] = { phase: 'idle' };
+  }
+
+  function jumpThisWeek(i: number) {
+    modes[i]  = 'week';
+    dates[i]  = todayEST();
+    states[i] = { phase: 'idle' };
+  }
+
+  function navigate(i: number, delta: number) {
+    const shift = modes[i] === 'week' ? delta * 7 : delta;
+    dates[i]  = shiftDate(dates[i], shift);
+    states[i] = { phase: 'idle' };
+  }
+
+  function setMode(i: number, mode: Mode) {
+    modes[i]  = mode;
+    states[i] = { phase: 'idle' };
+  }
+
+  // Label shown in the picker
+  function pickerLabel(i: number): string {
+    const today = todayEST();
+    if (modes[i] === 'week') {
+      const { from, to } = weekOf(i);
+      const { from: thisFrom } = weekBoundsEST(today);
+      const suffix = from === thisFrom ? ' · this week' : '';
+      return formatWeekDisplay(from, to) + suffix;
+    }
+    const suffix = dates[i] === today ? ' · today' : '';
+    return formatDateDisplay(dates[i]) + suffix;
+  }
 
   async function fetchPreview(i: number, endpoint: string) {
-    const date = dates[i];
-    if (!date) return;
-
     states[i] = { phase: 'loading' };
-
     try {
-      const res = await fetch(
-        `/admin/exports/${endpoint}/preview?shipment_date=${date}`
-      );
+      const res = await fetch(buildUrl(i, `${endpoint}/preview`));
       if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      states[i] = { phase: 'preview', data };
-    } catch (e) {
+      states[i] = { phase: 'preview', data: await res.json() };
+    } catch {
       states[i] = { phase: 'error', message: 'Could not load preview. Try again.' };
     }
   }
@@ -97,7 +152,7 @@
 
   .export-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 16px;
   }
 
@@ -161,33 +216,103 @@
     background: #FAF8F6;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
 
-  .date-label {
+  /* Mode tabs */
+  .mode-tabs {
+    display: flex;
+    gap: 4px;
+    background: #EFEFED;
+    border-radius: 7px;
+    padding: 3px;
+  }
+  .mode-tab {
+    flex: 1;
+    padding: 5px 0;
+    border: none;
+    border-radius: 5px;
+    font-size: 12.5px;
+    font-weight: 500;
+    font-family: inherit;
+    background: transparent;
+    color: var(--motm-text-muted);
+    cursor: pointer;
+    transition: background 100ms, color 100ms;
+  }
+  .mode-tab.active {
+    background: #fff;
+    color: var(--motm-text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  /* Shortcuts */
+  .shortcuts {
+    display: flex;
+    gap: 6px;
+  }
+  .shortcut-btn {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1.5px solid var(--motm-border);
+    border-radius: 6px;
     font-size: 11.5px;
     font-weight: 600;
-    color: var(--motm-text-muted);
-    margin-bottom: 2px;
-    display: block;
-  }
-
-  .date-input {
-    width: 100%;
-    padding: 7px 10px;
-    border: 1px solid var(--motm-border);
-    border-radius: 7px;
-    font-size: 13px;
     font-family: inherit;
-    color: var(--motm-text);
     background: #fff;
-    box-sizing: border-box;
+    color: var(--motm-text-muted);
+    cursor: pointer;
+    transition: border-color 120ms, color 120ms;
+    text-align: center;
   }
-  .date-input:focus {
-    outline: none;
+  .shortcut-btn:hover { border-color: var(--motm-pink); color: var(--motm-text); }
+  .shortcut-btn.active {
     border-color: var(--motm-pink);
+    color: var(--motm-pink-dark);
+    background: var(--motm-pink-light);
   }
 
+  /* Week / day picker */
+  .picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .picker-nav {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--motm-border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--motm-text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 120ms;
+  }
+  .picker-nav:hover { border-color: var(--motm-pink); color: var(--motm-text); }
+
+  .picker-label {
+    flex: 1;
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--motm-text);
+    line-height: 1.35;
+    padding: 4px 6px;
+    background: #fff;
+    border: 1px solid var(--motm-border);
+    border-radius: 6px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Preview box */
   .preview-box {
     background: #F0F7FF;
     border: 1px solid #C7DEFF;
@@ -225,6 +350,7 @@
     color: var(--motm-text-muted);
     font-style: italic;
   }
+
   .error-box {
     background: #FEF2F2;
     border: 1px solid #FECACA;
@@ -233,6 +359,18 @@
     font-size: 13px;
     color: #B91C1C;
   }
+
+  .reset-btn {
+    background: none;
+    border: none;
+    font-size: 11.5px;
+    color: var(--motm-text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+    font-family: inherit;
+  }
+  .reset-btn:hover { color: var(--motm-text); }
 
   .btn-row {
     display: flex;
@@ -282,18 +420,6 @@
     opacity: 0.5;
     pointer-events: none;
   }
-
-  .reset-btn {
-    background: none;
-    border: none;
-    font-size: 11.5px;
-    color: var(--motm-text-muted);
-    cursor: pointer;
-    text-decoration: underline;
-    padding: 0;
-    font-family: inherit;
-  }
-  .reset-btn:hover { color: var(--motm-text); }
 </style>
 
 <div class="page-header">
@@ -304,6 +430,12 @@
 <div class="export-grid">
   {#each EXPORTS as exp, i}
     {@const state = states[i]}
+    {@const today = todayEST()}
+    {@const { from: wFrom, to: wTo } = weekBoundsEST(dates[i])}
+    {@const { from: thisFrom } = weekBoundsEST(today)}
+    {@const isThisWeek = wFrom === thisFrom}
+    {@const isToday = dates[i] === today}
+
     <div class="export-card">
       <div class="export-card-body">
         <div class="export-icon">
@@ -351,16 +483,58 @@
       </div>
 
       <div class="export-card-footer">
-        {#if state.phase === 'idle' || state.phase === 'loading' || state.phase === 'error'}
-          <label>
-            <span class="date-label">{exp.dateLabel}</span>
-            <input
-              class="date-input"
-              type="date"
-              bind:value={dates[i]}
-              onchange={() => reset(i)}
-            />
-          </label>
+
+        <!-- Mode tabs -->
+        <div class="mode-tabs">
+          <button
+            class="mode-tab"
+            class:active={modes[i] === 'week'}
+            onclick={() => setMode(i, 'week')}
+          >Week</button>
+          <button
+            class="mode-tab"
+            class:active={modes[i] === 'day'}
+            onclick={() => setMode(i, 'day')}
+          >Day</button>
+        </div>
+
+        <!-- Shortcuts -->
+        <div class="shortcuts">
+          <button
+            class="shortcut-btn"
+            class:active={modes[i] === 'week' && isThisWeek}
+            onclick={() => jumpThisWeek(i)}
+          >This week</button>
+          <button
+            class="shortcut-btn"
+            class:active={modes[i] === 'day' && isToday}
+            onclick={() => jumpToday(i)}
+          >Today</button>
+        </div>
+
+        <!-- Week / day picker -->
+        <div class="picker">
+          <button class="picker-nav" onclick={() => navigate(i, -1)}>‹</button>
+          <span class="picker-label">{pickerLabel(i)}</span>
+          <button class="picker-nav" onclick={() => navigate(i, 1)}>›</button>
+        </div>
+
+        <!-- Preview result -->
+        {#if state.phase === 'preview'}
+          <div class="preview-box" transition:fade={{ duration: 150 }}>
+            <p class="preview-label">
+              {modes[i] === 'week'
+                ? `Week of ${formatWeekDisplay(wFrom, wTo)}`
+                : formatDateDisplay(dates[i])}
+            </p>
+            {#each previewLines(exp.endpoint, state.data) as line}
+              <span class="preview-line">{line}</span>
+            {/each}
+            {#if previewLines(exp.endpoint, state.data).length === 0}
+              <span class="preview-empty">No orders found.</span>
+            {/if}
+          </div>
+          <button class="reset-btn" onclick={() => reset(i)}>← Change selection</button>
         {/if}
 
         {#if state.phase === 'error'}
@@ -369,37 +543,21 @@
           </div>
         {/if}
 
-        {#if state.phase === 'preview'}
-          <div class="preview-box" transition:fade={{ duration: 150 }}>
-            <p class="preview-label">Preview — {dates[i]}</p>
-            {#each previewLines(exp.endpoint, state.data) as line}
-              <span class="preview-line">{line}</span>
-            {/each}
-            {#if previewLines(exp.endpoint, state.data).length === 0}
-              <span class="preview-empty">No orders found for this date.</span>
-            {/if}
-          </div>
-          <button class="reset-btn" onclick={() => reset(i)}>← Change date</button>
-        {/if}
-
+        <!-- Action buttons -->
         <div class="btn-row">
           {#if state.phase !== 'preview'}
             <button
               class="preview-btn"
-              disabled={!dates[i] || state.phase === 'loading'}
+              disabled={state.phase === 'loading'}
               onclick={() => fetchPreview(i, exp.endpoint)}
             >
-              {#if state.phase === 'loading'}
-                Checking…
-              {:else}
-                Preview
-              {/if}
+              {state.phase === 'loading' ? 'Checking…' : 'Preview'}
             </button>
           {/if}
 
          <a 
-            href={state.phase === 'preview' && dates[i]
-              ? `/admin/exports/${exp.endpoint}?shipment_date=${dates[i]}`
+            href={state.phase === 'preview'
+              ? buildUrl(i, exp.endpoint)
               : undefined}
             class="download-btn"
             class:disabled={state.phase !== 'preview'}
@@ -413,6 +571,7 @@
             Download
           </a>
         </div>
+
       </div>
     </div>
   {/each}
