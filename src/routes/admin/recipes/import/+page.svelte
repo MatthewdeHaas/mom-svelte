@@ -4,7 +4,6 @@
   import type { ImportRowError } from '$lib/types';
 
   let { form }: { form: ActionData } = $props();
-
   let file: File | null = null;
   let dragging = false;
   let submitting = false;
@@ -20,7 +19,6 @@
     const dropped = e.dataTransfer?.files[0];
     if (dropped?.name.endsWith('.xlsx')) {
       file = dropped;
-      // Sync to the hidden input so the form picks it up
       const input = document.getElementById('file-input') as HTMLInputElement;
       const dt = new DataTransfer();
       dt.items.add(dropped);
@@ -28,8 +26,8 @@
     }
   }
 
-  $: parseErrors = (form as any)?.parseErrors as ImportRowError[] | undefined;
-  $: result = (form as any)?.result;
+  const parseErrors = $derived((form as any)?.parseErrors as ImportRowError[] | undefined);
+  const result = $derived((form as any)?.result);
 </script>
 
 <svelte:head>
