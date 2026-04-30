@@ -229,7 +229,11 @@
             style="cursor: pointer;"
           >
             <td style="font-weight: 500;">{recipe.name}</td>
-            <td class="td-muted">—</td>
+            <td class="td-muted">
+              {recipe.ingredients?.length
+                ? `${recipe.ingredients.length} ingredient${recipe.ingredients.length === 1 ? '' : 's'}`
+                : '—'}
+            </td>
             <td>
               {#if !recipe.active}
                 <span class="inactive-badge">Inactive</span>
