@@ -3,7 +3,7 @@
   import type { ActionData } from './$types';
   import type { ImportRowError } from '$lib/types';
 
-  export let form: ActionData;
+  let { form }: { form: ActionData } = $props();
 
   let file: File | null = null;
   let dragging = false;
