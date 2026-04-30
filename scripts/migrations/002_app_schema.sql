@@ -67,7 +67,8 @@ CREATE TABLE recipes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT UNIQUE NOT NULL,
     active          BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at			TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Many-to-many: recipes <-> ingredients (with amount/unit)

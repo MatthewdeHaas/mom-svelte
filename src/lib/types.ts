@@ -282,3 +282,20 @@ export interface ImportRowError {
   field: string | null; // null = row-level error (e.g. company not found)
   message: string;
 }
+
+
+export interface RecipeExcelRowParsed {
+  recipe: string;
+  ingredient: string | null;
+  amount: number | null;
+  unit: string | null;
+  allergens: string | null; // comma-separated e.g. "Dairy, Gluten"
+}
+ 
+export interface RecipeImportResult {
+  recipes_created: number;
+  recipes_updated: number;
+  ingredients_created: number;
+  rows_processed: number;
+  errors: ImportRowError[]; // reuse existing type
+}
