@@ -9,10 +9,13 @@ function resolve(url: URL): string {
   const weekOf = url.searchParams.get('week_of');
   const single = url.searchParams.get('shipment_date');
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-
   if (weekOf?.match(dateRe)) return weekOf;
   if (single?.match(dateRe)) return single;
   throw error(400, 'Provide either week_of or shipment_date (YYYY-MM-DD)');
+}
+
+function slugify(str: string): string {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -31,7 +34,11 @@ export const GET: RequestHandler = async ({ url }) => {
   }
 
   const zip = new JSZip();
-  for (const slip of slips) zip.file(slip.filename, slip.buffer);
+  for (const slip of slips) {
+    const folder = slugify(slip.companyName);
+    zip.file(`${folder}/${slip.filename}`, slip.buffer);
+  }
+
   const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
   const { from } = weekBoundsEST(dateParam);
 
