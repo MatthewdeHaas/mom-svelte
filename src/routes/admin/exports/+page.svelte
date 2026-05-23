@@ -1,5 +1,9 @@
 <script lang="ts">
   import { fade } from 'svelte/transition';
+  import { Calendar } from '$lib/components/ui/calendar/index.js';
+  import * as Popover from '$lib/components/ui/popover/index.js';
+  import { parseDate } from '@internationalized/date';
+  import type { CalendarDate } from '@internationalized/date';
   import {
     todayEST,
     weekBoundsEST,
@@ -51,26 +55,32 @@
     | { phase: 'preview'; data: PreviewData }
     | { phase: 'error'; message: string };
 
-  // Per-card state
-  let modes   = $state<Mode[]>(EXPORTS.map(() => 'week'));
-  let dates   = $state<string[]>(EXPORTS.map(() => todayEST()));  // anchor date for both modes
-  let states  = $state<CardState[]>(EXPORTS.map(() => ({ phase: 'idle' })));
+  let modes        = $state<Mode[]>(EXPORTS.map(() => 'week'));
+  let dates        = $state<string[]>(EXPORTS.map(() => todayEST()));
+  let states       = $state<CardState[]>(EXPORTS.map(() => ({ phase: 'idle' })));
+  let popoverOpen  = $state<boolean[]>(EXPORTS.map(() => false));
 
-  // Derived week bounds for a card
+  function toCalendarDate(dateStr: string): CalendarDate {
+    return parseDate(dateStr);
+  }
+
+  function onCalendarSelect(i: number, val: CalendarDate | undefined) {
+    if (!val) return;
+    dates[i]       = val.toString();
+    states[i]      = { phase: 'idle' };
+    popoverOpen[i] = false;
+  }
+
   function weekOf(i: number) {
     return weekBoundsEST(dates[i]);
   }
 
-  // The param sent to the server
   function buildUrl(i: number, path: string): string {
     const base = `/admin/exports/${path}`;
-    if (modes[i] === 'week') {
-      return `${base}?week_of=${dates[i]}`;
-    }
+    if (modes[i] === 'week') return `${base}?week_of=${dates[i]}`;
     return `${base}?shipment_date=${dates[i]}`;
   }
 
-  // Shortcut buttons
   function jumpToday(i: number) {
     modes[i]  = 'day';
     dates[i]  = todayEST();
@@ -94,16 +104,15 @@
     states[i] = { phase: 'idle' };
   }
 
-  // Label shown in the picker
   function pickerLabel(i: number): string {
-    const today = todayEST();
+    const todayStr = todayEST();
     if (modes[i] === 'week') {
       const { from, to } = weekOf(i);
-      const { from: thisFrom } = weekBoundsEST(today);
+      const { from: thisFrom } = weekBoundsEST(todayStr);
       const suffix = from === thisFrom ? ' · this week' : '';
       return formatWeekDisplay(from, to) + suffix;
     }
-    const suffix = dates[i] === today ? ' · today' : '';
+    const suffix = dates[i] === todayStr ? ' · today' : '';
     return formatDateDisplay(dates[i]) + suffix;
   }
 
@@ -123,15 +132,12 @@
   }
 
   function previewLines(endpoint: string, data: PreviewData): string[] {
-    if (endpoint === 'production-order' && 'recipes' in data) {
+    if (endpoint === 'production-order' && 'recipes' in data)
       return [`${data.recipes} recipes`, `${data.totalMeals} total meals`];
-    }
-    if (endpoint === 'shopping-list' && 'ingredients' in data) {
+    if (endpoint === 'shopping-list' && 'ingredients' in data)
       return [`${data.ingredients} ingredients`, `across ${data.orders} orders`];
-    }
-    if (endpoint === 'packing-slips' && 'slips' in data) {
+    if (endpoint === 'packing-slips' && 'slips' in data)
       return [`${data.slips} packing slips`, `for ${data.companies} companies`];
-    }
     return [];
   }
 </script>
@@ -219,7 +225,6 @@
     gap: 10px;
   }
 
-  /* Mode tabs */
   .mode-tabs {
     display: flex;
     gap: 4px;
@@ -246,7 +251,6 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
 
-  /* Shortcuts */
   .shortcuts {
     display: flex;
     gap: 6px;
@@ -272,7 +276,6 @@
     background: var(--motm-pink-light);
   }
 
-  /* Week / day picker */
   .picker {
     display: flex;
     align-items: center;
@@ -295,7 +298,8 @@
   }
   .picker-nav:hover { border-color: var(--motm-pink); color: var(--motm-text); }
 
-  .picker-label {
+  /* The label is now a Popover.Trigger styled to match the old span */
+  :global(.picker-label-btn) {
     flex: 1;
     text-align: center;
     font-size: 12.5px;
@@ -310,9 +314,25 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color 120ms;
+    width: 100%;
+  }
+  :global(.picker-label-btn:hover) { border-color: var(--motm-pink); }
+  :global(.picker-label-btn svg)   { flex-shrink: 0; color: var(--motm-text-muted); }
+
+  /* Tint the selected day and today indicator to motm pink */
+  :global(.motm-cal [data-selected] > *) {
+    background-color: var(--motm-pink) !important;
+    color: #fff !important;
+  }
+  :global(.motm-cal [data-today]:not([data-selected]) > *) {
+    background-color: var(--motm-pink-light) !important;
+    color: var(--motm-pink-dark) !important;
   }
 
-  /* Preview box */
   .preview-box {
     background: #F0F7FF;
     border: 1px solid #C7DEFF;
@@ -372,10 +392,7 @@
   }
   .reset-btn:hover { color: var(--motm-text); }
 
-  .btn-row {
-    display: flex;
-    gap: 8px;
-  }
+  .btn-row { display: flex; gap: 8px; }
 
   .preview-btn {
     flex: 1;
@@ -416,10 +433,7 @@
     transition: background 120ms;
   }
   .download-btn:hover { background: var(--motm-pink-dark); }
-  .download-btn.disabled {
-    opacity: 0.5;
-    pointer-events: none;
-  }
+  .download-btn.disabled { opacity: 0.5; pointer-events: none; }
 </style>
 
 <div class="page-header">
@@ -429,12 +443,12 @@
 
 <div class="export-grid">
   {#each EXPORTS as exp, i}
-    {@const state = states[i]}
-    {@const today = todayEST()}
+    {@const state    = states[i]}
+    {@const todayStr = todayEST()}
     {@const { from: wFrom, to: wTo } = weekBoundsEST(dates[i])}
-    {@const { from: thisFrom } = weekBoundsEST(today)}
+    {@const { from: thisFrom }       = weekBoundsEST(todayStr)}
     {@const isThisWeek = wFrom === thisFrom}
-    {@const isToday = dates[i] === today}
+    {@const isToday    = dates[i] === todayStr}
 
     <div class="export-card">
       <div class="export-card-body">
@@ -486,36 +500,39 @@
 
         <!-- Mode tabs -->
         <div class="mode-tabs">
-          <button
-            class="mode-tab"
-            class:active={modes[i] === 'week'}
-            onclick={() => setMode(i, 'week')}
-          >Week</button>
-          <button
-            class="mode-tab"
-            class:active={modes[i] === 'day'}
-            onclick={() => setMode(i, 'day')}
-          >Day</button>
+          <button class="mode-tab" class:active={modes[i] === 'week'} onclick={() => setMode(i, 'week')}>Week</button>
+          <button class="mode-tab" class:active={modes[i] === 'day'}  onclick={() => setMode(i, 'day')}>Day</button>
         </div>
 
         <!-- Shortcuts -->
         <div class="shortcuts">
-          <button
-            class="shortcut-btn"
-            class:active={modes[i] === 'week' && isThisWeek}
-            onclick={() => jumpThisWeek(i)}
-          >This week</button>
-          <button
-            class="shortcut-btn"
-            class:active={modes[i] === 'day' && isToday}
-            onclick={() => jumpToday(i)}
-          >Today</button>
+          <button class="shortcut-btn" class:active={modes[i] === 'week' && isThisWeek} onclick={() => jumpThisWeek(i)}>This week</button>
+          <button class="shortcut-btn" class:active={modes[i] === 'day'  && isToday}    onclick={() => jumpToday(i)}>Today</button>
         </div>
 
-        <!-- Week / day picker -->
+        <!-- Picker: arrows + clickable label -->
         <div class="picker">
           <button class="picker-nav" onclick={() => navigate(i, -1)}>‹</button>
-          <span class="picker-label">{pickerLabel(i)}</span>
+
+          <Popover.Root bind:open={popoverOpen[i]}>
+            <Popover.Trigger class="picker-label-btn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8"  y1="2" x2="8"  y2="6"/>
+                <line x1="3"  y1="10" x2="21" y2="10"/>
+              </svg>
+              {pickerLabel(i)}
+            </Popover.Trigger>
+            <Popover.Content class="motm-cal" align="center" sideOffset={6}>
+              <Calendar
+                type="single"
+                value={toCalendarDate(dates[i])}
+                onValueChange={(val) => onCalendarSelect(i, val)}
+              />
+            </Popover.Content>
+          </Popover.Root>
+
           <button class="picker-nav" onclick={() => navigate(i, 1)}>›</button>
         </div>
 
@@ -555,10 +572,8 @@
             </button>
           {/if}
 
-         <a 
-            href={state.phase === 'preview'
-              ? buildUrl(i, exp.endpoint)
-              : undefined}
+          <a
+            href={state.phase === 'preview' ? buildUrl(i, exp.endpoint) : undefined}
             class="download-btn"
             class:disabled={state.phase !== 'preview'}
             data-sveltekit-reload
