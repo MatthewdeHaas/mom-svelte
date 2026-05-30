@@ -3,6 +3,8 @@ import type { Actions, PageServerLoad } from './$types';
 import { createCompany } from '$lib/server/queries/companies';
 import { pool } from '$lib/server/db';
 import { ConflictError } from '$lib/server/errors';
+import { parseFormData } from '$lib/server/form';
+import { CompanySchema } from '$lib/server/schemas/company';
 
 export const load: PageServerLoad = async () => {
   return {};
@@ -11,15 +13,13 @@ export const load: PageServerLoad = async () => {
 export const actions: Actions = {
   default: async ({ request }) => {
     const form = await request.formData();
+    const parsed = parseFormData(CompanySchema, form);
 
-    const name            = form.get('name')?.toString().trim() ?? '';
-    const contact_email   = form.get('contact_email')?.toString().trim() || null;
-    const phone           = form.get('phone')?.toString().trim() || null;
-    const shipping_address = form.get('shipping_address')?.toString().trim() || null;
-
-    if (!name) {
-      return fail(422, { errors: { name: 'Company name is required' }, values: { name, contact_email, phone, shipping_address } });
+    if (!parsed.success) {
+      return fail(422, { errors: parsed.errors, values: Object.fromEntries(form) });
     }
+
+    const { name, contact_email, phone, shipping_address } = parsed.data;
 
     let company;
     try {
@@ -32,7 +32,10 @@ export const actions: Actions = {
       });
     } catch (err) {
       if (err instanceof ConflictError) {
-        return fail(422, { errors: { name: 'A company with this name already exists' }, values: { name, contact_email, phone, shipping_address } });
+        return fail(422, {
+          errors: { name: 'A company with this name already exists' },
+          values: Object.fromEntries(form),
+        });
       }
       throw err;
     }

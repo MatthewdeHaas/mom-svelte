@@ -9,6 +9,8 @@ import {
 import { getAllergens } from '$lib/server/queries/allergens';
 import { pool } from '$lib/server/db';
 import { ConflictError } from '$lib/server/errors';
+import { parseFormData } from '$lib/server/form';
+import { IngredientSchema } from '$lib/server/schemas/ingredient';
 
 export const load: PageServerLoad = async ({ params }) => {
   const [ingredient, allergens] = await Promise.all([
@@ -24,17 +26,18 @@ export const load: PageServerLoad = async ({ params }) => {
 export const actions: Actions = {
   update: async ({ request, params }) => {
     const form = await request.formData();
-
-    const name = form.get('name')?.toString().trim() ?? '';
     const allergenIds = form.getAll('allergen_ids').map(v => v.toString());
+    const parsed = parseFormData(IngredientSchema, form);
 
-    if (!name) {
+    if (!parsed.success) {
       return fail(422, {
         action: 'update',
-        errors: { name: 'Ingredient name is required' },
-        values: { name, allergenIds },
+        errors: parsed.errors,
+        values: { name: form.get('name')?.toString() ?? '', allergenIds },
       });
     }
+
+    const { name } = parsed.data;
 
     try {
       await updateIngredient(pool, params.id, { name });
