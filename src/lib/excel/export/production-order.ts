@@ -1,6 +1,5 @@
 import ExcelJS from 'exceljs';
-import type { RecipeWithIngredients } from '$lib/types';
-import { getRecipeWithIngredients } from '$lib/server/queries/recipes';
+import { getRecipesWithIngredientsByIds } from '$lib/server/queries/recipes';
 import { getOrders } from '$lib/server/queries/orders';
 import type { Pool } from 'pg';
 
@@ -16,17 +15,10 @@ export async function generateProductionOrderSheet(
   });
 
 
-  // 2. Collect unique recipe IDs across all orders
+  // 2. Collect unique recipe IDs and resolve all recipes in one query
   const recipeIds = [...new Set(orders.map((o) => o.recipe_id))];
 
-  // 3. Resolve each recipe with its ingredients (for allergen join)
-  const recipeMap = new Map<number, RecipeWithIngredients>();
-  await Promise.all(
-    recipeIds.map(async (id) => {
-      const recipe = await getRecipeWithIngredients(db, id);
-      if (recipe) recipeMap.set(id, recipe);
-    })
-  );
+  const recipeMap = await getRecipesWithIngredientsByIds(db, recipeIds);
 
   // 4. Build one row per recipe, aggregating total amount across orders
   type Row = {

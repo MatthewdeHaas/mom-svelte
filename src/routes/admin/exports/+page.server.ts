@@ -40,7 +40,7 @@ export const actions: Actions = {
     const shipmentDate = requireDate(data, 'shipment_date');
     if (!shipmentDate) return fail(400, { error: 'Invalid or missing shipment date.' });
 
-    const buffer = await generateProductionOrderSheet(pool, shipmentDate);
+    const buffer = await generateProductionOrderSheet(pool, shipmentDate, shipmentDate);
     return excelResponse(buffer, `production-${shipmentDate}.xlsx`);
   },
 
@@ -49,7 +49,7 @@ export const actions: Actions = {
     const shipmentDate = requireDate(data, 'shipment_date');
     if (!shipmentDate) return fail(400, { error: 'Invalid or missing shipment date.' });
 
-    const buffer = await generateShoppingList(pool, shipmentDate);
+    const buffer = await generateShoppingList(pool, shipmentDate, shipmentDate);
     return excelResponse(buffer, `shopping-${shipmentDate}.xlsx`);
   },
 
