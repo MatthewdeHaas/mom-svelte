@@ -240,8 +240,8 @@ export interface InsertOrder {
   status?: OrderStatus;
   meal_category?: string | null;
   amount: number;
-  serving_date: Date;
-  shipment_date: Date;
+  serving_date: Date | string;
+  shipment_date: Date | string;
   frozen?: boolean;
   chilled?: boolean;
   recurring?: boolean;

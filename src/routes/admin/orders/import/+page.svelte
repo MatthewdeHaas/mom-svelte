@@ -396,9 +396,19 @@
 
   <!-- Format guide -->
   <div class="card">
-    <div class="card-header">
-      <p class="card-title">Expected format</p>
-      <p class="card-sub">Column headers must match exactly</p>
+    <div class="card-header" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
+      <div>
+        <p class="card-title">Expected format</p>
+        <p class="card-sub">Column headers must match exactly</p>
+      </div>
+      <a href="/admin/orders/import/template" class="btn btn-ghost" style="flex-shrink: 0; font-size: 12.5px; padding: 6px 12px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download template
+      </a>
     </div>
     <div class="card-body">
       <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
