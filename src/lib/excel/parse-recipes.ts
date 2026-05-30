@@ -99,7 +99,6 @@ export async function parseRecipeExcel(buffer: Buffer): Promise<ParseRecipesResu
         row: rowNumber,
         field: result.error.issues[0]?.path.join('.') ?? 'unknown',
         message: result.error.issues.map((i) => i.message).join('; '),
-        raw_value: JSON.stringify(raw),
       });
       return;
     }
