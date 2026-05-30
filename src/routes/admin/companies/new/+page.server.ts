@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { createCompany } from '$lib/server/queries/companies';
 import { pool } from '$lib/server/db';
+import { ConflictError } from '$lib/server/errors';
 
 export const load: PageServerLoad = async () => {
   return {};
@@ -20,13 +21,21 @@ export const actions: Actions = {
       return fail(422, { errors: { name: 'Company name is required' }, values: { name, contact_email, phone, shipping_address } });
     }
 
-    const company = await createCompany(pool, {
-      name,
-      contact_email,
-      phone,
-      shipping_address,
-      active: true,
-    });
+    let company;
+    try {
+      company = await createCompany(pool, {
+        name,
+        contact_email,
+        phone,
+        shipping_address,
+        active: true,
+      });
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        return fail(422, { errors: { name: 'A company with this name already exists' }, values: { name, contact_email, phone, shipping_address } });
+      }
+      throw err;
+    }
 
     redirect(303, `/admin/companies/${company.id}`);
   },

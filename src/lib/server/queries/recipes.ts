@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { ConflictError } from '$lib/server/errors';
 import type {
   Recipe,
   InsertRecipe,
@@ -191,13 +192,18 @@ export async function getRecipeIngredients(
 // -------------------------------------------------------------
 
 export async function createRecipe(db: Pool, data: InsertRecipe): Promise<Recipe> {
-  const result = await db.query<Recipe>(
-    `INSERT INTO recipes (name, active)
-     VALUES ($1, $2)
-     RETURNING id, name, active, created_at`,
-    [data.name.trim(), data.active ?? true]
-  );
-  return result.rows[0];
+  try {
+    const result = await db.query<Recipe>(
+      `INSERT INTO recipes (name, active)
+       VALUES ($1, $2)
+       RETURNING id, name, active, created_at`,
+      [data.name.trim(), data.active ?? true]
+    );
+    return result.rows[0];
+  } catch (err: any) {
+    if (err?.code === '23505') throw new ConflictError('A recipe with this name already exists');
+    throw err;
+  }
 }
 
 export async function updateRecipe(
@@ -205,16 +211,21 @@ export async function updateRecipe(
   id: string,
   data: UpdateRecipe
 ): Promise<Recipe | null> {
-  const result = await db.query<Recipe>(
-    `UPDATE recipes
-     SET
-       name   = COALESCE($1, name),
-       active = COALESCE($2, active)
-     WHERE id = $3
-     RETURNING id, name, active, created_at`,
-    [data.name?.trim() ?? null, data.active ?? null, id]
-  );
-  return result.rows[0] ?? null;
+  try {
+    const result = await db.query<Recipe>(
+      `UPDATE recipes
+       SET
+         name   = COALESCE($1, name),
+         active = COALESCE($2, active)
+       WHERE id = $3
+       RETURNING id, name, active, created_at`,
+      [data.name?.trim() ?? null, data.active ?? null, id]
+    );
+    return result.rows[0] ?? null;
+  } catch (err: any) {
+    if (err?.code === '23505') throw new ConflictError('A recipe with this name already exists');
+    throw err;
+  }
 }
 
 // Soft delete only. Hard delete is blocked by ON DELETE RESTRICT on orders.

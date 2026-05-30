@@ -4,6 +4,7 @@ import { pool } from '$lib/server/db';
 import { parseRecipeExcel } from '$lib/excel/parse-recipes';
 import { importRecipesFromRows } from '$lib/server/queries/recipe-imports';
 import { createRecipe } from '$lib/server/queries/recipes'; // your existing fn
+import { ConflictError } from '$lib/server/errors';
 import type { RecipeImportResult } from '$lib/types';
 
 export const load: PageServerLoad = async () => {
@@ -23,7 +24,18 @@ export const actions: Actions = {
       });
     }
 
-    const recipe = await createRecipe(pool, { name });
+    let recipe;
+    try {
+      recipe = await createRecipe(pool, { name });
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        return fail(422, {
+          errors: { name: 'A recipe with this name already exists' },
+          values: { name },
+        });
+      }
+      throw err;
+    }
     redirect(303, `/admin/recipes/${recipe.id}/ingredients`);
   },
 

@@ -8,6 +8,7 @@ import {
 import { getPersonsByCompany } from '$lib/server/queries/persons';
 import { getOrders } from '$lib/server/queries/orders';
 import { pool } from '$lib/server/db';
+import { ConflictError } from '$lib/server/errors';
 
 export const load: PageServerLoad = async ({ params }) => {
   const [company, persons, orders] = await Promise.all([
@@ -34,7 +35,14 @@ export const actions: Actions = {
       return fail(422, { action: 'update', errors: { name: 'Company name is required' }, values: { name, contact_email, phone, shipping_address } });
     }
 
-    await updateCompany(pool, params.id, { name, contact_email, phone, shipping_address });
+    try {
+      await updateCompany(pool, params.id, { name, contact_email, phone, shipping_address });
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        return fail(422, { action: 'update', errors: { name: 'A company with this name already exists' }, values: { name, contact_email, phone, shipping_address } });
+      }
+      throw err;
+    }
 
     return { action: 'update', success: true };
   },

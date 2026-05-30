@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { ConflictError } from '$lib/server/errors';
 import type { Company, InsertCompany, UpdateCompany, UserWithCompany } from '$lib/types';
 
 // -------------------------------------------------------------
@@ -87,19 +88,24 @@ export async function getUsersByCompany(db: Pool, companyId: string): Promise<Us
 // -------------------------------------------------------------
 
 export async function createCompany(db: Pool, data: InsertCompany): Promise<Company> {
-  const result = await db.query<Company>(
-    `INSERT INTO companies (name, contact_email, phone, shipping_address, active)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, name, contact_email, phone, shipping_address, active, created_at`,
-    [
-      data.name.trim(),
-      data.contact_email ?? null,
-      data.phone ?? null,
-      data.shipping_address ?? null,
-      data.active ?? true,
-    ]
-  );
-  return result.rows[0];
+  try {
+    const result = await db.query<Company>(
+      `INSERT INTO companies (name, contact_email, phone, shipping_address, active)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, contact_email, phone, shipping_address, active, created_at`,
+      [
+        data.name.trim(),
+        data.contact_email ?? null,
+        data.phone ?? null,
+        data.shipping_address ?? null,
+        data.active ?? true,
+      ]
+    );
+    return result.rows[0];
+  } catch (err: any) {
+    if (err?.code === '23505') throw new ConflictError('A company with this name already exists');
+    throw err;
+  }
 }
 
 export async function updateCompany(
@@ -107,26 +113,31 @@ export async function updateCompany(
   id: string,
   data: UpdateCompany
 ): Promise<Company | null> {
-  const result = await db.query<Company>(
-    `UPDATE companies
-     SET
-       name             = COALESCE($1, name),
-       contact_email    = COALESCE($2, contact_email),
-       phone            = COALESCE($3, phone),
-       shipping_address = COALESCE($4, shipping_address),
-       active           = COALESCE($5, active)
-     WHERE id = $6
-     RETURNING id, name, contact_email, phone, shipping_address, active, created_at`,
-    [
-      data.name?.trim() ?? null,
-      data.contact_email ?? null,
-      data.phone ?? null,
-      data.shipping_address ?? null,
-      data.active ?? null,
-      id,
-    ]
-  );
-  return result.rows[0] ?? null;
+  try {
+    const result = await db.query<Company>(
+      `UPDATE companies
+       SET
+         name             = COALESCE($1, name),
+         contact_email    = COALESCE($2, contact_email),
+         phone            = COALESCE($3, phone),
+         shipping_address = COALESCE($4, shipping_address),
+         active           = COALESCE($5, active)
+       WHERE id = $6
+       RETURNING id, name, contact_email, phone, shipping_address, active, created_at`,
+      [
+        data.name?.trim() ?? null,
+        data.contact_email ?? null,
+        data.phone ?? null,
+        data.shipping_address ?? null,
+        data.active ?? null,
+        id,
+      ]
+    );
+    return result.rows[0] ?? null;
+  } catch (err: any) {
+    if (err?.code === '23505') throw new ConflictError('A company with this name already exists');
+    throw err;
+  }
 }
 
 // Soft delete — companies own persons and orders so hard delete is destructive.
