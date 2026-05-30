@@ -78,7 +78,7 @@ export type InsertIngredient = Omit<Ingredient, 'id'>;
 export type UpdateIngredient = Partial<InsertIngredient>;
 
 export interface IngredientWithAllergens extends Ingredient {
-  allergens: Allergen[];
+  allergen: Allergen[];
 }
 
 // -------------------------------------------------------------
@@ -109,7 +109,7 @@ export interface RecipeIngredient {
   name: string;
   amount: number;
   unit: string;
-  allergens: Allergen[];
+  allergen: Allergen[];
 }
 
 export interface RecipeWithIngredients extends Recipe {
@@ -124,8 +124,8 @@ export interface Menu {
   id: string;
   name: string;
   is_active: boolean;
-  start_date: Date;
-  end_date: Date;
+  start_date: Date | null;
+  end_date: Date | null;
   created_at: Date;
 }
 
@@ -150,7 +150,7 @@ export interface MenuRecipeWithName extends MenuRecipe {
 }
 
 export interface MenuWithRecipes extends Menu {
-  recipes: MenuRecipeWithName[];
+  recipe: MenuRecipeWithName[];
 }
 
 // -------------------------------------------------------------
@@ -168,7 +168,7 @@ export type InsertPerson = Omit<Person, 'id'>;
 export type UpdatePerson = Partial<InsertPerson>;
 
 export interface PersonWithAllergens extends Person {
-  allergens: Allergen[];
+  allergen: Allergen[];
 }
 
 // -------------------------------------------------------------

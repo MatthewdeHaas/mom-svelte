@@ -45,16 +45,15 @@ const C = {
 type Col = { label: string; width: number; align: 'left' | 'center' | 'right' };
 
 const COLS: Col[] = [
-  { label: 'Recipient',  width: 140, align: 'left'   },
-  { label: 'Meal',       width: 160, align: 'left'   },
+  { label: 'Meal',       width: 230, align: 'left'   },
   { label: 'Category',   width: 90,  align: 'left'   },
   { label: 'Qty',        width: 36,  align: 'center' },
   { label: 'Temp',       width: 58,  align: 'center' },
-  { label: 'Note',       width: 108, align: 'left'   },
+  { label: 'Note',       width: 178, align: 'left'   },
 ];
 
 // Total should equal CONTENT_W (592). Tweak if columns change.
-// 140+160+90+36+58+108 = 592 ✓
+// 230+90+36+58+178 = 592 ✓
 
 const ROW_H        = 18;   // pts per data row
 const HEADER_ROW_H = 20;   // pts for the column-header row
@@ -65,7 +64,7 @@ const TABLE_FONT_SIZE = 8;
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SlipGroup = {
-  companyId:       number;
+  companyId:       string;
   companyName:     string;
   shippingAddress: string;
   shipmentDate:    string | Date;
@@ -239,14 +238,9 @@ function drawOrderRow(
 ): number {
   drawRowBorder(doc, y, ROW_H);
 
-  const recipientName = [order.person?.first_name, order.person?.last_name]
-    .filter(Boolean)
-    .join(' ') || '—';
-
   const cells: string[] = [
-    recipientName,
     order.recipe?.name ?? '—',
-    order.recipe?.meal_category ?? '—',
+    order.meal_category ?? '—',
     String(order.amount),
     order.frozen ? 'Frozen' : 'Chilled',
     order.client_note?.trim() || '',

@@ -13,8 +13,8 @@ function requireDate(data: FormData, field: string): string | null {
   return val;
 }
 
-function excelResponse(buffer: ExcelJS.Buffer, filename: string): Response {
-  return new Response(buffer as ArrayBuffer, {
+function excelResponse(buffer: ArrayBuffer, filename: string): Response {
+  return new Response(buffer, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,
@@ -23,7 +23,7 @@ function excelResponse(buffer: ExcelJS.Buffer, filename: string): Response {
 }
 
 function pdfResponse(buffer: Buffer, filename: string): Response {
-  return new Response(buffer, {
+  return new Response(buffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${filename}"`,
@@ -78,7 +78,7 @@ export const actions: Actions = {
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
     const weekLabel = dateParam; // YYYY-MM-DD of the reference date
 
-    return new Response(zipBuffer, {
+    return new Response(zipBuffer as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="packing-slips-${weekLabel}.zip"`,

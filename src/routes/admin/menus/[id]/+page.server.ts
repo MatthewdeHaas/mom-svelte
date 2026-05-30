@@ -64,8 +64,8 @@ export const actions: Actions = {
 
     await setMenuSlot(pool, {
       menu_id: params.id,
-      cycle_week,
-      day_of_week,
+      cycle_week: cycle_week as 1 | 2 | 3 | 4,
+      day_of_week: day_of_week as import('$lib/types').DayOfWeek,
       meal_category,
       recipe_id,
     });
@@ -77,14 +77,14 @@ export const actions: Actions = {
     const form = await request.formData();
 
     const cycle_week    = parseInt(form.get('cycle_week')?.toString() ?? '');
-    const day_of_week   = parseInt(form.get('day_of_week')?.toString() ?? '');
+    const day_of_week   = form.get('day_of_week')?.toString() ?? '';
     const meal_category = form.get('meal_category')?.toString() ?? '';
 
-    if (isNaN(cycle_week) || isNaN(day_of_week) || !meal_category) {
+    if (isNaN(cycle_week) || !day_of_week || !meal_category) {
       return fail(422, { action: 'clearSlot', error: 'Invalid slot data' });
     }
 
-    await clearMenuSlot(pool, params.id, cycle_week, day_of_week, meal_category);
+    await clearMenuSlot(pool, params.id, cycle_week, day_of_week as import('$lib/types').DayOfWeek, meal_category);
 
     return { action: 'clearSlot', success: true };
   },

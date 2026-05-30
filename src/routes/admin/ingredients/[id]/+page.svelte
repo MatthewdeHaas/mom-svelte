@@ -7,7 +7,7 @@
   // Seed selected allergens from the ingredient's current allergens,
   // or from form repopulation on validation error
   const initialIds = form?.values?.allergenIds
-    ?? data.ingredient.allergens?.map((a: { id: string }) => a.id)
+    ?? data.ingredient.allergen?.map((a: { id: string }) => a.id)
     ?? [];
 
   let selected = $state<Set<string>>(new Set(initialIds));

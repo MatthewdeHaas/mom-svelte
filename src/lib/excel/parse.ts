@@ -19,7 +19,7 @@ function coerceCell(value: ExcelJS.CellValue): string | number | null {
   return String(value);
 }
 
-export function parseExcelBuffer(buffer: Buffer): Record<string, unknown>[] {
+export function parseExcelBuffer(buffer: ArrayBuffer | Buffer): Record<string, unknown>[] {
   const workbook = new ExcelJS.Workbook();
 
   const data = buffer;
@@ -39,10 +39,13 @@ export function parseExcelBuffer(buffer: Buffer): Record<string, unknown>[] {
  * - Headers are preserved exactly as they appear in the sheet.
  */
 export async function parseExcelBufferAsync(
-  buffer: Buffer,
+  buffer: ArrayBuffer | Buffer,
 ): Promise<Record<string, unknown>[]> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  // ExcelJS types declare load(buffer: Buffer) using the legacy non-generic Buffer.
+  // Node 22+ types make Buffer<ArrayBufferLike> — cast away the mismatch.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await workbook.xlsx.load(buffer as any);
 
   const sheet = workbook.worksheets[0];
   if (!sheet) return [];

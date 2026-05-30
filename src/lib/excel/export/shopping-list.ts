@@ -15,7 +15,7 @@ export async function generateShoppingList(
   });
 
 
-  const recipeIds = [...new Set(orders.map((o) => o.recipe_id))];
+  const recipeIds = [...new Set(orders.map((o) => o.recipe_id).filter((id): id is string => !!id))];
 
   const recipeMap = await getRecipesWithIngredientsByIds(db, recipeIds);
 
@@ -31,6 +31,7 @@ export async function generateShoppingList(
   const ingredientMap = new Map<string, AggregatedIngredient>();
 
   for (const order of orders) {
+    if (!order.recipe_id) continue;
     const recipe = recipeMap.get(order.recipe_id);
     if (!recipe) continue;
 
@@ -39,7 +40,7 @@ export async function generateShoppingList(
 
       if (!ingredientMap.has(key)) {
         const allergenNames = [
-          ...new Set(ingredient.allergens.map((a) => a.name)),
+          ...new Set(ingredient.allergen.map((a) => a.name)),
         ].sort();
 
         ingredientMap.set(key, {

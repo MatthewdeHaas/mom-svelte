@@ -27,7 +27,7 @@ export const actions: Actions = {
 
     let recipe;
     try {
-      recipe = await createRecipe(pool, { name });
+      recipe = await createRecipe(pool, { name, active: true });
     } catch (err) {
       if (err instanceof ConflictError) {
         return fail(422, {

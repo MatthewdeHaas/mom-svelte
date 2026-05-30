@@ -136,7 +136,7 @@ export async function importRecipesFromRows(
   const allergenNames   = [
     ...new Set(
       rows
-        .flatMap((r) => (r.allergen ? r.allergen.split(',').map((a) => a.trim()) : []))
+        .flatMap((r) => (r.allergens ? r.allergens.split(',').map((a: string) => a.trim()) : []))
         .filter(Boolean),
     ),
   ];
@@ -182,8 +182,8 @@ export async function importRecipesFromRows(
     // Build ingredient → allergen ids map from rows
     const allergensByIngredient = new Map<string, number[]>();
     for (const row of rows) {
-      if (!row.ingredient || !row.allergen) continue;
-      const ids = row.allergen
+      if (!row.ingredient || !row.allergens) continue;
+      const ids = row.allergens
         .split(',')
         .map((a) => a.trim())
         .filter(Boolean)

@@ -32,7 +32,7 @@ function normaliseHeader(raw: unknown): string {
 function cellText(cell: ExcelJS.Cell): string | null {
   const v = cell.value;
   if (v == null) return null;
-  if (typeof v === 'object' && 'text' in v) return String((v as ExcelJS.CellRichTextValue).text).trim() || null;
+  if (typeof v === 'object' && 'text' in v) return String((v as unknown as { text: unknown }).text).trim() || null;
   return String(v).trim() || null;
 }
 
@@ -55,9 +55,12 @@ export interface ParseRecipesResult {
  * Returns all rows + any per-row validation errors.
  * Callers should abort the import if errors.length > 0.
  */
-export async function parseRecipeExcel(buffer: Buffer): Promise<ParseRecipesResult> {
+export async function parseRecipeExcel(buffer: ArrayBuffer | Buffer): Promise<ParseRecipesResult> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  // ExcelJS types declare load(buffer: Buffer) using the legacy non-generic Buffer.
+  // Node 22+ types make Buffer<ArrayBufferLike> — cast away the mismatch.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await workbook.xlsx.load(buffer as any);
 
   const sheet = workbook.worksheets[0];
   if (!sheet) throw new Error('Excel file contains no worksheets');
@@ -99,7 +102,6 @@ export async function parseRecipeExcel(buffer: Buffer): Promise<ParseRecipesResu
         row: rowNumber,
         field: result.error.issues[0]?.path.join('.') ?? 'unknown',
         message: result.error.issues.map((i) => i.message).join('; '),
-        raw_value: JSON.stringify(raw),
       });
       return;
     }

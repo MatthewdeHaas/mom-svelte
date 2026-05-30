@@ -25,7 +25,7 @@ export const GET: RequestHandler = async ({ url }) => {
   if (slips.length === 0) throw error(404, 'No orders found for that week.');
 
   if (slips.length === 1) {
-    return new Response(slips[0].buffer, {
+    return new Response(slips[0].buffer as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${slips[0].filename}"`,
@@ -42,7 +42,7 @@ export const GET: RequestHandler = async ({ url }) => {
   const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
   const { from } = weekBoundsEST(dateParam);
 
-  return new Response(zipBuffer, {
+  return new Response(zipBuffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename="packing-slips-week-of-${from}.zip"`,

@@ -25,7 +25,7 @@ export const actions: Actions = {
     const shipment_date   = form.get('shipment_date')?.toString() || null;
     const frozen          = form.get('frozen') === 'true';
     const chilled         = form.get('chilled') === 'true';
-    const notes           = form.get('notes')?.toString().trim() || null;
+    const client_note     = form.get('notes')?.toString().trim() || null;
 
     const errors: Record<string, string> = {};
     if (isNaN(amount) || amount <= 0) errors.amount = 'Amount must be a positive number';
@@ -40,7 +40,7 @@ export const actions: Actions = {
       return fail(422, {
         action: 'update',
         errors,
-        values: { amount, meal_category, serving_date, shipment_date, frozen, chilled, notes },
+        values: { amount, meal_category, serving_date, shipment_date, frozen, chilled, notes: client_note },
       });
     }
 
@@ -48,10 +48,10 @@ export const actions: Actions = {
       amount,
       meal_category,
       serving_date: new Date(serving_date),
-      shipment_date: shipment_date ? new Date(shipment_date) : null,
+      shipment_date: shipment_date ? new Date(shipment_date) : undefined,
       frozen,
       chilled,
-      notes,
+      client_note,
     });
 
     return { action: 'update', success: true };

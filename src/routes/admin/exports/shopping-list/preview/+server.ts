@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ url }) => {
     serving_date_to: new Date(to),
   });
 
-  const recipeIds = [...new Set(orders.map((o) => o.recipe_id))];
+  const recipeIds = [...new Set(orders.map((o) => o.recipe_id).filter((id): id is string => !!id))];
   const recipes = await Promise.all(
     recipeIds.map((id) => getRecipeWithIngredients(pool, id))
   );

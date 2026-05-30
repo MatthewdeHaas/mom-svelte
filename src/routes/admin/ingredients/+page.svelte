@@ -251,8 +251,8 @@
           >
             <td style="font-weight: 500;">{ingredient.name}</td>
             <td>
-              {#if ingredient.allergens?.length}
-                {#each ingredient.allergens as allergen}
+              {#if ingredient.allergen?.length}
+                {#each ingredient.allergen as allergen}
                   <span class="allergen-pill">{allergen.name}</span>
                 {/each}
               {:else}

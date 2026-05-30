@@ -16,23 +16,24 @@ export async function generateProductionOrderSheet(
 
 
   // 2. Collect unique recipe IDs and resolve all recipes in one query
-  const recipeIds = [...new Set(orders.map((o) => o.recipe_id))];
+  const recipeIds = [...new Set(orders.map((o) => o.recipe_id).filter((id): id is string => !!id))];
 
   const recipeMap = await getRecipesWithIngredientsByIds(db, recipeIds);
 
   // 4. Build one row per recipe, aggregating total amount across orders
   type Row = {
     recipe: string;
-    mealCategory: string;
+    mealCategory: string | null;
     amount: number;
     frozen: boolean;
     chilled: boolean;
     allergens: string;
   };
 
-  const rowMap = new Map<number, Row>();
+  const rowMap = new Map<string, Row>();
 
   for (const order of orders) {
+    if (!order.recipe_id) continue;
     const recipe = recipeMap.get(order.recipe_id);
     if (!recipe) continue;
 
@@ -40,7 +41,7 @@ export async function generateProductionOrderSheet(
       // Derive allergens: flatten ingredients → allergens, deduplicate
       const allergenNames = [
         ...new Set(
-          recipe.ingredients.flatMap((ing) => ing.allergens.map((a) => a.name))
+          recipe.ingredients.flatMap((ing) => ing.allergen.map((a) => a.name))
         ),
       ].sort();
 
@@ -59,7 +60,7 @@ export async function generateProductionOrderSheet(
 
   // 5. Sort by meal category, then recipe name
   const rows = [...rowMap.values()].sort((a, b) => {
-    const cat = a.mealCategory.localeCompare(b.mealCategory);
+    const cat = (a.mealCategory ?? '').localeCompare(b.mealCategory ?? '');
     return cat !== 0 ? cat : a.recipe.localeCompare(b.recipe);
   });
 
