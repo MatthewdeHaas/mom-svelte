@@ -19,9 +19,9 @@ export interface OrderFilters {
   recipe_id?: string;
   status?: OrderStatus;
   order_source?: OrderSource;
-  serving_date_from?: Date;
-  serving_date_to?: Date;
-  shipment_date?: Date;
+  serving_date_from?: string | Date;
+  serving_date_to?: string | Date;
+  shipment_date?: string | Date;
   frozen?: boolean;
   chilled?: boolean;
 }
@@ -56,15 +56,15 @@ export async function getOrders(
   }
   if (filters.serving_date_from) {
     params.push(filters.serving_date_from);
-    conditions.push(`o.serving_date >= $${params.length}`);
+    conditions.push(`o.serving_date >= $${params.length}::date`);
   }
   if (filters.serving_date_to) {
     params.push(filters.serving_date_to);
-    conditions.push(`o.serving_date <= $${params.length}`);
+    conditions.push(`o.serving_date <= $${params.length}::date`);
   }
   if (filters.shipment_date) {
     params.push(filters.shipment_date);
-    conditions.push(`o.shipment_date = $${params.length}`);
+    conditions.push(`o.shipment_date = $${params.length}::date`);
   }
   if (filters.frozen !== undefined) {
     params.push(filters.frozen);
@@ -214,11 +214,11 @@ export async function getOrderCountsByStatus(
 
   if (filters.serving_date_from) {
     params.push(filters.serving_date_from);
-    conditions.push(`serving_date >= $${params.length}`);
+    conditions.push(`serving_date >= $${params.length}::date`);
   }
   if (filters.serving_date_to) {
     params.push(filters.serving_date_to);
-    conditions.push(`serving_date <= $${params.length}`);
+    conditions.push(`serving_date <= $${params.length}::date`);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

@@ -383,8 +383,8 @@ export async function generatePackingSlips(
 
   // 1. Fetch all orders for the week
   const orders = await getOrders(db, {
-    serving_date_from: new Date(from),
-    serving_date_to:   new Date(to),
+    serving_date_from: from,
+    serving_date_to:   to,
   });
 
   // 2. Fetch full OrderDetail for each order (in parallel)

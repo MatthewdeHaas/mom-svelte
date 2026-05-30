@@ -33,6 +33,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.test
 
 # nix
 .direnv/
@@ -54,3 +55,8 @@ npm-debug.log*
 
 # test output
 coverage/
+
+# Playwright
+tests/e2e/.auth/
+playwright-report/
+test-results/

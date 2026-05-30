@@ -10,8 +10,8 @@ export async function generateShoppingList(
 ): Promise<ExcelJS.Buffer> {
 
   const orders = await getOrders(db, {
-    serving_date_from: new Date(from),
-    serving_date_to: new Date(to),
+    serving_date_from: from,
+    serving_date_to: to,
   });
 
 

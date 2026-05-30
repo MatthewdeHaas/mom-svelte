@@ -52,7 +52,7 @@ export async function getUsersByCompany(db: Db, companyId: string): Promise<User
     company_created_at: Date;
   }>(
     `SELECT
-       u.id, u.company_id, u.email, u.role, u.created_at,
+       u.id, u.company_id, u.email, u.role, u."createdAt" AS created_at,
        c.name              AS company_name,
        c.contact_email     AS company_contact_email,
        c.phone             AS company_phone,

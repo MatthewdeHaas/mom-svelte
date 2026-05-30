@@ -35,6 +35,7 @@ jobs:
       BETTER_AUTH_URL: http://localhost:5173
       ADMIN_EMAIL: admin@test.com
       RESEND_API_KEY: re_placeholder
+      EMAIL_FROM: "Meals on the Move <noreply@test.internal>"
 
     steps:
       - name: Checkout
@@ -75,10 +76,89 @@ jobs:
       - name: Test
         run: pnpm run test
 
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: ci
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: meals_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: meals_test
+      POSTGRES_HOST: localhost
+      BETTER_AUTH_SECRET: ci-secret-not-used-in-prod
+      BETTER_AUTH_URL: http://localhost:5173
+      PLAYWRIGHT_BASE_URL: http://localhost:5173
+      ADMIN_EMAIL: admin@test.com
+      RESEND_API_KEY: re_placeholder
+      EMAIL_FROM: "Meals on the Move <noreply@test.internal>"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Run migrations
+        run: pnpm run migrate
+
+      - name: Run E2E tests
+        run: pnpm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   deploy:
     name: Deploy to Railway
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, e2e]
     # Only deploy on pushes to main (not PRs)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 

@@ -129,19 +129,19 @@ function makeMockDb({
   return {
     query: async (sql: string, params?: unknown[]) => {
       // getCompanyByName
-      if (sql.includes('FROM companies') && sql.includes('LOWER')) {
+      if (sql.includes('FROM company') && sql.includes('LOWER')) {
         return { rows: company ? [company] : [] };
       }
       // getRecipeByName
-      if (sql.includes('FROM recipes') && sql.includes('LOWER')) {
+      if (sql.includes('FROM recipe') && sql.includes('LOWER')) {
         return { rows: recipe ? [recipe] : [] };
       }
       return { rows: [] };
     },
     connect: async () => ({
       query: async (sql: string) => {
-        // insertOrdersBatch
-        if (sql.includes('INSERT INTO orders')) {
+        // insertOrdersBatch — table renamed to "order" in migration 004
+        if (sql.includes('INSERT INTO "order"')) {
           return {
             rows: [{ id: 'order-uuid', status: 'pending' }],
           };
@@ -320,13 +320,13 @@ describe('importOrdersFromRows — storage mapping', () => {
 
     const db = {
       query: async (sql: string) => {
-        if (sql.includes('FROM companies')) return { rows: [{ id: 'c', name: 'Acme', active: true }] };
-        if (sql.includes('FROM recipes')) return { rows: [{ id: 'r', name: 'Pasta', active: true }] };
+        if (sql.includes('FROM company')) return { rows: [{ id: 'c', name: 'Acme', active: true }] };
+        if (sql.includes('FROM recipe')) return { rows: [{ id: 'r', name: 'Pasta', active: true }] };
         return { rows: [] };
       },
       connect: async () => ({
         query: async (sql: string, params?: unknown[]) => {
-          if (sql.includes('INSERT INTO orders')) {
+          if (sql.includes('INSERT INTO "order"')) {
             // params are flat — frozen is at index 9 (0-based) per insertOrdersBatch param order
             capturedOrders = params as any[];
           }
@@ -348,13 +348,13 @@ describe('importOrdersFromRows — storage mapping', () => {
 
     const db = {
       query: async (sql: string) => {
-        if (sql.includes('FROM companies')) return { rows: [{ id: 'c', name: 'Acme', active: true }] };
-        if (sql.includes('FROM recipes')) return { rows: [{ id: 'r', name: 'Pasta', active: true }] };
+        if (sql.includes('FROM company')) return { rows: [{ id: 'c', name: 'Acme', active: true }] };
+        if (sql.includes('FROM recipe')) return { rows: [{ id: 'r', name: 'Pasta', active: true }] };
         return { rows: [] };
       },
       connect: async () => ({
         query: async (sql: string, params?: unknown[]) => {
-          if (sql.includes('INSERT INTO orders')) capturedOrders = params as any[];
+          if (sql.includes('INSERT INTO "order"')) capturedOrders = params as any[];
           return { rows: [{ id: 'order-uuid' }] };
         },
         release: () => {},

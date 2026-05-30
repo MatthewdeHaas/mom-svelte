@@ -299,8 +299,9 @@ describe('getUsersByCompany', () => {
     const c = await seedCompany({ name: uniqueName('UserCo') });
 
     await ctx.client.query(
-      `INSERT INTO users (id, company_id, email, role) VALUES ($1, $2, $3, $4)`,
-      ['test-user-1', c.id, 'user@example.com', 'client']
+      `INSERT INTO "user" (id, name, email, "emailVerified", role, company_id, "createdAt", "updatedAt")
+       VALUES ($1, 'Test User', $2, true, 'user', $3, now(), now())`,
+      ['test-user-1', 'user@example.com', c.id]
     );
 
     const users = await getUsersByCompany(ctx.client, c.id);
@@ -316,8 +317,9 @@ describe('getUsersByCompany', () => {
     const c2 = await seedCompany();
 
     await ctx.client.query(
-      `INSERT INTO users (id, company_id, email, role) VALUES ($1, $2, $3, $4)`,
-      ['test-user-z', c2.id, 'other@example.com', 'client']
+      `INSERT INTO "user" (id, name, email, "emailVerified", role, company_id, "createdAt", "updatedAt")
+       VALUES ($1, 'Test User', $2, true, 'user', $3, now(), now())`,
+      ['test-user-z', 'other@example.com', c2.id]
     );
 
     const users = await getUsersByCompany(ctx.client, c1.id);
@@ -328,8 +330,10 @@ describe('getUsersByCompany', () => {
     const c = await seedCompany();
 
     await ctx.client.query(
-      `INSERT INTO users (id, company_id, email, role) VALUES ($1, $2, $3, $4), ($5, $2, $6, $4)`,
-      ['test-user-z', c.id, 'z@example.com', 'client', 'test-user-a', 'a@example.com']
+      `INSERT INTO "user" (id, name, email, "emailVerified", role, company_id, "createdAt", "updatedAt")
+       VALUES ($1, 'Test User', $2, true, 'user', $3, now(), now()),
+              ($4, 'Test User', $5, true, 'user', $3, now(), now())`,
+      ['test-user-z', 'z@example.com', c.id, 'test-user-a', 'a@example.com']
     );
 
     const users = await getUsersByCompany(ctx.client, c.id);
