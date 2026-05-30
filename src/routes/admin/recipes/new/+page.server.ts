@@ -5,6 +5,7 @@ import { parseRecipeExcel } from '$lib/excel/parse-recipes';
 import { importRecipesFromRows } from '$lib/server/queries/recipe-imports';
 import { createRecipe } from '$lib/server/queries/recipes'; // your existing fn
 import type { RecipeImportResult } from '$lib/types';
+import logger from '$lib/server/logger';
 
 export const load: PageServerLoad = async () => {
   return {};
@@ -73,7 +74,7 @@ export const actions: Actions = {
       const createdBy = locals.user?.email ?? 'unknown';
       result = await importRecipesFromRows(pool, parsed.rows, createdBy);
     } catch (err) {
-      console.error('[recipe-import] DB error:', err);
+      logger.error({ err }, 'recipe import DB error');
       return fail(500, { importError: 'Import failed due to a database error. No changes were saved.' });
     }
 

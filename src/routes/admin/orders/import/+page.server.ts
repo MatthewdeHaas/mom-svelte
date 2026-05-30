@@ -3,6 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { pool } from '$lib/server/db';
 import { parseExcelBufferAsync } from '$lib/excel/parse';
 import { importOrdersFromRows } from '$lib/server/queries/imports';
+import logger from '$lib/server/logger';
 
 // Surface a minimal load so the page has access to prior import
 // results on navigation — the action result handles the POST case.
@@ -54,7 +55,7 @@ export const actions: Actions = {
 			const buffer = Buffer.from(await file.arrayBuffer());
 			rawRows = await parseExcelBufferAsync(buffer);
     } catch (err) {
-      console.error('[import] parse error', err);
+      logger.error({ err }, 'import parse error');
       return fail(400, {
         error: 'Could not read the uploaded file. Make sure it is a valid .xlsx file.',
       });
@@ -88,7 +89,7 @@ export const actions: Actions = {
         skipped: result.skipped,
       };
     } catch (err) {
-      console.error('[import] pipeline error', err);
+      logger.error({ err }, 'import pipeline error');
       return fail(500, {
         error: 'An unexpected error occurred during import. Please try again or contact support.',
       });
