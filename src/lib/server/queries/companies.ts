@@ -12,7 +12,7 @@ export async function getCompanies(
 ): Promise<Company[]> {
   const result = await db.query<Company>(
     `SELECT id, name, contact_email, phone, shipping_address, active, created_at
-     FROM companies
+     FROM company
      ${opts.includeInactive ? '' : 'WHERE active = TRUE'}
      ORDER BY name ASC`
   );
@@ -22,7 +22,7 @@ export async function getCompanies(
 export async function getCompanyById(db: Pool, id: string): Promise<Company | null> {
   const result = await db.query<Company>(
     `SELECT id, name, contact_email, phone, shipping_address, active, created_at
-     FROM companies
+     FROM company
      WHERE id = $1`,
     [id]
   );
@@ -32,7 +32,7 @@ export async function getCompanyById(db: Pool, id: string): Promise<Company | nu
 export async function getCompanyByName(db: Pool, name: string): Promise<Company | null> {
   const result = await db.query<Company>(
     `SELECT id, name, contact_email, phone, shipping_address, active, created_at
-     FROM companies
+     FROM company
      WHERE LOWER(name) = LOWER($1)`,
     [name]
   );
@@ -58,8 +58,8 @@ export async function getUsersByCompany(db: Pool, companyId: string): Promise<Us
        c.shipping_address  AS company_shipping_address,
        c.active            AS company_active,
        c.created_at        AS company_created_at
-     FROM users u
-     JOIN companies c ON c.id = u.company_id
+     FROM "user" u
+     JOIN company c ON c.id = u.company_id
      WHERE u.company_id = $1
      ORDER BY u.email ASC`,
     [companyId]
@@ -90,7 +90,7 @@ export async function getUsersByCompany(db: Pool, companyId: string): Promise<Us
 export async function createCompany(db: Pool, data: InsertCompany): Promise<Company> {
   try {
     const result = await db.query<Company>(
-      `INSERT INTO companies (name, contact_email, phone, shipping_address, active)
+      `INSERT INTO company (name, contact_email, phone, shipping_address, active)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, name, contact_email, phone, shipping_address, active, created_at`,
       [
@@ -115,7 +115,7 @@ export async function updateCompany(
 ): Promise<Company | null> {
   try {
     const result = await db.query<Company>(
-      `UPDATE companies
+      `UPDATE company
        SET
          name             = COALESCE($1, name),
          contact_email    = COALESCE($2, contact_email),
@@ -140,7 +140,7 @@ export async function updateCompany(
   }
 }
 
-// Soft delete — companies own persons and orders so hard delete is destructive.
+// Soft delete — company own persons and orders so hard delete is destructive.
 // Setting active = false preserves all historical data.
 export async function deactivateCompany(db: Pool, id: string): Promise<Company | null> {
   return updateCompany(db, id, { active: false });

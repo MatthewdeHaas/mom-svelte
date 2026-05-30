@@ -20,7 +20,7 @@ export async function getMenus(
 ): Promise<Menu[]> {
   const result = await db.query<Menu>(
     `SELECT id, name, is_active, start_date, end_date, created_at
-     FROM menus
+     FROM menu
      ${opts.includeInactive ? '' : 'WHERE is_active = TRUE'}
      ORDER BY start_date DESC`
   );
@@ -34,7 +34,7 @@ export async function getMenuById(
 ): Promise<Menu | null> {
   const result = await db.query<Menu>(
     `SELECT id, name, is_active, start_date, end_date, created_at
-     FROM menus
+     FROM menu
      WHERE id = $1
      ${opts.includeInactive ? '' : 'AND is_active = TRUE'}`,
     [id]
@@ -50,20 +50,20 @@ export async function getMenuWithRecipes(
   const menu = await getMenuById(db, id, opts);
   if (!menu) return null;
 
-  const recipes = await getMenuRecipes(db, id);
-  return { ...menu, recipes };
+  const recipe = await getMenuRecipes(db, id);
+  return { ...menu, recipe };
 }
 
-// Returns all menus with their recipe slots — useful for the menu list
+// Returns all menu with their recipe slots — useful for the menu list
 // page where you want to show slot counts or recipe names at a glance.
 export async function getMenusWithRecipes(
   db: Pool,
   opts: { includeInactive?: boolean } = {}
 ): Promise<MenuWithRecipes[]> {
-  const menus = await getMenus(db, opts);
-  if (menus.length === 0) return [];
+  const menu = await getMenus(db, opts);
+  if (menu.length === 0) return [];
 
-  const menuIds = menus.map((m) => m.id);
+  const menuIds = menu.map((m) => m.id);
 
   const result = await db.query<MenuRecipeWithName & { menu_id: string }>(
     `SELECT
@@ -75,8 +75,8 @@ export async function getMenusWithRecipes(
        mr.meal_category,
        r.name   AS recipe_name,
        r.active AS recipe_active
-     FROM menu_recipes mr
-     JOIN recipes r ON r.id = mr.recipe_id
+     FROM menu_recipe mr
+     JOIN recipe r ON r.id = mr.recipe_id
      WHERE mr.menu_id = ANY($1)
      ORDER BY mr.menu_id, mr.cycle_week, mr.day_of_week, mr.meal_category`,
     [menuIds]
@@ -99,9 +99,9 @@ export async function getMenusWithRecipes(
     recipesByMenu.set(row.menu_id, existing);
   }
 
-  return menus.map((menu) => ({
+  return menu.map((menu) => ({
     ...menu,
-    recipes: recipesByMenu.get(menu.id) ?? [],
+    recipe: recipesByMenu.get(menu.id) ?? [],
   }));
 }
 
@@ -117,8 +117,8 @@ export async function getMenuRecipes(db: Pool, menuId: string): Promise<MenuReci
        mr.meal_category,
        r.name   AS recipe_name,
        r.active AS recipe_active
-     FROM menu_recipes mr
-     JOIN recipes r ON r.id = mr.recipe_id
+     FROM menu_recipe mr
+     JOIN recipe r ON r.id = mr.recipe_id
      WHERE mr.menu_id = $1
      ORDER BY mr.cycle_week ASC, mr.day_of_week ASC, mr.meal_category ASC`,
     [menuId]
@@ -131,7 +131,7 @@ export async function getMenuRecipes(db: Pool, menuId: string): Promise<MenuReci
 export async function getActiveMenuForDate(db: Pool, date: Date): Promise<Menu | null> {
   const result = await db.query<Menu>(
     `SELECT id, name, is_active, start_date, end_date, created_at
-     FROM menus
+     FROM menu
      WHERE is_active = TRUE
        AND start_date <= $1
        AND end_date >= $1
@@ -161,8 +161,8 @@ export async function getMenuSlot(
        mr.meal_category,
        r.name   AS recipe_name,
        r.active AS recipe_active
-     FROM menu_recipes mr
-     JOIN recipes r ON r.id = mr.recipe_id
+     FROM menu_recipe mr
+     JOIN recipe r ON r.id = mr.recipe_id
      WHERE mr.menu_id      = $1
        AND mr.cycle_week   = $2
        AND mr.day_of_week  = $3
@@ -178,7 +178,7 @@ export async function getMenuSlot(
 
 export async function createMenu(db: Pool, data: InsertMenu): Promise<Menu> {
   const result = await db.query<Menu>(
-    `INSERT INTO menus (name, is_active, start_date, end_date)
+    `INSERT INTO menu (name, is_active, start_date, end_date)
      VALUES ($1, $2, $3, $4)
      RETURNING id, name, is_active, start_date, end_date, created_at`,
     [data.name.trim(), data.is_active ?? true, data.start_date, data.end_date]
@@ -192,7 +192,7 @@ export async function updateMenu(
   data: UpdateMenu
 ): Promise<Menu | null> {
   const result = await db.query<Menu>(
-    `UPDATE menus
+    `UPDATE menu
      SET
        name       = COALESCE($1, name),
        is_active  = COALESCE($2, is_active),
@@ -227,7 +227,7 @@ export async function setMenuSlot(
   data: InsertMenuRecipe
 ): Promise<MenuRecipe> {
   const result = await client.query<MenuRecipe>(
-    `INSERT INTO menu_recipes (menu_id, recipe_id, cycle_week, day_of_week, meal_category)
+    `INSERT INTO menu_recipe (menu_id, recipe_id, cycle_week, day_of_week, meal_category)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (menu_id, cycle_week, day_of_week, meal_category)
      DO UPDATE SET recipe_id = EXCLUDED.recipe_id
@@ -245,7 +245,7 @@ export async function clearMenuSlot(
   mealCategory: string
 ): Promise<boolean> {
   const result = await client.query(
-    `DELETE FROM menu_recipes
+    `DELETE FROM menu_recipe
      WHERE menu_id       = $1
        AND cycle_week    = $2
        AND day_of_week   = $3
@@ -263,7 +263,7 @@ export async function setAllMenuSlots(
   slots: InsertMenuRecipe[]
 ): Promise<void> {
   await client.query(
-    `DELETE FROM menu_recipes WHERE menu_id = $1`,
+    `DELETE FROM menu_recipe WHERE menu_id = $1`,
     [menuId]
   );
 
@@ -282,7 +282,7 @@ export async function setAllMenuSlots(
   ]);
 
   await client.query(
-    `INSERT INTO menu_recipes (menu_id, recipe_id, cycle_week, day_of_week, meal_category)
+    `INSERT INTO menu_recipe (menu_id, recipe_id, cycle_week, day_of_week, meal_category)
      VALUES ${values}`,
     params
   );

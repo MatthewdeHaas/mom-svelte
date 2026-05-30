@@ -95,9 +95,9 @@ export async function getOrders(
        o.created_at,
        c.name     AS company_name,
        r.name     AS recipe_name
-     FROM orders o
-     JOIN companies c ON c.id = o.company_id
-     LEFT JOIN recipes r ON r.id = o.recipe_id
+     FROM "order" o
+     JOIN company c ON c.id = o.company_id
+     LEFT JOIN recipe r ON r.id = o.recipe_id
      ${where}
      ORDER BY o.serving_date DESC, c.name ASC`,
     params
@@ -147,10 +147,10 @@ export async function getOrderById(db: Pool, id: string): Promise<OrderDetail | 
        r.active           AS recipe_active,
        r.created_at       AS recipe_created_at,
        u.email            AS created_by_email
-     FROM orders o
-     JOIN companies c ON c.id = o.company_id
-     LEFT JOIN recipes r ON r.id = o.recipe_id
-     LEFT JOIN users u ON u.id = o.created_by
+     FROM "order" o
+     JOIN company c ON c.id = o.company_id
+     LEFT JOIN recipe r ON r.id = o.recipe_id
+     LEFT JOIN "user" u ON u.id = o.created_by
      WHERE o.id = $1`,
     [id]
   );
@@ -224,7 +224,7 @@ export async function getOrderCountsByStatus(
 
   const result = await db.query<{ status: OrderStatus; count: string }>(
     `SELECT status, COUNT(*) AS count
-     FROM orders
+     FROM "order"
      ${where}
      GROUP BY status`,
     params
@@ -253,7 +253,7 @@ export async function createOrder(
   data: InsertOrder
 ): Promise<Order> {
   const result = await client.query<Order>(
-    `INSERT INTO orders (
+    `INSERT INTO "order" (
        company_id, recipe_id, created_by, order_source, status,
        meal_category, amount, serving_date, shipment_date,
        frozen, chilled, recurring, client_note
@@ -288,7 +288,7 @@ export async function updateOrder(
   data: UpdateOrder
 ): Promise<Order | null> {
   const result = await db.query<Order>(
-    `UPDATE orders
+    `UPDATE "order"
      SET
        recipe_id     = COALESCE($1,  recipe_id),
        status        = COALESCE($2,  status),
@@ -331,7 +331,7 @@ export async function updateOrder(
 
 export async function confirmOrder(db: Pool, id: string): Promise<Order | null> {
   const result = await db.query<Order>(
-    `UPDATE orders
+    `UPDATE "order"
      SET status = 'confirmed'
      WHERE id = $1 AND status = 'pending'
      RETURNING
@@ -346,7 +346,7 @@ export async function confirmOrder(db: Pool, id: string): Promise<Order | null> 
 
 export async function fulfillOrder(db: Pool, id: string): Promise<Order | null> {
   const result = await db.query<Order>(
-    `UPDATE orders
+    `UPDATE "order"
      SET status = 'fulfilled'
      WHERE id = $1 AND status = 'confirmed'
      RETURNING
@@ -360,7 +360,7 @@ export async function fulfillOrder(db: Pool, id: string): Promise<Order | null> 
 
 export async function cancelOrder(db: Pool, id: string): Promise<Order | null> {
   const result = await db.query<Order>(
-    `UPDATE orders
+    `UPDATE "order"
      SET status = 'cancelled'
      WHERE id = $1 AND status IN ('pending', 'confirmed')
      RETURNING
@@ -411,7 +411,7 @@ export async function insertOrdersBatch(
   ]);
 
   const result = await client.query<Order>(
-    `INSERT INTO orders (
+    `INSERT INTO "order" (
        company_id, recipe_id, created_by, order_source, status,
        meal_category, amount, serving_date, shipment_date,
        frozen, chilled, recurring, client_note

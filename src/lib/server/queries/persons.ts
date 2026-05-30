@@ -21,7 +21,7 @@ export async function getPersonsByCompany(
 ): Promise<Person[]> {
   const result = await db.query<Person>(
     `SELECT id, company_id, name, active
-     FROM persons
+     FROM person
      WHERE company_id = $1
      ${opts.includeInactive ? '' : 'AND active = TRUE'}
      ORDER BY name ASC`,
@@ -37,7 +37,7 @@ export async function getPersonById(
 ): Promise<Person | null> {
   const result = await db.query<Person>(
     `SELECT id, company_id, name, active
-     FROM persons
+     FROM person
      WHERE id = $1
      ${opts.includeInactive ? '' : 'AND active = TRUE'}`,
     [id]
@@ -53,8 +53,8 @@ export async function getPersonWithAllergens(
   const person = await getPersonById(db, id, opts);
   if (!person) return null;
 
-  const allergens = await getPersonAllergens(db, id);
-  return { ...person, allergens };
+  const allergen = await getPersonAllergens(db, id);
+  return { ...person, allergen };
 }
 
 export async function getPersonsWithAllergensByCompany(
@@ -72,9 +72,9 @@ export async function getPersonsWithAllergensByCompany(
        p.active,
        ARRAY_AGG(a.id   ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL)   AS allergen_ids,
        ARRAY_AGG(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL) AS allergen_names
-     FROM persons p
-     LEFT JOIN person_allergens pa ON pa.person_id = p.id
-     LEFT JOIN allergens a ON a.id = pa.allergen_id
+     FROM person p
+     LEFT JOIN person_allergen pa ON pa.person_id = p.id
+     LEFT JOIN allergen a ON a.id = pa.allergen_id
      WHERE p.company_id = $1
      ${opts.includeInactive ? '' : 'AND p.active = TRUE'}
      GROUP BY p.id
@@ -87,7 +87,7 @@ export async function getPersonsWithAllergensByCompany(
     company_id: row.company_id,
     name: row.name,
     active: row.active,
-    allergens: (row.allergen_ids ?? []).map((aid, idx) => ({
+    allergen: (row.allergen_ids ?? []).map((aid, idx) => ({
       id: aid,
       name: (row.allergen_names ?? [])[idx],
     })),
@@ -97,8 +97,8 @@ export async function getPersonsWithAllergensByCompany(
 export async function getPersonAllergens(db: Pool, personId: string): Promise<Allergen[]> {
   const result = await db.query<Allergen>(
     `SELECT a.id, a.name
-     FROM allergens a
-     JOIN person_allergens pa ON pa.allergen_id = a.id
+     FROM allergen a
+     JOIN person_allergen pa ON pa.allergen_id = a.id
      WHERE pa.person_id = $1
      ORDER BY a.name ASC`,
     [personId]
@@ -112,7 +112,7 @@ export async function getPersonAllergens(db: Pool, personId: string): Promise<Al
 
 export async function createPerson(db: Pool, data: InsertPerson): Promise<Person> {
   const result = await db.query<Person>(
-    `INSERT INTO persons (company_id, name, active)
+    `INSERT INTO person (company_id, name, active)
      VALUES ($1, $2, $3)
      RETURNING id, company_id, name, active`,
     [data.company_id, data.name.trim(), data.active ?? true]
@@ -126,7 +126,7 @@ export async function updatePerson(
   data: UpdatePerson
 ): Promise<Person | null> {
   const result = await db.query<Person>(
-    `UPDATE persons
+    `UPDATE person
      SET
        name   = COALESCE($1, name),
        active = COALESCE($2, active)
@@ -152,7 +152,7 @@ export async function addPersonAllergen(
   allergenId: string
 ): Promise<void> {
   await client.query(
-    `INSERT INTO person_allergens (person_id, allergen_id)
+    `INSERT INTO person_allergen (person_id, allergen_id)
      VALUES ($1, $2)
      ON CONFLICT DO NOTHING`,
     [personId, allergenId]
@@ -165,7 +165,7 @@ export async function removePersonAllergen(
   allergenId: string
 ): Promise<void> {
   await client.query(
-    `DELETE FROM person_allergens
+    `DELETE FROM person_allergen
      WHERE person_id = $1 AND allergen_id = $2`,
     [personId, allergenId]
   );
@@ -177,7 +177,7 @@ export async function setPersonAllergens(
   allergenIds: string[]
 ): Promise<void> {
   await client.query(
-    `DELETE FROM person_allergens WHERE person_id = $1`,
+    `DELETE FROM person_allergen WHERE person_id = $1`,
     [personId]
   );
 
@@ -185,7 +185,7 @@ export async function setPersonAllergens(
 
   const values = allergenIds.map((_, i) => `($1, $${i + 2})`).join(', ');
   await client.query(
-    `INSERT INTO person_allergens (person_id, allergen_id)
+    `INSERT INTO person_allergen (person_id, allergen_id)
      VALUES ${values}`,
     [personId, ...allergenIds]
   );
@@ -218,9 +218,9 @@ export async function getAttendanceByDate(
        ARRAY_AGG(a.id   ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL)   AS allergen_ids,
        ARRAY_AGG(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL) AS allergen_names
      FROM attendance att
-     JOIN persons p ON p.id = att.person_id
-     LEFT JOIN person_allergens pa ON pa.person_id = p.id
-     LEFT JOIN allergens a ON a.id = pa.allergen_id
+     JOIN person p ON p.id = att.person_id
+     LEFT JOIN person_allergen pa ON pa.person_id = p.id
+     LEFT JOIN allergen a ON a.id = pa.allergen_id
      WHERE p.company_id  = $1
        AND att.serving_date = $2
      GROUP BY att.id, p.id
@@ -238,7 +238,7 @@ export async function getAttendanceByDate(
       company_id: companyId,
       name: row.person_name,
       active: row.person_active,
-      allergens: (row.allergen_ids ?? []).map((aid, idx) => ({
+      allergen: (row.allergen_ids ?? []).map((aid, idx) => ({
         id: aid,
         name: (row.allergen_names ?? [])[idx],
       })),

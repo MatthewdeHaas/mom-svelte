@@ -18,7 +18,7 @@ export async function getIngredients(
 ): Promise<Ingredient[]> {
   const result = await db.query<Ingredient>(
     `SELECT id, name, active
-     FROM ingredients
+     FROM ingredient
      ${opts.includeInactive ? '' : 'WHERE active = TRUE'}
      ORDER BY name ASC`
   );
@@ -32,7 +32,7 @@ export async function getIngredientById(
 ): Promise<Ingredient | null> {
   const result = await db.query<Ingredient>(
     `SELECT id, name, active
-     FROM ingredients
+     FROM ingredient
      WHERE id = $1
      ${opts.includeInactive ? '' : 'AND active = TRUE'}`,
     [id]
@@ -51,14 +51,14 @@ export async function getIngredientWithAllergens(
 
   const allergenResult = await db.query<Allergen>(
     `SELECT a.id, a.name
-     FROM allergens a
-     JOIN ingredient_allergens ia ON ia.allergen_id = a.id
+     FROM allergen a
+     JOIN ingredient_allergen ia ON ia.allergen_id = a.id
      WHERE ia.ingredient_id = $1
      ORDER BY a.name ASC`,
     [id]
   );
 
-  return { ...ingredient, allergens: allergenResult.rows };
+  return { ...ingredient, allergen: allergenResult.rows };
 }
 
 export async function getIngredientsWithAllergens(
@@ -75,9 +75,9 @@ export async function getIngredientsWithAllergens(
        i.active,
        ARRAY_AGG(a.id ORDER BY a.name)   FILTER (WHERE a.id IS NOT NULL)   AS allergen_ids,
        ARRAY_AGG(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL) AS allergen_names
-     FROM ingredients i
-     LEFT JOIN ingredient_allergens ia ON ia.ingredient_id = i.id
-     LEFT JOIN allergens a ON a.id = ia.allergen_id
+     FROM ingredient i
+     LEFT JOIN ingredient_allergen ia ON ia.ingredient_id = i.id
+     LEFT JOIN allergen a ON a.id = ia.allergen_id
      ${opts.includeInactive ? '' : 'WHERE i.active = TRUE'}
      GROUP BY i.id
      ORDER BY i.name ASC`
@@ -87,7 +87,7 @@ export async function getIngredientsWithAllergens(
     id: row.id,
     name: row.name,
     active: row.active,
-    allergens: (row.allergen_ids ?? []).map((aid, idx) => ({
+    allergen: (row.allergen_ids ?? []).map((aid, idx) => ({
       id: aid,
       name: (row.allergen_names ?? [])[idx],
     })),
@@ -104,7 +104,7 @@ export async function createIngredient(
 ): Promise<Ingredient> {
   try {
     const result = await db.query<Ingredient>(
-      `INSERT INTO ingredients (name, active)
+      `INSERT INTO ingredient (name, active)
        VALUES ($1, $2)
        RETURNING id, name, active`,
       [data.name.trim(), data.active ?? true]
@@ -123,7 +123,7 @@ export async function updateIngredient(
 ): Promise<Ingredient | null> {
   try {
     const result = await db.query<Ingredient>(
-      `UPDATE ingredients
+      `UPDATE ingredient
        SET
          name   = COALESCE($1, name),
          active = COALESCE($2, active)
@@ -139,14 +139,14 @@ export async function updateIngredient(
 }
 
 // Soft delete — sets active = false rather than removing the row.
-// Hard deletes are unsafe: recipe_ingredients has ON DELETE RESTRICT.
+// Hard deletes are unsafe: recipe_ingredient has ON DELETE RESTRICT.
 export async function deactivateIngredient(db: Pool, id: string): Promise<Ingredient | null> {
   return updateIngredient(db, id, { active: false });
 }
 
 // -------------------------------------------------------------
 // ALLERGEN ASSOCIATIONS
-// Callers managing allergens on an ingredient use these.
+// Callers managing allergen on an ingredient use these.
 // For full replacement (edit form), use setIngredientAllergens.
 // -------------------------------------------------------------
 
@@ -156,7 +156,7 @@ export async function addIngredientAllergen(
   allergenId: string
 ): Promise<void> {
   await db.query(
-    `INSERT INTO ingredient_allergens (ingredient_id, allergen_id)
+    `INSERT INTO ingredient_allergen (ingredient_id, allergen_id)
      VALUES ($1, $2)
      ON CONFLICT DO NOTHING`,
     [ingredientId, allergenId]
@@ -169,7 +169,7 @@ export async function removeIngredientAllergen(
   allergenId: string
 ): Promise<void> {
   await db.query(
-    `DELETE FROM ingredient_allergens
+    `DELETE FROM ingredient_allergen
      WHERE ingredient_id = $1 AND allergen_id = $2`,
     [ingredientId, allergenId]
   );
@@ -184,7 +184,7 @@ export async function setIngredientAllergens(
   allergenIds: string[]
 ): Promise<void> {
   await client.query(
-    `DELETE FROM ingredient_allergens WHERE ingredient_id = $1`,
+    `DELETE FROM ingredient_allergen WHERE ingredient_id = $1`,
     [ingredientId]
   );
 
@@ -193,7 +193,7 @@ export async function setIngredientAllergens(
   // Build multi-row INSERT — ($1, $2), ($1, $3), ...
   const values = allergenIds.map((aid, i) => `($1, $${i + 2})`).join(', ');
   await client.query(
-    `INSERT INTO ingredient_allergens (ingredient_id, allergen_id)
+    `INSERT INTO ingredient_allergen (ingredient_id, allergen_id)
      VALUES ${values}`,
     [ingredientId, ...allergenIds]
   );
