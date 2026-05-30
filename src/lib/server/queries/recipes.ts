@@ -68,6 +68,86 @@ export async function getRecipeWithIngredients(
   return { ...recipe, ingredients };
 }
 
+export async function getRecipesWithIngredientsByIds(
+  db: Pool,
+  ids: number[]
+): Promise<Map<number, RecipeWithIngredients>> {
+  if (ids.length === 0) return new Map();
+
+  const result = await db.query<
+    Recipe & {
+      ingredient_ids: string[] | null;
+      ingredient_names: string[] | null;
+      ingredient_amounts: string[] | null;
+      ingredient_units: string[] | null;
+      allergen_id_sets: string[] | null;
+      allergen_name_sets: string[] | null;
+    }
+  >(
+    `SELECT
+       r.id,
+       r.name,
+       r.active,
+       r.created_at,
+       ARRAY_AGG(i.id      ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_ids,
+       ARRAY_AGG(i.name    ORDER BY i.name) FILTER (WHERE i.name IS NOT NULL)   AS ingredient_names,
+       ARRAY_AGG(ri.amount ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_amounts,
+       ARRAY_AGG(ri.unit   ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_units,
+       ARRAY_AGG(
+         (SELECT STRING_AGG(a.id::TEXT, ',' ORDER BY a.name)
+          FROM ingredient_allergens ia
+          JOIN allergens a ON a.id = ia.allergen_id
+          WHERE ia.ingredient_id = i.id)
+         ORDER BY i.name
+       ) FILTER (WHERE i.id IS NOT NULL) AS allergen_id_sets,
+       ARRAY_AGG(
+         (SELECT STRING_AGG(a.name, ',' ORDER BY a.name)
+          FROM ingredient_allergens ia
+          JOIN allergens a ON a.id = ia.allergen_id
+          WHERE ia.ingredient_id = i.id)
+         ORDER BY i.name
+       ) FILTER (WHERE i.id IS NOT NULL) AS allergen_name_sets
+     FROM recipes r
+     LEFT JOIN recipe_ingredients ri ON ri.recipe_id = r.id
+     LEFT JOIN ingredients i ON i.id = ri.ingredient_id
+     WHERE r.id = ANY($1)
+     GROUP BY r.id
+     ORDER BY r.name ASC`,
+    [ids]
+  );
+
+  const map = new Map<number, RecipeWithIngredients>();
+  for (const row of result.rows) {
+    map.set(row.id, {
+      id: row.id,
+      name: row.name,
+      active: row.active,
+      created_at: row.created_at,
+      ingredients: (row.ingredient_ids ?? []).map((iid, idx) => {
+        const allergenIdSet = (row.allergen_id_sets ?? [])[idx];
+        const allergenNameSet = (row.allergen_name_sets ?? [])[idx];
+
+        const allergenIds = allergenIdSet ? allergenIdSet.split(',') : [];
+        const allergenNames = allergenNameSet ? allergenNameSet.split(',') : [];
+
+        const allergens: Allergen[] = allergenIds.map((aid, aidx) => ({
+          id: aid,
+          name: allergenNames[aidx],
+        }));
+
+        return {
+          ingredient_id: iid,
+          name: (row.ingredient_names ?? [])[idx],
+          amount: parseFloat((row.ingredient_amounts ?? [])[idx]),
+          unit: (row.ingredient_units ?? [])[idx],
+          allergens,
+        } satisfies RecipeIngredient;
+      }),
+    });
+  }
+  return map;
+}
+
 export async function getRecipesWithIngredients(
   db: Pool,
   opts: { includeInactive?: boolean } = {}

@@ -1,7 +1,6 @@
 import ExcelJS from 'exceljs';
-import type { RecipeWithIngredients } from '$lib/types';
-import { getOrdersByShipmentDate } from '$lib/server/queries/orders';
-import { getRecipeWithIngredients } from '$lib/server/queries/recipes';
+import { getOrders } from '$lib/server/queries/orders';
+import { getRecipesWithIngredientsByIds } from '$lib/server/queries/recipes';
 import type { Pool } from 'pg';
 
 export async function generateShoppingList(
@@ -16,16 +15,9 @@ export async function generateShoppingList(
   });
 
 
-  // 2. Resolve unique recipes
   const recipeIds = [...new Set(orders.map((o) => o.recipe_id))];
 
-  const recipeMap = new Map<number, RecipeWithIngredients>();
-  await Promise.all(
-    recipeIds.map(async (id) => {
-      const recipe = await getRecipeWithIngredients(db, id);
-      if (recipe) recipeMap.set(id, recipe);
-    })
-  );
+  const recipeMap = await getRecipesWithIngredientsByIds(db, recipeIds);
 
   // 3. Aggregate ingredients
   //    Key: `${ingredient_name}::${unit}` — same name, different unit = separate row
