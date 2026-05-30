@@ -11,7 +11,7 @@
     loading = true;
     const { error: err } = await authClient.signIn.magicLink({
       email,
-      callbackURL: '/admin/dashboard',
+      callbackURL: '/',
     });
     if (err) {
       error = err.message ?? 'Something went wrong.';
@@ -27,7 +27,7 @@
     loading = true;
     const { error: err } = await authClient.signIn.magicLink({
       email,
-      callbackURL: '/admin/dashboard',
+      callbackURL: '/',
     });
     if (err) {
       error = err.message ?? 'Something went wrong.';
