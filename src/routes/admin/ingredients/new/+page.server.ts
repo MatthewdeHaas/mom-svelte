@@ -3,6 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { createIngredient, setIngredientAllergens } from '$lib/server/queries/ingredients';
 import { getAllergens } from '$lib/server/queries/allergens';
 import { pool } from '$lib/server/db';
+import { ConflictError } from '$lib/server/errors';
 
 export const load: PageServerLoad = async () => {
   const allergens = await getAllergens(pool);
@@ -27,7 +28,7 @@ export const actions: Actions = {
     try {
       ingredient = await createIngredient(pool, { name, active: true });
     } catch (err: any) {
-      if (err?.code === '23505') {
+      if (err instanceof ConflictError) {
         return fail(422, {
           errors: { name: 'An ingredient with this name already exists' },
           values: { name, allergenIds },

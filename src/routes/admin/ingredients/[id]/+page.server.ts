@@ -8,6 +8,7 @@ import {
 } from '$lib/server/queries/ingredients';
 import { getAllergens } from '$lib/server/queries/allergens';
 import { pool } from '$lib/server/db';
+import { ConflictError } from '$lib/server/errors';
 
 export const load: PageServerLoad = async ({ params }) => {
   const [ingredient, allergens] = await Promise.all([
@@ -38,7 +39,7 @@ export const actions: Actions = {
     try {
       await updateIngredient(pool, params.id, { name });
     } catch (err: any) {
-      if (err?.code === '23505') {
+      if (err instanceof ConflictError) {
         return fail(422, {
           action: 'update',
           errors: { name: 'An ingredient with this name already exists' },

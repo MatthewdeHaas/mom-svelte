@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { ConflictError } from '$lib/server/errors';
 import type {
   Ingredient,
   InsertIngredient,
@@ -101,13 +102,18 @@ export async function createIngredient(
   db: Pool,
   data: InsertIngredient
 ): Promise<Ingredient> {
-  const result = await db.query<Ingredient>(
-    `INSERT INTO ingredients (name, active)
-     VALUES ($1, $2)
-     RETURNING id, name, active`,
-    [data.name.trim(), data.active ?? true]
-  );
-  return result.rows[0];
+  try {
+    const result = await db.query<Ingredient>(
+      `INSERT INTO ingredients (name, active)
+       VALUES ($1, $2)
+       RETURNING id, name, active`,
+      [data.name.trim(), data.active ?? true]
+    );
+    return result.rows[0];
+  } catch (err: any) {
+    if (err?.code === '23505') throw new ConflictError('An ingredient with this name already exists');
+    throw err;
+  }
 }
 
 export async function updateIngredient(
@@ -115,16 +121,21 @@ export async function updateIngredient(
   id: string,
   data: UpdateIngredient
 ): Promise<Ingredient | null> {
-  const result = await db.query<Ingredient>(
-    `UPDATE ingredients
-     SET
-       name   = COALESCE($1, name),
-       active = COALESCE($2, active)
-     WHERE id = $3
-     RETURNING id, name, active`,
-    [data.name?.trim() ?? null, data.active ?? null, id]
-  );
-  return result.rows[0] ?? null;
+  try {
+    const result = await db.query<Ingredient>(
+      `UPDATE ingredients
+       SET
+         name   = COALESCE($1, name),
+         active = COALESCE($2, active)
+       WHERE id = $3
+       RETURNING id, name, active`,
+      [data.name?.trim() ?? null, data.active ?? null, id]
+    );
+    return result.rows[0] ?? null;
+  } catch (err: any) {
+    if (err?.code === '23505') throw new ConflictError('An ingredient with this name already exists');
+    throw err;
+  }
 }
 
 // Soft delete — sets active = false rather than removing the row.
