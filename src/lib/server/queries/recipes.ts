@@ -8,13 +8,14 @@ import type {
   RecipeIngredient,
   Allergen,
 } from '$lib/types';
+import type { Db } from '$lib/server/db';
 
 // -------------------------------------------------------------
 // READ
 // -------------------------------------------------------------
 
 export async function getRecipes(
-  db: Pool,
+  db: Db,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Recipe[]> {
   const result = await db.query<Recipe>(
@@ -27,7 +28,7 @@ export async function getRecipes(
 }
 
 export async function getRecipeById(
-  db: Pool,
+  db: Db,
   id: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Recipe | null> {
@@ -42,7 +43,7 @@ export async function getRecipeById(
 }
 
 export async function getRecipeByName(
-  db: Pool,
+  db: Db,
   name: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Recipe | null> {
@@ -57,7 +58,7 @@ export async function getRecipeByName(
 }
 
 export async function getRecipeWithIngredients(
-  db: Pool,
+  db: Db,
   id: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<RecipeWithIngredients | null> {
@@ -69,7 +70,7 @@ export async function getRecipeWithIngredients(
 }
 
 export async function getRecipesWithIngredientsByIds(
-  db: Pool,
+  db: Db,
   ids: string[]
 ): Promise<Map<string, RecipeWithIngredients>> {
   if (ids.length === 0) return new Map();
@@ -149,7 +150,7 @@ export async function getRecipesWithIngredientsByIds(
 }
 
 export async function getRecipesWithIngredients(
-  db: Pool,
+  db: Db,
   opts: { includeInactive?: boolean } = {}
 ): Promise<RecipeWithIngredients[]> {
   // Single query — aggregates ingredient and their allergen per recipe.
@@ -229,7 +230,7 @@ export async function getRecipesWithIngredients(
 // Returns just the ingredient for a recipe — used internally and
 // useful when the caller already has the recipe row.
 export async function getRecipeIngredients(
-  db: Pool,
+  db: Db,
   recipeId: string
 ): Promise<RecipeIngredient[]> {
   const result = await db.query<
@@ -271,7 +272,7 @@ export async function getRecipeIngredients(
 // WRITE
 // -------------------------------------------------------------
 
-export async function createRecipe(db: Pool, data: InsertRecipe): Promise<Recipe> {
+export async function createRecipe(db: Db, data: InsertRecipe): Promise<Recipe> {
   try {
     const result = await db.query<Recipe>(
       `INSERT INTO recipe (name, active)
@@ -287,7 +288,7 @@ export async function createRecipe(db: Pool, data: InsertRecipe): Promise<Recipe
 }
 
 export async function updateRecipe(
-  db: Pool,
+  db: Db,
   id: string,
   data: UpdateRecipe
 ): Promise<Recipe | null> {
@@ -311,7 +312,7 @@ export async function updateRecipe(
 // Soft delete only. Hard delete is blocked by ON DELETE RESTRICT on orders.
 // Even if no orders exist yet, we never hard delete recipe —
 // historical data integrity depends on this.
-export async function deactivateRecipe(db: Pool, id: string): Promise<Recipe | null> {
+export async function deactivateRecipe(db: Db, id: string): Promise<Recipe | null> {
   return updateRecipe(db, id, { active: false });
 }
 
@@ -387,7 +388,7 @@ export async function setRecipeIngredients(
 // Returns true if the recipe exists and is active.
 // The import layer calls this after the Zod parse to confirm
 // recipe names from the sheet resolve to usable records.
-export async function isRecipeActive(db: Pool, id: string): Promise<boolean> {
+export async function isRecipeActive(db: Db, id: string): Promise<boolean> {
   const result = await db.query<{ active: boolean }>(
     `SELECT active FROM recipe WHERE id = $1`,
     [id]

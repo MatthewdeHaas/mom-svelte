@@ -1,13 +1,14 @@
 import type { Pool } from 'pg';
 import { ConflictError } from '$lib/server/errors';
 import type { Company, InsertCompany, UpdateCompany, UserWithCompany } from '$lib/types';
+import type { Db } from '$lib/server/db';
 
 // -------------------------------------------------------------
 // READ
 // -------------------------------------------------------------
 
 export async function getCompanies(
-  db: Pool,
+  db: Db,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Company[]> {
   const result = await db.query<Company>(
@@ -19,7 +20,7 @@ export async function getCompanies(
   return result.rows;
 }
 
-export async function getCompanyById(db: Pool, id: string): Promise<Company | null> {
+export async function getCompanyById(db: Db, id: string): Promise<Company | null> {
   const result = await db.query<Company>(
     `SELECT id, name, contact_email, phone, shipping_address, active, created_at
      FROM company
@@ -29,7 +30,7 @@ export async function getCompanyById(db: Pool, id: string): Promise<Company | nu
   return result.rows[0] ?? null;
 }
 
-export async function getCompanyByName(db: Pool, name: string): Promise<Company | null> {
+export async function getCompanyByName(db: Db, name: string): Promise<Company | null> {
   const result = await db.query<Company>(
     `SELECT id, name, contact_email, phone, shipping_address, active, created_at
      FROM company
@@ -41,7 +42,7 @@ export async function getCompanyByName(db: Pool, name: string): Promise<Company 
 
 // Returns all users belonging to a company, each with the company embedded.
 // Useful for the company detail page's user list.
-export async function getUsersByCompany(db: Pool, companyId: string): Promise<UserWithCompany[]> {
+export async function getUsersByCompany(db: Db, companyId: string): Promise<UserWithCompany[]> {
   const result = await db.query<UserWithCompany & {
     company_name: string;
     company_contact_email: string | null;
@@ -87,7 +88,7 @@ export async function getUsersByCompany(db: Pool, companyId: string): Promise<Us
 // WRITE
 // -------------------------------------------------------------
 
-export async function createCompany(db: Pool, data: InsertCompany): Promise<Company> {
+export async function createCompany(db: Db, data: InsertCompany): Promise<Company> {
   try {
     const result = await db.query<Company>(
       `INSERT INTO company (name, contact_email, phone, shipping_address, active)
@@ -109,7 +110,7 @@ export async function createCompany(db: Pool, data: InsertCompany): Promise<Comp
 }
 
 export async function updateCompany(
-  db: Pool,
+  db: Db,
   id: string,
   data: UpdateCompany
 ): Promise<Company | null> {
@@ -142,6 +143,6 @@ export async function updateCompany(
 
 // Soft delete — company own persons and orders so hard delete is destructive.
 // Setting active = false preserves all historical data.
-export async function deactivateCompany(db: Pool, id: string): Promise<Company | null> {
+export async function deactivateCompany(db: Db, id: string): Promise<Company | null> {
   return updateCompany(db, id, { active: false });
 }

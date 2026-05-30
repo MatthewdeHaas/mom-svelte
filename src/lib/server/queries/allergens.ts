@@ -1,11 +1,12 @@
 import type { Pool } from 'pg';
 import type { Allergen, InsertAllergen } from '$lib/types';
+import type { Db } from '$lib/server/db';
 
 // -------------------------------------------------------------
 // READ
 // -------------------------------------------------------------
 
-export async function getAllergens(db: Pool): Promise<Allergen[]> {
+export async function getAllergens(db: Db): Promise<Allergen[]> {
   const result = await db.query<Allergen>(
     `SELECT id, name
      FROM allergen
@@ -14,7 +15,7 @@ export async function getAllergens(db: Pool): Promise<Allergen[]> {
   return result.rows;
 }
 
-export async function getAllergenById(db: Pool, id: string): Promise<Allergen | null> {
+export async function getAllergenById(db: Db, id: string): Promise<Allergen | null> {
   const result = await db.query<Allergen>(
     `SELECT id, name
      FROM allergen
@@ -24,7 +25,7 @@ export async function getAllergenById(db: Pool, id: string): Promise<Allergen | 
   return result.rows[0] ?? null;
 }
 
-export async function getAllergenByName(db: Pool, name: string): Promise<Allergen | null> {
+export async function getAllergenByName(db: Db, name: string): Promise<Allergen | null> {
   const result = await db.query<Allergen>(
     `SELECT id, name
      FROM allergen
@@ -38,7 +39,7 @@ export async function getAllergenByName(db: Pool, name: string): Promise<Allerge
 // WRITE
 // -------------------------------------------------------------
 
-export async function createAllergen(db: Pool, data: InsertAllergen): Promise<Allergen> {
+export async function createAllergen(db: Db, data: InsertAllergen): Promise<Allergen> {
   const result = await db.query<Allergen>(
     `INSERT INTO allergen (name)
      VALUES ($1)
@@ -49,7 +50,7 @@ export async function createAllergen(db: Pool, data: InsertAllergen): Promise<Al
 }
 
 export async function updateAllergen(
-  db: Pool,
+  db: Db,
   id: string,
   data: InsertAllergen
 ): Promise<Allergen | null> {
@@ -66,7 +67,7 @@ export async function updateAllergen(
 // Hard delete — safe only if no ingredient references this allergen.
 // The FK on ingredient_allergen is CASCADE so rows there are cleaned up,
 // but person_allergen is also CASCADE. Callers should confirm intent.
-export async function deleteAllergen(db: Pool, id: string): Promise<boolean> {
+export async function deleteAllergen(db: Db, id: string): Promise<boolean> {
   const result = await db.query(
     `DELETE FROM allergen WHERE id = $1`,
     [id]

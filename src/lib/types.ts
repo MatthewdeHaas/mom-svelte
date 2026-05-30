@@ -42,7 +42,13 @@ export interface Company {
   created_at: Date;
 }
 
-export type InsertCompany = Omit<Company, 'id' | 'created_at'>;
+export interface InsertCompany {
+  name: string;
+  contact_email?: string | null;
+  phone?: string | null;
+  shipping_address?: string | null;
+  active?: boolean;
+}
 export type UpdateCompany = Partial<InsertCompany>;
 
 // -------------------------------------------------------------
@@ -74,7 +80,10 @@ export interface Ingredient {
   active: boolean;
 }
 
-export type InsertIngredient = Omit<Ingredient, 'id'>;
+export interface InsertIngredient {
+  name: string;
+  active?: boolean;
+}
 export type UpdateIngredient = Partial<InsertIngredient>;
 
 export interface IngredientWithAllergens extends Ingredient {
@@ -92,7 +101,10 @@ export interface Recipe {
   created_at: Date;
 }
 
-export type InsertRecipe = Omit<Recipe, 'id' | 'created_at'>;
+export interface InsertRecipe {
+  name: string;
+  active?: boolean;
+}
 export type UpdateRecipe = Partial<InsertRecipe>;
 
 // recipe_ingredients join row — used internally by query layer
@@ -129,7 +141,12 @@ export interface Menu {
   created_at: Date;
 }
 
-export type InsertMenu = Omit<Menu, 'id' | 'created_at'>;
+export interface InsertMenu {
+  name: string;
+  is_active?: boolean;
+  start_date?: Date | null;
+  end_date?: Date | null;
+}
 export type UpdateMenu = Partial<InsertMenu>;
 
 export interface MenuRecipe {
@@ -164,7 +181,11 @@ export interface Person {
   active: boolean;
 }
 
-export type InsertPerson = Omit<Person, 'id'>;
+export interface InsertPerson {
+  company_id: string;
+  name: string;
+  active?: boolean;
+}
 export type UpdatePerson = Partial<InsertPerson>;
 
 export interface PersonWithAllergens extends Person {
@@ -211,7 +232,21 @@ export interface Order {
   created_at: Date;
 }
 
-export type InsertOrder = Omit<Order, 'id' | 'created_at'>;
+export interface InsertOrder {
+  company_id: string;
+  recipe_id?: string | null;
+  created_by?: string | null;
+  order_source: OrderSource;
+  status?: OrderStatus;
+  meal_category?: string | null;
+  amount: number;
+  serving_date: Date;
+  shipment_date: Date;
+  frozen?: boolean;
+  chilled?: boolean;
+  recurring?: boolean;
+  client_note?: string | null;
+}
 export type UpdateOrder = Partial<Omit<InsertOrder, 'order_source' | 'created_by'>>;
 
 // For list views — joins just enough to avoid N+1 lookups

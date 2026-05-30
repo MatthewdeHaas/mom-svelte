@@ -7,13 +7,14 @@ import type {
   IngredientWithAllergens,
   Allergen,
 } from '$lib/types';
+import type { Db } from '$lib/server/db';
 
 // -------------------------------------------------------------
 // READ
 // -------------------------------------------------------------
 
 export async function getIngredients(
-  db: Pool,
+  db: Db,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Ingredient[]> {
   const result = await db.query<Ingredient>(
@@ -26,7 +27,7 @@ export async function getIngredients(
 }
 
 export async function getIngredientById(
-  db: Pool,
+  db: Db,
   id: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Ingredient | null> {
@@ -41,7 +42,7 @@ export async function getIngredientById(
 }
 
 export async function getIngredientWithAllergens(
-  db: Pool,
+  db: Db,
   id: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<IngredientWithAllergens | null> {
@@ -62,7 +63,7 @@ export async function getIngredientWithAllergens(
 }
 
 export async function getIngredientsWithAllergens(
-  db: Pool,
+  db: Db,
   opts: { includeInactive?: boolean } = {}
 ): Promise<IngredientWithAllergens[]> {
   // Single query with LEFT JOIN + aggregation to avoid N+1
@@ -99,7 +100,7 @@ export async function getIngredientsWithAllergens(
 // -------------------------------------------------------------
 
 export async function createIngredient(
-  db: Pool,
+  db: Db,
   data: InsertIngredient
 ): Promise<Ingredient> {
   try {
@@ -117,7 +118,7 @@ export async function createIngredient(
 }
 
 export async function updateIngredient(
-  db: Pool,
+  db: Db,
   id: string,
   data: UpdateIngredient
 ): Promise<Ingredient | null> {
@@ -140,7 +141,7 @@ export async function updateIngredient(
 
 // Soft delete — sets active = false rather than removing the row.
 // Hard deletes are unsafe: recipe_ingredient has ON DELETE RESTRICT.
-export async function deactivateIngredient(db: Pool, id: string): Promise<Ingredient | null> {
+export async function deactivateIngredient(db: Db, id: string): Promise<Ingredient | null> {
   return updateIngredient(db, id, { active: false });
 }
 
@@ -151,7 +152,7 @@ export async function deactivateIngredient(db: Pool, id: string): Promise<Ingred
 // -------------------------------------------------------------
 
 export async function addIngredientAllergen(
-  db: Pool,
+  db: Db,
   ingredientId: string,
   allergenId: string
 ): Promise<void> {
@@ -164,7 +165,7 @@ export async function addIngredientAllergen(
 }
 
 export async function removeIngredientAllergen(
-  db: Pool,
+  db: Db,
   ingredientId: string,
   allergenId: string
 ): Promise<void> {

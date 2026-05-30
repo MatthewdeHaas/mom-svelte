@@ -10,6 +10,7 @@ import type {
 import { getCompanyByName } from './companies';
 import { getRecipeByName } from './recipes';
 import { insertOrdersBatch } from './orders';
+import type { Db } from '$lib/server/db';
 
 // -------------------------------------------------------------
 // ZOD SCHEMA
@@ -102,7 +103,7 @@ type ResolutionResult =
   | { success: false; errors: ImportRowError[] };
 
 async function resolveRow(
-  db: Pool,
+  db: Db,
   parsed: ExcelRowParsed,
   rowIndex: number
 ): Promise<ResolutionResult> {

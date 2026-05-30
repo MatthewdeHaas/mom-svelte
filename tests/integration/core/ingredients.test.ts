@@ -138,7 +138,7 @@ describe('getIngredientWithAllergens', () => {
     const found = await getIngredientWithAllergens(ctx.client, ing.id);
 
     expect(found).not.toBeNull();
-    expect(found!.allergens).toEqual([]);
+    expect(found!.allergen).toEqual([]);
   });
 
   it('returns the ingredient with its allergens', async () => {
@@ -149,7 +149,7 @@ describe('getIngredientWithAllergens', () => {
     await setIngredientAllergens(ctx.client, ing.id, [gluten.id, wheat.id]);
 
     const found = await getIngredientWithAllergens(ctx.client, ing.id);
-    const allergenIds = found!.allergens.map((a) => a.id);
+    const allergenIds = found!.allergen.map((a) => a.id);
 
     expect(allergenIds).toContain(gluten.id);
     expect(allergenIds).toContain(wheat.id);
@@ -163,7 +163,7 @@ describe('getIngredientWithAllergens', () => {
     await setIngredientAllergens(ctx.client, ing.id, [z.id, a.id]);
 
     const found = await getIngredientWithAllergens(ctx.client, ing.id);
-    const names = found!.allergens.map((a) => a.name);
+    const names = found!.allergen.map((a) => a.name);
 
     expect(names[0]).toBe('Aallergen');
     expect(names[1]).toBe('Zzallergen');
@@ -179,7 +179,7 @@ describe('getIngredientsWithAllergens', () => {
     await seedIngredient('Plain');
 
     const rows = await getIngredientsWithAllergens(ctx.client);
-    expect(rows.every((r) => Array.isArray(r.allergens))).toBe(true);
+    expect(rows.every((r) => Array.isArray(r.allergen))).toBe(true);
   });
 
   it('correctly attaches allergens to each ingredient', async () => {
@@ -195,9 +195,9 @@ describe('getIngredientsWithAllergens', () => {
     const bread = rows.find((r) => r.id === ing1.id);
     const milk = rows.find((r) => r.id === ing2.id);
 
-    expect(bread!.allergens.map((a) => a.id)).toContain(gluten.id);
-    expect(milk!.allergens.map((a) => a.id)).toContain(dairy.id);
-    expect(bread!.allergens.map((a) => a.id)).not.toContain(dairy.id);
+    expect(bread!.allergen.map((a) => a.id)).toContain(gluten.id);
+    expect(milk!.allergen.map((a) => a.id)).toContain(dairy.id);
+    expect(bread!.allergen.map((a) => a.id)).not.toContain(dairy.id);
   });
 
   it('excludes inactive ingredients by default', async () => {
@@ -324,7 +324,7 @@ describe('addIngredientAllergen', () => {
     await addIngredientAllergen(ctx.client, ing.id, allergen.id);
 
     const found = await getIngredientWithAllergens(ctx.client, ing.id);
-    expect(found!.allergens.map((a) => a.id)).toContain(allergen.id);
+    expect(found!.allergen.map((a) => a.id)).toContain(allergen.id);
   });
 
   it('is idempotent — does not throw on duplicate (ON CONFLICT DO NOTHING)', async () => {
@@ -348,7 +348,7 @@ describe('removeIngredientAllergen', () => {
     await removeIngredientAllergen(ctx.client, ing.id, a1.id);
 
     const found = await getIngredientWithAllergens(ctx.client, ing.id);
-    const ids = found!.allergens.map((a) => a.id);
+    const ids = found!.allergen.map((a) => a.id);
 
     expect(ids).not.toContain(a1.id);
     expect(ids).toContain(a2.id);
@@ -377,7 +377,7 @@ describe('setIngredientAllergens', () => {
     await setIngredientAllergens(ctx.client, ing.id, [a1.id, a2.id]);
 
     const found = await getIngredientWithAllergens(ctx.client, ing.id);
-    const ids = found!.allergens.map((a) => a.id);
+    const ids = found!.allergen.map((a) => a.id);
 
     expect(ids).toContain(a1.id);
     expect(ids).toContain(a2.id);
@@ -392,7 +392,7 @@ describe('setIngredientAllergens', () => {
     await setIngredientAllergens(ctx.client, ing.id, [next.id]);
 
     const found = await getIngredientWithAllergens(ctx.client, ing.id);
-    const ids = found!.allergens.map((a) => a.id);
+    const ids = found!.allergen.map((a) => a.id);
 
     expect(ids).not.toContain(old.id);
     expect(ids).toContain(next.id);
@@ -406,6 +406,6 @@ describe('setIngredientAllergens', () => {
     await setIngredientAllergens(ctx.client, ing.id, []);
 
     const found = await getIngredientWithAllergens(ctx.client, ing.id);
-    expect(found!.allergens).toHaveLength(0);
+    expect(found!.allergen).toHaveLength(0);
   });
 });

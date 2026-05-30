@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import type { RecipeExcelRowParsed, RecipeImportResult } from '$lib/types';
+import type { Db } from '$lib/server/db';
 
 // ─── Batch upserts → name-to-id maps ─────────────────────────────────────────
 

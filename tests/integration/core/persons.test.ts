@@ -158,7 +158,7 @@ describe('getPersonWithAllergens', () => {
     const p = await seedPerson(c.id);
 
     const found = await getPersonWithAllergens(ctx.client, p.id);
-    expect(found!.allergens).toEqual([]);
+    expect(found!.allergen).toEqual([]);
   });
 
   it('returns person with allergens', async () => {
@@ -169,7 +169,7 @@ describe('getPersonWithAllergens', () => {
     await addPersonAllergen(ctx.client, p.id, a.id);
 
     const found = await getPersonWithAllergens(ctx.client, p.id);
-    expect(found!.allergens.map((al) => al.id)).toContain(a.id);
+    expect(found!.allergen.map((al) => al.id)).toContain(a.id);
   });
 });
 
@@ -188,7 +188,7 @@ describe('getPersonsWithAllergensByCompany', () => {
     await seedPerson(c.id);
 
     const rows = await getPersonsWithAllergensByCompany(ctx.client, c.id);
-    expect(rows.every((p) => Array.isArray(p.allergens))).toBe(true);
+    expect(rows.every((p) => Array.isArray(p.allergen))).toBe(true);
   });
 
   it('correctly attaches allergens without cross-contamination', async () => {
@@ -205,9 +205,9 @@ describe('getPersonsWithAllergensByCompany', () => {
     const row1 = rows.find((p) => p.id === p1.id);
     const row2 = rows.find((p) => p.id === p2.id);
 
-    expect(row1!.allergens.map((a) => a.id)).toContain(a1.id);
-    expect(row2!.allergens.map((a) => a.id)).toContain(a2.id);
-    expect(row1!.allergens.map((a) => a.id)).not.toContain(a2.id);
+    expect(row1!.allergen.map((a) => a.id)).toContain(a1.id);
+    expect(row2!.allergen.map((a) => a.id)).toContain(a2.id);
+    expect(row1!.allergen.map((a) => a.id)).not.toContain(a2.id);
   });
 
   it('excludes inactive persons by default', async () => {
@@ -581,7 +581,7 @@ describe('getAttendanceByDate', () => {
     await upsertAttendance(ctx.client, { person_id: p.id, serving_date: date, attending: true });
 
     const records = await getAttendanceByDate(ctx.client, c.id, date);
-    const allergenIds = records[0].person.allergens.map((al) => al.id);
+    const allergenIds = records[0].person.allergen.map((al) => al.id);
 
     expect(allergenIds).toContain(a.id);
   });

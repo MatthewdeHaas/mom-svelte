@@ -40,7 +40,7 @@ async function seedRecipe(overrides: Partial<Parameters<typeof createRecipe>[1]>
 }
 
 async function seedIngredient(name = uniqueName('Ing')) {
-  return createIngredient(ctx.client, { name, unit: 'g' });
+  return createIngredient(ctx.client, { name });
 }
 
 async function seedAllergen(name = uniqueName('Allergen')) {
@@ -223,7 +223,7 @@ describe('getRecipeIngredients', () => {
     await addRecipeIngredient(ctx.client, r.id, ing.id, 10, 'g');
 
     const result = await getRecipeIngredients(ctx.client, r.id);
-    const allergenIds = result[0].allergens.map((a) => a.id);
+    const allergenIds = result[0].allergen.map((a) => a.id);
 
     expect(allergenIds).toContain(allergen.id);
   });
@@ -235,7 +235,7 @@ describe('getRecipeIngredients', () => {
     await addRecipeIngredient(ctx.client, r.id, ing.id, 10, 'g');
 
     const result = await getRecipeIngredients(ctx.client, r.id);
-    expect(result[0].allergens).toEqual([]);
+    expect(result[0].allergen).toEqual([]);
   });
 });
 
@@ -326,7 +326,7 @@ describe('getRecipesWithIngredients', () => {
     const found = rows.find((row) => row.id === r.id);
     const ingRow = found!.ingredients.find((i) => i.ingredient_id === ing.id);
 
-    expect(ingRow!.allergens.some((a) => a.id === allergen.id)).toBe(true);
+    expect(ingRow!.allergen.some((a) => a.id === allergen.id)).toBe(true);
   });
 
   it('amount is a number not a string', async () => {

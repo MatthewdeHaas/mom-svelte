@@ -9,13 +9,14 @@ import type {
   AttendanceWithPerson,
   Attendance,
 } from '$lib/types';
+import type { Db } from '$lib/server/db';
 
 // -------------------------------------------------------------
 // READ
 // -------------------------------------------------------------
 
 export async function getPersonsByCompany(
-  db: Pool,
+  db: Db,
   companyId: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Person[]> {
@@ -31,7 +32,7 @@ export async function getPersonsByCompany(
 }
 
 export async function getPersonById(
-  db: Pool,
+  db: Db,
   id: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Person | null> {
@@ -46,7 +47,7 @@ export async function getPersonById(
 }
 
 export async function getPersonWithAllergens(
-  db: Pool,
+  db: Db,
   id: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<PersonWithAllergens | null> {
@@ -58,7 +59,7 @@ export async function getPersonWithAllergens(
 }
 
 export async function getPersonsWithAllergensByCompany(
-  db: Pool,
+  db: Db,
   companyId: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<PersonWithAllergens[]> {
@@ -94,7 +95,7 @@ export async function getPersonsWithAllergensByCompany(
   }));
 }
 
-export async function getPersonAllergens(db: Pool, personId: string): Promise<Allergen[]> {
+export async function getPersonAllergens(db: Db, personId: string): Promise<Allergen[]> {
   const result = await db.query<Allergen>(
     `SELECT a.id, a.name
      FROM allergen a
@@ -110,7 +111,7 @@ export async function getPersonAllergens(db: Pool, personId: string): Promise<Al
 // WRITE
 // -------------------------------------------------------------
 
-export async function createPerson(db: Pool, data: InsertPerson): Promise<Person> {
+export async function createPerson(db: Db, data: InsertPerson): Promise<Person> {
   const result = await db.query<Person>(
     `INSERT INTO person (company_id, name, active)
      VALUES ($1, $2, $3)
@@ -121,7 +122,7 @@ export async function createPerson(db: Pool, data: InsertPerson): Promise<Person
 }
 
 export async function updatePerson(
-  db: Pool,
+  db: Db,
   id: string,
   data: UpdatePerson
 ): Promise<Person | null> {
@@ -138,7 +139,7 @@ export async function updatePerson(
 }
 
 // Soft delete — preserves attendance history and allergen records.
-export async function deactivatePerson(db: Pool, id: string): Promise<Person | null> {
+export async function deactivatePerson(db: Db, id: string): Promise<Person | null> {
   return updatePerson(db, id, { active: false });
 }
 
@@ -196,7 +197,7 @@ export async function setPersonAllergens(
 // -------------------------------------------------------------
 
 export async function getAttendanceByDate(
-  db: Pool,
+  db: Db,
   companyId: string,
   servingDate: Date
 ): Promise<AttendanceWithPerson[]> {
@@ -250,7 +251,7 @@ export async function getAttendanceByDate(
 // The unique constraint on (person_id, serving_date) makes this safe to call
 // repeatedly — toggling attendance on an existing record just updates it.
 export async function upsertAttendance(
-  db: Pool,
+  db: Db,
   data: UpsertAttendance
 ): Promise<Attendance> {
   const result = await db.query<Attendance>(

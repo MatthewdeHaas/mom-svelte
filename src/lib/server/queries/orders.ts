@@ -8,6 +8,7 @@ import type {
   OrderStatus,
   OrderSource,
 } from '$lib/types';
+import type { Db } from '$lib/server/db';
 
 // -------------------------------------------------------------
 // FILTERS
@@ -30,7 +31,7 @@ export interface OrderFilters {
 // -------------------------------------------------------------
 
 export async function getOrders(
-  db: Pool,
+  db: Db,
   filters: OrderFilters = {}
 ): Promise<OrderSummary[]> {
   const conditions: string[] = [];
@@ -106,7 +107,7 @@ export async function getOrders(
   return result.rows;
 }
 
-export async function getOrderById(db: Pool, id: string): Promise<OrderDetail | null> {
+export async function getOrderById(db: Db, id: string): Promise<OrderDetail | null> {
   const result = await db.query<
     Order & {
       company_name: string;
@@ -197,7 +198,7 @@ export async function getOrderById(db: Pool, id: string): Promise<OrderDetail | 
 
 // Useful for the dashboard — orders going out on a specific shipment date.
 export async function getOrdersByShipmentDate(
-  db: Pool,
+  db: Db,
   shipmentDate: Date
 ): Promise<OrderSummary[]> {
   return getOrders(db, { shipment_date: shipmentDate });
@@ -205,7 +206,7 @@ export async function getOrdersByShipmentDate(
 
 // Useful for the dashboard summary counts.
 export async function getOrderCountsByStatus(
-  db: Pool,
+  db: Db,
   filters: Pick<OrderFilters, 'serving_date_from' | 'serving_date_to'> = {}
 ): Promise<Record<OrderStatus, number>> {
   const conditions: string[] = [];
@@ -283,7 +284,7 @@ export async function createOrder(
 }
 
 export async function updateOrder(
-  db: Pool,
+  db: Db,
   id: string,
   data: UpdateOrder
 ): Promise<Order | null> {
@@ -329,7 +330,7 @@ export async function updateOrder(
 // ensures business rules can be added per transition later.
 // -------------------------------------------------------------
 
-export async function confirmOrder(db: Pool, id: string): Promise<Order | null> {
+export async function confirmOrder(db: Db, id: string): Promise<Order | null> {
   const result = await db.query<Order>(
     `UPDATE "order"
      SET status = 'confirmed'
@@ -344,7 +345,7 @@ export async function confirmOrder(db: Pool, id: string): Promise<Order | null> 
   return result.rows[0] ?? null;
 }
 
-export async function fulfillOrder(db: Pool, id: string): Promise<Order | null> {
+export async function fulfillOrder(db: Db, id: string): Promise<Order | null> {
   const result = await db.query<Order>(
     `UPDATE "order"
      SET status = 'fulfilled'
@@ -358,7 +359,7 @@ export async function fulfillOrder(db: Pool, id: string): Promise<Order | null> 
   return result.rows[0] ?? null;
 }
 
-export async function cancelOrder(db: Pool, id: string): Promise<Order | null> {
+export async function cancelOrder(db: Db, id: string): Promise<Order | null> {
   const result = await db.query<Order>(
     `UPDATE "order"
      SET status = 'cancelled'

@@ -91,7 +91,7 @@ describe('getMenus', () => {
     const rows = await getMenus(ctx.client);
     const dates = rows.map((m) => m.start_date);
 
-    expect(dates[0] >= dates[1]).toBe(true);
+    expect(dates[0]! >= dates[1]!).toBe(true);
   });
 
   it('returns rows with the expected shape', async () => {
@@ -197,7 +197,7 @@ describe('getMenuWithRecipes', () => {
     const found = await getMenuWithRecipes(ctx.client, m.id);
 
     expect(found).not.toBeNull();
-    expect(found!.recipes).toEqual([]);
+    expect(found!.recipe).toEqual([]);
   });
 
   it('returns the menu with its recipe slots', async () => {
@@ -207,8 +207,8 @@ describe('getMenuWithRecipes', () => {
     await seedSlot({ menu_id: m.id, recipe_id: r.id });
 
     const found = await getMenuWithRecipes(ctx.client, m.id);
-    expect(found!.recipes).toHaveLength(1);
-    expect(found!.recipes[0].recipe_id).toBe(r.id);
+    expect(found!.recipe).toHaveLength(1);
+    expect(found!.recipe[0].recipe_id).toBe(r.id);
   });
 });
 
@@ -225,7 +225,7 @@ describe('getMenusWithRecipes', () => {
     await seedMenu();
     const rows = await getMenusWithRecipes(ctx.client);
 
-    expect(rows.every((m) => Array.isArray(m.recipes))).toBe(true);
+    expect(rows.every((m) => Array.isArray(m.recipe))).toBe(true);
   });
 
   it('correctly attaches slots to each menu without cross-contamination', async () => {
@@ -241,9 +241,9 @@ describe('getMenusWithRecipes', () => {
     const row1 = rows.find((m) => m.id === m1.id);
     const row2 = rows.find((m) => m.id === m2.id);
 
-    expect(row1!.recipes.some((s) => s.recipe_id === r1.id)).toBe(true);
-    expect(row2!.recipes.some((s) => s.recipe_id === r2.id)).toBe(true);
-    expect(row1!.recipes.some((s) => s.recipe_id === r2.id)).toBe(false);
+    expect(row1!.recipe.some((s) => s.recipe_id === r1.id)).toBe(true);
+    expect(row2!.recipe.some((s) => s.recipe_id === r2.id)).toBe(true);
+    expect(row1!.recipe.some((s) => s.recipe_id === r2.id)).toBe(false);
   });
 
   it('excludes inactive menus by default', async () => {

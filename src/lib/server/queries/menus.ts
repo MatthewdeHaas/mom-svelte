@@ -9,13 +9,14 @@ import type {
   MenuWithRecipes,
   DayOfWeek,
 } from '$lib/types';
+import type { Db } from '$lib/server/db';
 
 // -------------------------------------------------------------
 // READ
 // -------------------------------------------------------------
 
 export async function getMenus(
-  db: Pool,
+  db: Db,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Menu[]> {
   const result = await db.query<Menu>(
@@ -28,7 +29,7 @@ export async function getMenus(
 }
 
 export async function getMenuById(
-  db: Pool,
+  db: Db,
   id: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<Menu | null> {
@@ -43,7 +44,7 @@ export async function getMenuById(
 }
 
 export async function getMenuWithRecipes(
-  db: Pool,
+  db: Db,
   id: string,
   opts: { includeInactive?: boolean } = {}
 ): Promise<MenuWithRecipes | null> {
@@ -57,7 +58,7 @@ export async function getMenuWithRecipes(
 // Returns all menu with their recipe slots — useful for the menu list
 // page where you want to show slot counts or recipe names at a glance.
 export async function getMenusWithRecipes(
-  db: Pool,
+  db: Db,
   opts: { includeInactive?: boolean } = {}
 ): Promise<MenuWithRecipes[]> {
   const menu = await getMenus(db, opts);
@@ -106,7 +107,7 @@ export async function getMenusWithRecipes(
 }
 
 // Returns all recipe slots for a given menu, ordered for display.
-export async function getMenuRecipes(db: Pool, menuId: string): Promise<MenuRecipeWithName[]> {
+export async function getMenuRecipes(db: Db, menuId: string): Promise<MenuRecipeWithName[]> {
   const result = await db.query<MenuRecipeWithName>(
     `SELECT
        mr.id,
@@ -128,7 +129,7 @@ export async function getMenuRecipes(db: Pool, menuId: string): Promise<MenuReci
 
 // Returns the active menu covering a given date, if one exists.
 // Used by the order creation flow to suggest the relevant menu.
-export async function getActiveMenuForDate(db: Pool, date: Date): Promise<Menu | null> {
+export async function getActiveMenuForDate(db: Db, date: Date): Promise<Menu | null> {
   const result = await db.query<Menu>(
     `SELECT id, name, is_active, start_date, end_date, created_at
      FROM menu
@@ -145,7 +146,7 @@ export async function getActiveMenuForDate(db: Pool, date: Date): Promise<Menu |
 // Returns the specific recipe slot for a given menu, week, day, and meal.
 // Used to validate that an order's recipe matches the menu for that slot.
 export async function getMenuSlot(
-  db: Pool,
+  db: Db,
   menuId: string,
   cycleWeek: number,
   dayOfWeek: DayOfWeek,
@@ -176,7 +177,7 @@ export async function getMenuSlot(
 // WRITE
 // -------------------------------------------------------------
 
-export async function createMenu(db: Pool, data: InsertMenu): Promise<Menu> {
+export async function createMenu(db: Db, data: InsertMenu): Promise<Menu> {
   const result = await db.query<Menu>(
     `INSERT INTO menu (name, is_active, start_date, end_date)
      VALUES ($1, $2, $3, $4)
@@ -187,7 +188,7 @@ export async function createMenu(db: Pool, data: InsertMenu): Promise<Menu> {
 }
 
 export async function updateMenu(
-  db: Pool,
+  db: Db,
   id: string,
   data: UpdateMenu
 ): Promise<Menu | null> {
@@ -211,7 +212,7 @@ export async function updateMenu(
   return result.rows[0] ?? null;
 }
 
-export async function deactivateMenu(db: Pool, id: string): Promise<Menu | null> {
+export async function deactivateMenu(db: Db, id: string): Promise<Menu | null> {
   return updateMenu(db, id, { is_active: false });
 }
 

@@ -307,8 +307,8 @@ describe('getUsersByCompany', () => {
 
     expect(users).toHaveLength(1);
     expect(users[0].email).toBe('user@example.com');
-    expect(users[0].company.id).toBe(c.id);
-    expect(users[0].company.name).toBe(c.name);
+    expect(users[0].company!.id).toBe(c.id);
+    expect(users[0].company!.name).toBe(c.name);
   });
 
   it('does not return users from a different company', async () => {

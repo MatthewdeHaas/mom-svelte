@@ -1,4 +1,5 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
+import type { PoolClient } from 'pg';
 
 export interface TestContext {
   /** The shared pool — use ctx.client inside tests, not this directly. */
