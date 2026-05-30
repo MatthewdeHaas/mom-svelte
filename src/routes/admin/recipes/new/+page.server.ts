@@ -3,27 +3,31 @@ import type { Actions, PageServerLoad } from './$types';
 import { pool } from '$lib/server/db';
 import { parseRecipeExcel } from '$lib/excel/parse-recipes';
 import { importRecipesFromRows } from '$lib/server/queries/recipe-imports';
-import { createRecipe } from '$lib/server/queries/recipes'; // your existing fn
+import { createRecipe } from '$lib/server/queries/recipes';
 import { ConflictError } from '$lib/server/errors';
 import type { RecipeImportResult } from '$lib/types';
 import logger from '$lib/server/logger';
+import { parseFormData } from '$lib/server/form';
+import { RecipeNameSchema } from '$lib/server/schemas/recipe';
 
 export const load: PageServerLoad = async () => {
   return {};
 };
 
 export const actions: Actions = {
-  // ── Manual single-recipe creation (existing behaviour) ──────────────────────
+  // ── Manual single-recipe creation ───────────────────────────────────────────
   create: async ({ request }) => {
-    const data = await request.formData();
-    const name = String(data.get('name') ?? '').trim();
+    const form = await request.formData();
+    const parsed = parseFormData(RecipeNameSchema, form);
 
-    if (!name) {
+    if (!parsed.success) {
       return fail(400, {
-        errors: { name: 'Recipe name is required' },
-        values: { name },
+        errors: parsed.errors,
+        values: { name: form.get('name')?.toString() ?? '' },
       });
     }
+
+    const { name } = parsed.data;
 
     let recipe;
     try {

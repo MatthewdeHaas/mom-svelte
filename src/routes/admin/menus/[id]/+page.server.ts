@@ -10,6 +10,9 @@ import {
 } from '$lib/server/queries/menus';
 import { getRecipes } from '$lib/server/queries/recipes';
 import { pool } from '$lib/server/db';
+import { parseFormData } from '$lib/server/form';
+import { MenuSchema, MenuSlotSchema, MenuClearSlotSchema } from '$lib/server/schemas/menu';
+import type { DayOfWeek } from '$lib/types';
 
 export const load: PageServerLoad = async ({ params }) => {
   const [menu, slots, recipes] = await Promise.all([
@@ -26,20 +29,13 @@ export const load: PageServerLoad = async ({ params }) => {
 export const actions: Actions = {
   updateDetails: async ({ request, params }) => {
     const form = await request.formData();
+    const parsed = parseFormData(MenuSchema, form);
 
-    const name       = form.get('name')?.toString().trim() ?? '';
-    const start_date = form.get('start_date')?.toString() || null;
-    const end_date   = form.get('end_date')?.toString() || null;
-
-    const errors: Record<string, string> = {};
-    if (!name) errors.name = 'Menu name is required';
-    if (start_date && end_date && new Date(start_date) > new Date(end_date)) {
-      errors.end_date = 'End date must be on or after start date';
+    if (!parsed.success) {
+      return fail(422, { action: 'updateDetails', errors: parsed.errors, values: Object.fromEntries(form) });
     }
 
-    if (Object.keys(errors).length) {
-      return fail(422, { action: 'updateDetails', errors, values: { name, start_date, end_date } });
-    }
+    const { name, start_date, end_date } = parsed.data;
 
     await updateMenu(pool, params.id, {
       name,
@@ -52,20 +48,18 @@ export const actions: Actions = {
 
   assignSlot: async ({ request, params }) => {
     const form = await request.formData();
+    const parsed = parseFormData(MenuSlotSchema, form);
 
-    const cycle_week    = parseInt(form.get('cycle_week')?.toString() ?? '');
-    const day_of_week   = form.get('day_of_week')?.toString() ?? '';
-    const meal_category = form.get('meal_category')?.toString() ?? '';
-    const recipe_id     = form.get('recipe_id')?.toString() ?? '';
-
-    if (!recipe_id || isNaN(cycle_week) || !meal_category) {
+    if (!parsed.success) {
       return fail(422, { action: 'assignSlot', error: 'Invalid slot data' });
     }
+
+    const { cycle_week, day_of_week, meal_category, recipe_id } = parsed.data;
 
     await setMenuSlot(pool, {
       menu_id: params.id,
       cycle_week: cycle_week as 1 | 2 | 3 | 4,
-      day_of_week: day_of_week as import('$lib/types').DayOfWeek,
+      day_of_week: day_of_week as DayOfWeek,
       meal_category,
       recipe_id,
     });
@@ -75,16 +69,15 @@ export const actions: Actions = {
 
   clearSlot: async ({ request, params }) => {
     const form = await request.formData();
+    const parsed = parseFormData(MenuClearSlotSchema, form);
 
-    const cycle_week    = parseInt(form.get('cycle_week')?.toString() ?? '');
-    const day_of_week   = form.get('day_of_week')?.toString() ?? '';
-    const meal_category = form.get('meal_category')?.toString() ?? '';
-
-    if (isNaN(cycle_week) || !day_of_week || !meal_category) {
+    if (!parsed.success) {
       return fail(422, { action: 'clearSlot', error: 'Invalid slot data' });
     }
 
-    await clearMenuSlot(pool, params.id, cycle_week, day_of_week as import('$lib/types').DayOfWeek, meal_category);
+    const { cycle_week, day_of_week, meal_category } = parsed.data;
+
+    await clearMenuSlot(pool, params.id, cycle_week, day_of_week as DayOfWeek, meal_category);
 
     return { action: 'clearSlot', success: true };
   },

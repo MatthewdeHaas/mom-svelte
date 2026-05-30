@@ -10,6 +10,8 @@ import {
 import { getIngredients } from '$lib/server/queries/ingredients';
 import { pool } from '$lib/server/db';
 import { ConflictError } from '$lib/server/errors';
+import { parseFormData } from '$lib/server/form';
+import { RecipeNameSchema, RecipeIngredientSchema } from '$lib/server/schemas/recipe';
 
 export const load: PageServerLoad = async ({ params }) => {
   const [recipe, ingredients] = await Promise.all([
@@ -29,15 +31,17 @@ export const load: PageServerLoad = async ({ params }) => {
 export const actions: Actions = {
   updateName: async ({ request, params }) => {
     const form = await request.formData();
-    const name = form.get('name')?.toString().trim() ?? '';
+    const parsed = parseFormData(RecipeNameSchema, form);
 
-    if (!name) {
+    if (!parsed.success) {
       return fail(422, {
         action: 'updateName',
-        errors: { name: 'Recipe name is required' },
-        values: { name },
+        errors: parsed.errors,
+        values: { name: form.get('name')?.toString() ?? '' },
       });
     }
+
+    const { name } = parsed.data;
 
     try {
       await updateRecipe(pool, params.id, { name });
@@ -57,23 +61,17 @@ export const actions: Actions = {
 
   addIngredient: async ({ request, params }) => {
     const form = await request.formData();
+    const parsed = parseFormData(RecipeIngredientSchema, form);
 
-    const ingredient_id = form.get('ingredient_id')?.toString() ?? '';
-    const amount        = parseFloat(form.get('amount')?.toString() ?? '');
-    const unit          = form.get('unit')?.toString().trim() ?? '';
-
-    const errors: Record<string, string> = {};
-    if (!ingredient_id) errors.ingredient_id = 'Please select an ingredient';
-    if (isNaN(amount) || amount <= 0) errors.amount = 'Amount must be a positive number';
-    if (!unit) errors.unit = 'Unit is required';
-
-    if (Object.keys(errors).length) {
+    if (!parsed.success) {
       return fail(422, {
         action: 'addIngredient',
-        errors,
-        values: { ingredient_id, amount, unit },
+        errors: parsed.errors,
+        values: Object.fromEntries(form),
       });
     }
+
+    const { ingredient_id, amount, unit } = parsed.data;
 
     await addRecipeIngredient(pool, params.id, ingredient_id, amount, unit);
 
