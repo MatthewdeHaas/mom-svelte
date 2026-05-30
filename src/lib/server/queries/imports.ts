@@ -24,35 +24,31 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const ExcelRowSchema = z.object({
   company: z
-    .string({ required_error: 'Company is required' })
+    .string({ error: 'Company is required' })
     .min(1, 'Company cannot be empty'),
 
   recipe: z
-    .string({ required_error: 'Recipe is required' })
+    .string({ error: 'Recipe is required' })
     .min(1, 'Recipe cannot be empty'),
 
   serving_date: z
-    .string({ required_error: 'Serving date is required' })
+    .string({ error: 'Serving date is required' })
     .regex(ISO_DATE, 'Serving date must be in YYYY-MM-DD format'),
 
   shipment_date: z
-    .string({ required_error: 'Shipment date is required' })
+    .string({ error: 'Shipment date is required' })
     .regex(ISO_DATE, 'Shipment date must be in YYYY-MM-DD format'),
 
   meal_category: z.enum(MEAL_CATEGORIES, {
-    errorMap: () => ({
-      message: `Meal category must be one of: ${MEAL_CATEGORIES.join(', ')}`,
-    }),
+    error: `Meal category must be one of: ${MEAL_CATEGORIES.join(', ')}`,
   }),
 
   amount: z
-    .number({ required_error: 'Amount is required', invalid_type_error: 'Amount must be a number' })
+    .number({ error: 'Amount is required' })
     .positive('Amount must be greater than zero'),
 
   storage: z.enum(STORAGE_VALUES, {
-    errorMap: () => ({
-      message: `Storage must be one of: ${STORAGE_VALUES.join(', ')}`,
-    }),
+    error: `Storage must be one of: ${STORAGE_VALUES.join(', ')}`,
   }),
 
   notes: z.string().optional().nullable().transform((v) => v ?? null),
