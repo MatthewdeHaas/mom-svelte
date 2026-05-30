@@ -10,8 +10,8 @@ interface RecipeUpsertResult {
 }
 
 /**
- * Upsert recipes by name.
- * ON CONFLICT: sets active = true (re-activates soft-deleted recipes).
+ * Upsert recipe by name.
+ * ON CONFLICT: sets active = true (re-activates soft-deleted recipe).
  * xmax = 0 → row was inserted (created); non-zero → row was updated.
  * No updated_at column required.
  */
@@ -24,7 +24,7 @@ async function upsertRecipes(
   const placeholders = names.map((_, i) => `($${i + 1})`).join(', ');
 
   const { rows } = await client.query<{ id: number; name: string; created: boolean }>(
-    `INSERT INTO recipes (name)
+    `INSERT INTO recipe (name)
      VALUES ${placeholders}
      ON CONFLICT (name) DO UPDATE SET active = true
      RETURNING id, name, (xmax = 0) AS created`,
@@ -39,7 +39,7 @@ async function upsertRecipes(
 }
 
 /**
- * Upsert ingredients by name.
+ * Upsert ingredient by name.
  * ON CONFLICT: no-op (ingredient has no other mutable fields here).
  * Returns a map of name → id.
  */
@@ -52,7 +52,7 @@ async function upsertIngredients(
   const placeholders = names.map((_, i) => `($${i + 1})`).join(', ');
 
   const { rows } = await client.query<{ id: number; name: string }>(
-    `INSERT INTO ingredients (name)
+    `INSERT INTO ingredient (name)
      VALUES ${placeholders}
      ON CONFLICT (name) DO NOTHING
      RETURNING id, name`,
@@ -66,7 +66,7 @@ async function upsertIngredients(
   if (missing.length) {
     const mp = missing.map((_, i) => `$${i + 1}`).join(', ');
     const { rows: existing } = await client.query<{ id: number; name: string }>(
-      `SELECT id, name FROM ingredients WHERE name IN (${mp})`,
+      `SELECT id, name FROM ingredient WHERE name IN (${mp})`,
       missing,
     );
     rows.push(...existing);
@@ -76,7 +76,7 @@ async function upsertIngredients(
 }
 
 /**
- * Upsert allergens by name.
+ * Upsert allergen by name.
  * Returns a map of name → id.
  */
 async function upsertAllergens(
@@ -88,7 +88,7 @@ async function upsertAllergens(
   const placeholders = names.map((_, i) => `($${i + 1})`).join(', ');
 
   const { rows } = await client.query<{ id: number; name: string }>(
-    `INSERT INTO allergens (name)
+    `INSERT INTO allergen (name)
      VALUES ${placeholders}
      ON CONFLICT (name) DO NOTHING
      RETURNING id, name`,
@@ -101,7 +101,7 @@ async function upsertAllergens(
   if (missing.length) {
     const mp = missing.map((_, i) => `$${i + 1}`).join(', ');
     const { rows: existing } = await client.query<{ id: number; name: string }>(
-      `SELECT id, name FROM allergens WHERE name IN (${mp})`,
+      `SELECT id, name FROM allergen WHERE name IN (${mp})`,
       missing,
     );
     rows.push(...existing);
@@ -120,10 +120,10 @@ async function upsertAllergens(
  *
  * Steps:
  *   1. Collect unique names for all three entity types
- *   2. Batch upsert recipes, ingredients, allergens → id maps
+ *   2. Batch upsert recipe, ingredient, allergen → id maps
  *   3. Group rows by recipe
- *   4. Per recipe: full-replace recipe_ingredients
- *   5. Per ingredient: full-replace ingredient_allergens
+ *   4. Per recipe: full-replace recipe_ingredient
+ *   5. Per ingredient: full-replace ingredient_allergen
  */
 export async function importRecipesFromRows(
   db: Pool,
@@ -136,7 +136,7 @@ export async function importRecipesFromRows(
   const allergenNames   = [
     ...new Set(
       rows
-        .flatMap((r) => (r.allergens ? r.allergens.split(',').map((a) => a.trim()) : []))
+        .flatMap((r) => (r.allergen ? r.allergen.split(',').map((a) => a.trim()) : []))
         .filter(Boolean),
     ),
   ];
@@ -158,13 +158,13 @@ export async function importRecipesFromRows(
       rowsByRecipe.get(row.recipe)!.push(row);
     }
 
-    // ── 5. Replace recipe_ingredients per recipe ───────────────────────────────
+    // ── 5. Replace recipe_ingredient per recipe ───────────────────────────────
     for (const [recipeName, recipeRows] of rowsByRecipe) {
       const recipeId = recipeMap.get(recipeName);
       if (!recipeId) continue;
 
 			const seen = new Set<number>();
-			const ingredients = recipeRows
+			const ingredient = recipeRows
 				.filter((r) => r.ingredient != null)
 				.reduce<{ ingredient_id: number; amount: number; unit: string }[]>((acc, r) => {
 					const ingredient_id = ingredientMap.get(r.ingredient!)!;
@@ -175,15 +175,15 @@ export async function importRecipesFromRows(
 					return acc;
 				}, []);
 
-      await setRecipeIngredients(client, recipeId, ingredients);
+      await setRecipeIngredients(client, recipeId, ingredient);
     }
 
-    // ── 6. Replace ingredient_allergens per ingredient ─────────────────────────
+    // ── 6. Replace ingredient_allergen per ingredient ─────────────────────────
     // Build ingredient → allergen ids map from rows
     const allergensByIngredient = new Map<string, number[]>();
     for (const row of rows) {
-      if (!row.ingredient || !row.allergens) continue;
-      const ids = row.allergens
+      if (!row.ingredient || !row.allergen) continue;
+      const ids = row.allergen
         .split(',')
         .map((a) => a.trim())
         .filter(Boolean)
@@ -229,22 +229,22 @@ interface RecipeIngredientInput {
 async function setRecipeIngredients(
   client: PoolClient,
   recipeId: number,
-  ingredients: RecipeIngredientInput[],
+  ingredient: RecipeIngredientInput[],
 ): Promise<void> {
-  await client.query('DELETE FROM recipe_ingredients WHERE recipe_id = $1', [recipeId]);
+  await client.query('DELETE FROM recipe_ingredient WHERE recipe_id = $1', [recipeId]);
 
-  if (!ingredients.length) return;
+  if (!ingredient.length) return;
 
-  const placeholders = ingredients
+  const placeholders = ingredient
     .map((_, i) => `($1, $${i * 3 + 2}, $${i * 3 + 3}, $${i * 3 + 4})`)
     .join(', ');
   const values: unknown[] = [recipeId];
-  for (const ing of ingredients) {
+  for (const ing of ingredient) {
     values.push(ing.ingredient_id, ing.amount, ing.unit);
   }
 
   await client.query(
-    `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, amount, unit)
+    `INSERT INTO recipe_ingredient (recipe_id, ingredient_id, amount, unit)
      VALUES ${placeholders}`,
     values,
   );
@@ -255,13 +255,13 @@ async function setIngredientAllergens(
   ingredientId: number,
   allergenIds: number[],
 ): Promise<void> {
-  await client.query('DELETE FROM ingredient_allergens WHERE ingredient_id = $1', [ingredientId]);
+  await client.query('DELETE FROM ingredient_allergen WHERE ingredient_id = $1', [ingredientId]);
 
   if (!allergenIds.length) return;
 
   const placeholders = allergenIds.map((_, i) => `($1, $${i + 2})`).join(', ');
   await client.query(
-    `INSERT INTO ingredient_allergens (ingredient_id, allergen_id)
+    `INSERT INTO ingredient_allergen (ingredient_id, allergen_id)
      VALUES ${placeholders}`,
     [ingredientId, ...allergenIds],
   );
