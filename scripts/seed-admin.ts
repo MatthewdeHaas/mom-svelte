@@ -1,4 +1,14 @@
-import { pool } from '../src/lib/server/db';
+import pg from 'pg';
+
+const pool = new pg.Pool({
+  host:     process.env.POSTGRES_HOST     ?? process.env.PGHOST,
+  port:     Number(process.env.POSTGRES_PORT ?? process.env.PGPORT ?? 5432),
+  user:     process.env.POSTGRES_USER     ?? process.env.PGUSER,
+  password: process.env.POSTGRES_PASSWORD ?? process.env.PGPASSWORD,
+  database: process.env.POSTGRES_DB       ?? process.env.PGDATABASE,
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+});
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')
   .split(',')
