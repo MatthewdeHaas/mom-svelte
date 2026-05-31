@@ -380,14 +380,18 @@
         <div class="card-footer">
           {#if !data.company.active}
             <span style="font-size: 12.5px; color: var(--motm-text-muted);">Inactive companies cannot be edited</span>
-            <form method="POST" action="?/reactivate" use:enhance>
-              <button type="submit" class="btn btn-primary">Reactivate company</button>
-            </form>
           {:else}
             <button type="submit" class="btn btn-primary">Save changes</button>
           {/if}
         </div>
       </form>
+      {#if !data.company.active}
+        <div class="card-footer" style="border-top: 1px solid var(--motm-border); padding: 12px 18px;">
+          <form method="POST" action="?/reactivate" use:enhance>
+            <button type="submit" class="btn btn-primary">Reactivate company</button>
+          </form>
+        </div>
+      {/if}
     </div>
 
     <!-- Danger zone -->
@@ -423,6 +427,7 @@
           <p class="empty-side">No orders yet.</p>
         {:else}
           <table class="mini-table">
+            <tbody>
             {#each recentOrders as order}
               {@const status = statusConfig[order.status as OrderStatus]}
               <tr>
@@ -437,6 +442,7 @@
                 </td>
               </tr>
             {/each}
+            </tbody>
           </table>
           {#if data.orders.length > 5}
             <a href="/admin/orders?company_id={data.company.id}" class="view-all-link">
