@@ -5,10 +5,6 @@ RUN npm install -g pnpm
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
-ARG BETTER_AUTH_SECRET
-ARG BETTER_AUTH_URL
-ENV BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
-ENV BETTER_AUTH_URL=$BETTER_AUTH_URL
 RUN pnpm run build
 
 # Run the app
