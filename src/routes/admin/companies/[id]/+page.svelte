@@ -494,40 +494,42 @@
               <span class="field-error">{(form.errors as Record<string, string>).email}</span>
             {/if}
           </div>
-
-          {#if data.invites.length > 0}
-            <div class="invite-history">
-              <p class="invite-history-title">Invite history</p>
-              {#each data.invites as invite}
-                {@const status = inviteStatus(invite)}
-                <div class="invite-item">
-                  <div>
-                    <p class="invite-email">{invite.email}</p>
-                    <p class="invite-expiry">
-                      {#if invite.used_at}
-                        Used {formatExpiry(invite.used_at)}
-                      {:else}
-                        Expires {formatExpiry(invite.expires_at)}
-                      {/if}
-                    </p>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <span class="invite-badge" style="background:{status.bg};color:{status.color};">
-                      {status.label}
-                    </span>
-                    {#if !invite.used_at && new Date(invite.expires_at) >= new Date()}
-                      <form method="POST" action="?/revokeInvite" use:enhance>
-                        <input type="hidden" name="invite_id" value={invite.id} />
-                        <button type="submit" class="invite-revoke-btn">Revoke</button>
-                      </form>
-                    {/if}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
         </div>
       </form>
+
+      {#if data.invites.length > 0}
+        <div class="card-body" style="padding-top: 0;">
+          <div class="invite-history">
+            <p class="invite-history-title">Invite history</p>
+            {#each data.invites as invite}
+              {@const status = inviteStatus(invite)}
+              <div class="invite-item">
+                <div>
+                  <p class="invite-email">{invite.email}</p>
+                  <p class="invite-expiry">
+                    {#if invite.used_at}
+                      Used {formatExpiry(invite.used_at)}
+                    {:else}
+                      Expires {formatExpiry(invite.expires_at)}
+                    {/if}
+                  </p>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="invite-badge" style="background:{status.bg};color:{status.color};">
+                    {status.label}
+                  </span>
+                  {#if !invite.used_at && new Date(invite.expires_at) >= new Date()}
+                    <form method="POST" action="?/revokeInvite" use:enhance>
+                      <input type="hidden" name="invite_id" value={invite.id} />
+                      <button type="submit" class="invite-revoke-btn">Revoke</button>
+                    </form>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
     </div>
 
     <!-- Danger zone -->
