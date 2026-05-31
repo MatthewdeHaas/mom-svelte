@@ -1,6 +1,6 @@
 import { auth } from '$lib/server/auth';
 import logger from '$lib/server/logger';
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { building } from '$app/environment';
@@ -31,3 +31,8 @@ const handleLogging: Handle = async ({ event, resolve }) => {
 };
 
 export const handle: Handle = sequence(handleBetterAuth, handleLogging);
+
+export const handleError: HandleServerError = ({ error, event }) => {
+  logger.error({ err: error, method: event.request.method, pathname: event.url.pathname }, 'Unhandled server error');
+  return { message: 'An unexpected error occurred' };
+};
