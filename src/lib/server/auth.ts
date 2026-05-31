@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { admin, magicLink } from 'better-auth/plugins';
 import { pool } from './db';
+import { isRateLimited } from './rate-limit';
 
 // Support both singular ADMIN_EMAIL and comma-separated ADMIN_EMAILS
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')
@@ -9,6 +10,9 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')
   .filter(Boolean);
 
 export async function sendInviteEmail(email: string, inviteUrl: string): Promise<void> {
+  if (isRateLimited('invite', email, 5, 60_000)) {
+    throw new Error('Too many invite attempts. Please wait a minute.');
+  }
   const EMAIL_FROM = process.env.EMAIL_FROM;
   if (!EMAIL_FROM) throw new Error('EMAIL_FROM is not configured');
   const { Resend } = await import('resend');
@@ -46,6 +50,9 @@ export const auth = betterAuth({
     admin(),
     magicLink({
       sendMagicLink: async ({ email, url }) => {
+        // Rate limit: max 3 magic link requests per email per 15 minutes
+        if (isRateLimited('magic-link', email, 3, 15 * 60_000)) return;
+
         // Only send magic links to registered users. Querying Better Auth's
         // own "user" table is the authoritative check regardless of role.
         const registered = await pool.query<{ role: string | null }>(

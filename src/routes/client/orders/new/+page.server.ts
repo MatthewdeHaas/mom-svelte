@@ -65,9 +65,7 @@ export const actions: Actions = {
   create: async ({ request, locals }) => {
     const companyId = locals.user!.companyId!;
     const form = await request.formData();
-    console.log('[create action] form entries:', Object.fromEntries(form));
     const parsed = parseFormData(ClientOrderSchema, form);
-    console.log('[create action] parsed:', JSON.stringify(parsed));
 
     if (!parsed.success) {
       return fail(422, { action: 'create', errors: parsed.errors, values: Object.fromEntries(form) });
