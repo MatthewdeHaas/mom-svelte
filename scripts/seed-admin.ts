@@ -16,8 +16,8 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')
   .filter(Boolean);
 
 if (ADMIN_EMAILS.length === 0) {
-  console.error('[seed:admin] ERROR: ADMIN_EMAIL or ADMIN_EMAILS must be set');
-  process.exit(1);
+  console.warn('[seed:admin] ADMIN_EMAIL / ADMIN_EMAILS not set — skipping');
+  process.exit(0);
 }
 
 for (const email of ADMIN_EMAILS) {

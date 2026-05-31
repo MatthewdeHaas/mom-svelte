@@ -19,7 +19,7 @@
 		"db:reset-test": "bash scripts/reset-test-db.sh",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes",
 		"migrate": "tsx scripts/migrate.ts",
-		"seed:admin": "tsx --env-file=.env scripts/seed-admin.ts",
+		"seed:admin": "tsx scripts/seed-admin.ts",
 		"seed:dev": "tsx --env-file=.env scripts/seed-dev.ts"
 	},
 	"devDependencies": {

@@ -22,4 +22,4 @@ COPY --from=builder /app/scripts scripts/
 COPY --from=builder /app/tsconfig.json ./
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 EXPOSE 3000
-CMD ["sh", "-c", "pnpm run migrate && node build"]
+CMD ["sh", "-c", "pnpm run migrate && pnpm run seed:admin && node build"]
