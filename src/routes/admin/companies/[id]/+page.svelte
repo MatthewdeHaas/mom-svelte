@@ -18,8 +18,21 @@
     });
   }
 
+  function formatExpiry(val: string | Date): string {
+    return new Date(val).toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  }
+
+  function inviteStatus(invite: { used_at: Date | null; expires_at: Date }): { label: string; color: string; bg: string } {
+    if (invite.used_at) return { label: 'Used', color: '#1F6648', bg: '#D1FAE5' };
+    if (new Date(invite.expires_at) < new Date()) return { label: 'Expired', color: '#6B4A4A', bg: '#F3E8E8' };
+    return { label: 'Pending', color: '#92600A', bg: '#FEF3C7' };
+  }
+
   // Surface the most recent 5 orders for the summary panel
   const recentOrders = $derived(data.orders.slice(0, 5));
+  const activeInvites = $derived(data.invites.filter(i => !i.used_at && new Date(i.expires_at) >= new Date()));
 </script>
 
 <style>
@@ -267,6 +280,59 @@
     font-weight: 500;
   }
   .view-all-link:hover { color: var(--motm-pink-dark); text-decoration: underline; }
+
+  /* Invite section */
+  .invite-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .invite-row input {
+    flex: 1;
+  }
+  .invite-history {
+    margin-top: 16px;
+  }
+  .invite-history-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--motm-text-muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .invite-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--motm-border);
+    gap: 12px;
+  }
+  .invite-item:last-child { border-bottom: none; }
+  .invite-email { font-size: 13px; color: var(--motm-text); font-weight: 500; }
+  .invite-expiry { font-size: 11.5px; color: var(--motm-text-muted); margin-top: 1px; }
+  .invite-badge {
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .invite-revoke-btn {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    background: transparent;
+    color: #A32D2D;
+    border: 1px solid #F09595;
+    cursor: pointer;
+    transition: background 120ms;
+    white-space: nowrap;
+  }
+  .invite-revoke-btn:hover { background: #FCEBEB; }
 </style>
 
 <a href="/admin/companies" class="back-link">
@@ -385,6 +451,76 @@
             </form>
           {:else}
             <button type="submit" class="btn btn-primary">Save changes</button>
+          {/if}
+        </div>
+      </form>
+    </div>
+
+    <!-- Invite users -->
+    <div class="card" style="margin-bottom: 20px;">
+      <div class="card-header">
+        <p class="card-title">Invite a user</p>
+        <p class="card-sub">Send an invite link to give someone client portal access for this company.</p>
+      </div>
+      <form method="POST" action="?/invite" use:enhance>
+        <div class="card-body">
+          {#if form?.action === 'invite' && form?.success}
+            <div class="success-strip">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+              Invite sent
+            </div>
+          {/if}
+          <div class="field">
+            <label for="invite-email">Email address</label>
+            <div class="invite-row">
+              <input
+                id="invite-email"
+                name="email"
+                type="email"
+                placeholder="client@example.com"
+                value={form?.action === 'invite' ? ((form?.values as Record<string, string>)?.email ?? '') : ''}
+                class:error={form?.action === 'invite' && (form?.errors as Record<string, string>)?.email}
+                required
+              />
+              <button type="submit" class="btn btn-primary">Send invite</button>
+            </div>
+            {#if form?.action === 'invite' && (form?.errors as Record<string, string>)?.email}
+              <span class="field-error">{(form.errors as Record<string, string>).email}</span>
+            {/if}
+          </div>
+
+          {#if data.invites.length > 0}
+            <div class="invite-history">
+              <p class="invite-history-title">Invite history</p>
+              {#each data.invites as invite}
+                {@const status = inviteStatus(invite)}
+                <div class="invite-item">
+                  <div>
+                    <p class="invite-email">{invite.email}</p>
+                    <p class="invite-expiry">
+                      {#if invite.used_at}
+                        Used {formatExpiry(invite.used_at)}
+                      {:else}
+                        Expires {formatExpiry(invite.expires_at)}
+                      {/if}
+                    </p>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="invite-badge" style="background:{status.bg};color:{status.color};">
+                      {status.label}
+                    </span>
+                    {#if !invite.used_at && new Date(invite.expires_at) >= new Date()}
+                      <form method="POST" action="?/revokeInvite" use:enhance>
+                        <input type="hidden" name="invite_id" value={invite.id} />
+                        <button type="submit" class="invite-revoke-btn">Revoke</button>
+                      </form>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
           {/if}
         </div>
       </form>
