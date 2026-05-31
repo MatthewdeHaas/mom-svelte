@@ -1,0 +1,12 @@
+node_modules/
+.pnpm-store/
+.svelte-kit/
+build/
+.claude/
+playwright-report/
+test-results/
+tests/e2e/.auth/
+*.local
+.env
+.env.*
+!.env.example
