@@ -114,10 +114,10 @@ async function suppressViteFullReload(page: Page) {
 
     // Copy static properties from native WebSocket
     window.WebSocket.prototype = NativeWebSocket.prototype;
-    window.WebSocket.CONNECTING = NativeWebSocket.CONNECTING;
-    window.WebSocket.OPEN = NativeWebSocket.OPEN;
-    window.WebSocket.CLOSING = NativeWebSocket.CLOSING;
-    window.WebSocket.CLOSED = NativeWebSocket.CLOSED;
+    (window.WebSocket as any).CONNECTING = NativeWebSocket.CONNECTING;
+    (window.WebSocket as any).OPEN = NativeWebSocket.OPEN;
+    (window.WebSocket as any).CLOSING = NativeWebSocket.CLOSING;
+    (window.WebSocket as any).CLOSED = NativeWebSocket.CLOSED;
   });
 }
 
