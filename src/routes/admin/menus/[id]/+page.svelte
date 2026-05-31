@@ -42,7 +42,7 @@
 
   function openPanel(
     week: number,
-    day: number,
+    day: string,
     meal: string,
     dayLabel: string,
     currentId: string | null,
@@ -66,7 +66,7 @@
     recipeSearch = '';
   }
 
-  function getSlot(week: number, day: number, meal: string) {
+  function getSlot(week: number, day: string, meal: string) {
     return data.slots.find(
       (s: any) =>
         s.cycle_week === week &&

@@ -12,6 +12,13 @@
   let addUnit = $state('');
   let addIngredientId = $state('');
 
+  // Narrowed to the addIngredient failure shape so TS can resolve field-level errors
+  const addIngredientErrors = $derived(
+    form?.action === 'addIngredient' && 'errors' in form
+      ? (form.errors as Record<string, string>)
+      : null
+  );
+
   $effect(() => {
     if (form?.action === 'addIngredient' && form?.success) {
       addAmount = '';
@@ -340,7 +347,7 @@
       {:else}
         {#each data.recipe.ingredients as ing}
           <tr>
-            <td style="font-weight: 500;">{ing.ingredient_name ?? ing.name}</td>
+            <td style="font-weight: 500;">{ing.name}</td>
             <td class="td-muted">{ing.amount}</td>
             <td class="td-muted">{ing.unit}</td>
             {#if data.recipe.active}
@@ -371,7 +378,7 @@
             >
               <select
                 name="ingredient_id"
-                class:error={form?.action === 'addIngredient' && form?.errors?.ingredient_id}
+                class:error={!!addIngredientErrors?.ingredient_id}
                 bind:value={addIngredientId}
               >
                 <option value="">Select ingredient…</option>
@@ -379,8 +386,8 @@
                   <option value={ing.id}>{ing.name}</option>
                 {/each}
               </select>
-              {#if form?.action === 'addIngredient' && form?.errors?.ingredient_id}
-                <p class="add-row-error">{form.errors.ingredient_id}</p>
+              {#if addIngredientErrors?.ingredient_id}
+                <p class="add-row-error">{addIngredientErrors.ingredient_id}</p>
               {/if}
             </form>
           </td>
@@ -392,18 +399,18 @@
               min="0.01"
               step="any"
               placeholder="0"
-              class:error={form?.action === 'addIngredient' && form?.errors?.amount}
+              class:error={!!addIngredientErrors?.amount}
               bind:value={addAmount}
             />
-            {#if form?.action === 'addIngredient' && form?.errors?.amount}
-              <p class="add-row-error">{form.errors.amount}</p>
+            {#if addIngredientErrors?.amount}
+              <p class="add-row-error">{addIngredientErrors.amount}</p>
             {/if}
           </td>
           <td>
             <select
               form="add-ingredient-form"
               name="unit"
-              class:error={form?.action === 'addIngredient' && form?.errors?.unit}
+              class:error={!!addIngredientErrors?.unit}
               bind:value={addUnit}
             >
               <option value="">Unit…</option>
@@ -411,8 +418,8 @@
                 <option value={unit}>{unit}</option>
               {/each}
             </select>
-            {#if form?.action === 'addIngredient' && form?.errors?.unit}
-              <p class="add-row-error">{form.errors.unit}</p>
+            {#if addIngredientErrors?.unit}
+              <p class="add-row-error">{addIngredientErrors.unit}</p>
             {/if}
           </td>
           <td style="text-align: right;">

@@ -35,6 +35,9 @@ importers:
       svelte-sonner:
         specifier: ^1.1.1
         version: 1.1.1(svelte@5.55.5(@typescript-eslint/types@8.59.0))
+      svg-to-pdfkit:
+        specifier: ^0.1.8
+        version: 0.1.8
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -2948,6 +2951,9 @@ packages:
     resolution: {integrity: sha512-2uCs/LZ9us+AktdzYJM8OcxQ8qnPS1kpaO7syGT/MgO+6Qr1Ybl+TqPq+97u7PHqmmMlye5ZkoyXONy5mjjAbw==}
     engines: {node: '>=18'}
 
+  svg-to-pdfkit@0.1.8:
+    resolution: {integrity: sha512-QItiGZBy5TstGy+q8mjQTMGRlDDOARXLxH+sgVm1n/LYeo0zFcQlcCh8m4zi8QxctrxB9Kue/lStc/RD5iLadQ==}
+
   svix@1.90.0:
     resolution: {integrity: sha512-ljkZuyy2+IBEoESkIpn8sLM+sxJHQcPxlZFxU+nVDhltNfUMisMBzWX/UR8SjEnzoI28ZjCzMbmYAPwSTucoMw==}
 
@@ -5799,6 +5805,10 @@ snapshots:
       zimmerframe: 1.1.4
     transitivePeerDependencies:
       - '@typescript-eslint/types'
+
+  svg-to-pdfkit@0.1.8:
+    dependencies:
+      pdfkit: 0.18.0
 
   svix@1.90.0:
     dependencies:

@@ -19,6 +19,7 @@
  */
 
 import ExcelJS from 'exceljs';
+import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import {
   E2E_RECIPE_NAME,
@@ -30,16 +31,14 @@ import {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-async function fetchExport(
-  adminPage: Parameters<Parameters<typeof test>[1]>[0]['adminPage'],
-  path: string
-) {
+async function fetchExport(adminPage: Page, path: string) {
   const response = await adminPage.request.get(path);
   expect(response.status(), `GET ${path} returned ${response.status()}`).toBe(200);
   return response;
 }
 
-async function parseXlsx(buffer: Buffer): Promise<ExcelJS.Worksheet> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function parseXlsx(buffer: any): Promise<ExcelJS.Worksheet> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const sheet = workbook.worksheets[0];

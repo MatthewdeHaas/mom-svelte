@@ -272,9 +272,9 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">{data.order.company_name}</h1>
+    <h1 class="page-title">{data.order.company.name}</h1>
     <p style="font-size: 13.5px; color: var(--motm-text-muted); margin-top: 4px;">
-      {data.order.recipe_name} · {formatDate(data.order.serving_date)}
+      {data.order.recipe?.name} · {formatDate(data.order.serving_date)}
     </p>
   </div>
   <span class="status-badge" style="background: {statusConfig[data.order.status].bg}; color: {statusConfig[data.order.status].color};">{statusConfig[data.order.status].label}</span>
@@ -441,7 +441,7 @@
               name="notes"
               rows="2"
               disabled={isTerminal}
-            >{form?.values?.notes ?? data.order.notes ?? ''}</textarea>
+            >{form?.values?.notes ?? data.order.client_note ?? ''}</textarea>
           </div>
         </div>
 
@@ -463,11 +463,11 @@
         <div class="meta-grid">
           <div class="ro-field">
             <span class="ro-label">Company</span>
-            <span class="ro-value">{data.order.company_name}</span>
+            <span class="ro-value">{data.order.company.name}</span>
           </div>
           <div class="ro-field">
             <span class="ro-label">Recipe</span>
-            <span class="ro-value">{data.order.recipe_name}</span>
+            <span class="ro-value">{data.order.recipe?.name}</span>
           </div>
           <div class="ro-field">
             <span class="ro-label">Source</span>

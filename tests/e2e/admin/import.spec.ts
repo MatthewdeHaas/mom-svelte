@@ -19,6 +19,7 @@
 import ExcelJS from 'exceljs';
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
+import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
 
 // ─── Seed constants ───────────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ async function buildImportXlsx(
  * Returns after networkidle — caller asserts on the resulting page state.
  */
 async function uploadImportFile(
-  adminPage: Parameters<Parameters<typeof test>[1]>[0]['adminPage'],
+  adminPage: Page,
   xlsx: Buffer,
   filename = 'import.xlsx'
 ) {
@@ -245,7 +246,8 @@ test.describe('Order import', () => {
 
     // Parse and verify header row
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(Buffer.from(await response.body()));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await wb.xlsx.load(Buffer.from(await response.body()) as any);
     const ws = wb.worksheets[0];
     expect(ws).toBeDefined();
 

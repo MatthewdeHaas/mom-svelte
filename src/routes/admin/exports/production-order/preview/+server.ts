@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ url }) => {
   });
 
   const recipeIds = [...new Set(orders.map((o) => o.recipe_id))];
-  const totalMeals = orders.reduce((sum, o) => sum + o.amount, 0);
+  const totalMeals = orders.reduce((sum, o) => sum + Number(o.amount), 0);
 
   return json({ recipes: recipeIds.length, totalMeals });
 };

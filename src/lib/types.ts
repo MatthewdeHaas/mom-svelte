@@ -316,6 +316,7 @@ export interface ImportRowError {
   row: number;          // 1-based row index from the sheet
   field: string | null; // null = row-level error (e.g. company not found)
   message: string;
+  raw_value?: string | null;
 }
 
 

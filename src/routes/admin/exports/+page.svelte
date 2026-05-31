@@ -3,7 +3,7 @@
   import { Calendar } from '$lib/components/ui/calendar/index.js';
   import * as Popover from '$lib/components/ui/popover/index.js';
   import { parseDate } from '@internationalized/date';
-  import type { CalendarDate } from '@internationalized/date';
+  import type { CalendarDate, DateValue } from '@internationalized/date';
   import {
     todayEST,
     weekBoundsEST,
@@ -64,7 +64,7 @@
     return parseDate(dateStr);
   }
 
-  function onCalendarSelect(i: number, val: CalendarDate | undefined) {
+  function onCalendarSelect(i: number, val: DateValue | undefined) {
     if (!val) return;
     dates[i]       = val.toString();
     states[i]      = { phase: 'idle' };

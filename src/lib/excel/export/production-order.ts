@@ -55,7 +55,7 @@ export async function generateProductionOrderSheet(
 			});
     }
 
-    rowMap.get(order.recipe_id)!.amount += order.amount;
+    rowMap.get(order.recipe_id)!.amount += Number(order.amount);
   }
 
   // 5. Sort by meal category, then recipe name

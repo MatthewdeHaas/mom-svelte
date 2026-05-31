@@ -1,10 +1,16 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import type { OrderDetail } from '$lib/types';
 import { getOrders } from '$lib/server/queries/orders';
 import { getOrderById } from '$lib/server/queries/orders';
 import type { Pool } from 'pg';
+
+// svg-to-pdfkit ships as CJS with no type declarations
+const _require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SVGtoPDF: (doc: PDFKit.PDFDocument, svg: string, x: number, y: number, opts?: Record<string, unknown>) => void = _require('svg-to-pdfkit');
 
 // ─── Page geometry (Letter) ───────────────────────────────────────────────────
 
@@ -18,11 +24,10 @@ const CONTENT_W = PAGE_W - ML - MR;
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
-// Adjust this path to wherever the logo lives in your project.
-// The file is resolved relative to the project root at runtime.
-const LOGO_PATH = path.resolve('static/images/mom-logo.png');
+const LOGO_PATH = path.resolve('static/mom-logo.svg');
+// Rendered width/height in PDF points (preserve 192:107 aspect ratio)
 const LOGO_W    = 100;
-const LOGO_H    = 50;
+const LOGO_H    = Math.round((107 / 192) * LOGO_W); // ≈ 56 pts
 
 // ─── Typography ───────────────────────────────────────────────────────────────
 
@@ -31,11 +36,13 @@ const F = {
   bold:    'Helvetica-Bold',
 } as const;
 
-// ─── Colours (print-neutral) ──────────────────────────────────────────────────
+// ─── Colours ─────────────────────────────────────────────────────────────────
 
 const C = {
   black:       '#000000',
-  headerBg:    '#D3D3D3',   // light grey — header row fill
+  white:       '#FFFFFF',
+  headerBg:    '#C9718A',   // brand pink — header row fill
+  headerText:  '#FFFFFF',   // white text on pink header
   gridLine:    '#A9A9A9',   // grid / rule lines
   muted:       '#4A4A4A',
 } as const;
@@ -162,15 +169,15 @@ function cellText(
 function drawPageHeader(
   doc: PDFKit.PDFDocument,
   group: SlipGroup,
-  hasLogo: boolean
+  logoSvg: string | null
 ): number {
-  const logoColW  = hasLogo ? LOGO_W + 10 : 0;
+  const logoColW  = logoSvg ? LOGO_W + 10 : 0;
   const titleColW = CONTENT_W - logoColW;
 
-  // Logo (right-aligned in its column)
-  if (hasLogo) {
+  // Logo (right-aligned in its column), rendered as SVG
+  if (logoSvg) {
     const logoX = PAGE_W - MR - LOGO_W;
-    doc.image(LOGO_PATH, logoX, MT, { fit: [LOGO_W, LOGO_H] });
+    SVGtoPDF(doc, logoSvg, logoX, MT, { width: LOGO_W, height: LOGO_H, preserveAspectRatio: 'xMidYMid meet' });
   }
 
   // Title block (left column)
@@ -214,7 +221,7 @@ function drawCompanyBlock(
 // ─── Table ────────────────────────────────────────────────────────────────────
 
 function drawTableHeader(doc: PDFKit.PDFDocument, y: number): number {
-  // Grey background for header row
+  // Brand-pink background for header row
   doc.save()
     .rect(ML, y, CONTENT_W, HEADER_ROW_H)
     .fill(C.headerBg)
@@ -224,7 +231,18 @@ function drawTableHeader(doc: PDFKit.PDFDocument, y: number): number {
 
   let x = ML;
   for (const col of COLS) {
-    cellText(doc, col.label.toUpperCase(), x, y, col, { bold: true, fontSize: 8 });
+    // White text on pink header
+    doc
+      .font(F.bold)
+      .fontSize(8)
+      .fillColor(C.headerText)
+      .text(col.label.toUpperCase(), x + CELL_PAD_X, y + CELL_PAD_Y, {
+        width:    col.width - CELL_PAD_X * 2,
+        height:   HEADER_ROW_H - CELL_PAD_Y,
+        align:    col.align,
+        ellipsis: true,
+        lineBreak: false,
+      });
     x += col.width;
   }
 
@@ -328,13 +346,13 @@ function renderSlip(
   group: SlipGroup,
   isFirst: boolean,
   pageCounter: { n: number },
-  hasLogo: boolean
+  logoSvg: string | null
 ) {
   if (!isFirst) doc.addPage();
 
   drawPageFooter(doc, pageCounter.n++);
 
-  let y = drawPageHeader(doc, group, hasLogo);
+  let y = drawPageHeader(doc, group, logoSvg);
   y = drawCompanyBlock(doc, group, y);
   y += 6;
   y = drawTableHeader(doc, y);
@@ -346,7 +364,7 @@ function renderSlip(
     if (y + ROW_H > bottomLimit) {
       doc.addPage();
       drawPageFooter(doc, pageCounter.n++);
-      y = drawPageHeader(doc, group, hasLogo);
+      y = drawPageHeader(doc, group, logoSvg);
       y = drawTableHeader(doc, y);
     }
 
@@ -411,8 +429,10 @@ export async function generatePackingSlips(
     groupMap.get(key)!.orders.push(detail);
   }
 
-  // 4. Check logo availability once
-  const hasLogo = fs.existsSync(LOGO_PATH);
+  // 4. Load logo SVG once (null if file not found)
+  const logoSvg: string | null = fs.existsSync(LOGO_PATH)
+    ? fs.readFileSync(LOGO_PATH, 'utf8')
+    : null;
 
   // 5. Render one PDF per group
 	const results: Array<{ filename: string; companyName: string; buffer: Buffer }> = [];
@@ -439,7 +459,7 @@ export async function generatePackingSlips(
       doc.addPage();
 
       const pageCounter = { n: 1 };
-      renderSlip(doc, group, true, pageCounter, hasLogo);
+      renderSlip(doc, group, true, pageCounter, logoSvg);
       doc.end();
     });
 
