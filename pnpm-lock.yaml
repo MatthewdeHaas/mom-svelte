@@ -17,9 +17,6 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
-      lucide-svelte:
-        specifier: ^1.0.1
-        version: 1.0.1(svelte@5.55.5(@typescript-eslint/types@8.59.0))
       pdfkit:
         specifier: ^0.18.0
         version: 0.18.0
@@ -84,9 +81,6 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.2.2
         version: 4.2.4(vite@8.0.10(@types/node@24.12.2)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0))
-      '@types/jszip':
-        specifier: ^3.4.1
-        version: 3.4.1
       '@types/node':
         specifier: ^24
         version: 24.12.2
@@ -1173,10 +1167,6 @@ packages:
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
-
-  '@types/jszip@3.4.1':
-    resolution: {integrity: sha512-TezXjmf3lj+zQ651r6hPqvSScqBLvyPI9FxdXBqpEwBijNGQ2NXpaFW/7joGzveYkKQUil7iiDHLo6LV71Pc0A==}
-    deprecated: This is a stub types definition. jszip provides its own type definitions, so you do not need this installed.
 
   '@types/node@14.18.63':
     resolution: {integrity: sha512-fAtCfv4jJg+ExtXhvCkCqUKZ+4ok/JQk01qDKhL5BDDoS3AxKXhV5/MAVUZyQnSEd2GT92fkgZl0pz0Q0AzcIQ==}
@@ -2346,12 +2336,6 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
-
-  lucide-svelte@1.0.1:
-    resolution: {integrity: sha512-WvzZgk0pqzgda+AErLvgWxHkfg/+GgUwqKMRHvzt0IqyMdmyEDzDCk3Z+Wo/3y753oIgx8u9Q4eUbWkghFa8Jg==}
-    deprecated: Package deprecated. Please use @lucide/svelte instead.
-    peerDependencies:
-      svelte: ^3 || ^4 || ^5.0.0-next.42
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -4182,10 +4166,6 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/jszip@3.4.1':
-    dependencies:
-      jszip: 3.10.1
-
   '@types/node@14.18.63': {}
 
   '@types/node@24.12.2':
@@ -5216,10 +5196,6 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
-
-  lucide-svelte@1.0.1(svelte@5.55.5(@typescript-eslint/types@8.59.0)):
-    dependencies:
-      svelte: 5.55.5(@typescript-eslint/types@8.59.0)
 
   lz-string@1.5.0: {}
 

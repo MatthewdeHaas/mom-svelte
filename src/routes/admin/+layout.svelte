@@ -7,7 +7,7 @@
   import { Button } from '$lib/components/ui/button';
   import { Tooltip, TooltipContent, TooltipTrigger } from '$lib/components/ui/tooltip';
 
-  // Icon imports — using lucide-svelte (ships with shadcn-svelte)
+  // Icon imports
   import {
     LayoutDashboard,
     ShoppingBag,
@@ -19,7 +19,7 @@
     Menu,
     LogOut,
     ChevronRight,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   type NavItem = {
     label: string;
