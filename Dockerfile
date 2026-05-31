@@ -20,6 +20,6 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/pnpm-lock.yaml ./
 COPY --from=builder /app/scripts scripts/
 COPY --from=builder /app/tsconfig.json ./
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts && pnpm add tsx
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 EXPOSE 3000
 CMD ["sh", "-c", "pnpm run migrate && node build"]
