@@ -8,13 +8,6 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')
   .map((e) => e.trim())
   .filter(Boolean);
 
-const EMAIL_FROM = process.env.EMAIL_FROM;
-if (!EMAIL_FROM) {
-  throw new Error(
-    'EMAIL_FROM environment variable is required (e.g. "Meals on the Move <noreply@yourdomain.com>")'
-  );
-}
-
 export const auth = betterAuth({
   database: pool,
   secret: process.env.BETTER_AUTH_SECRET,
@@ -42,6 +35,13 @@ export const auth = betterAuth({
           [email]
         );
         if (!registered.rows[0]) return; // not registered — silently drop
+
+        const EMAIL_FROM = process.env.EMAIL_FROM;
+        if (!EMAIL_FROM) {
+          throw new Error(
+            'EMAIL_FROM environment variable is required (e.g. "Meals on the Move <noreply@yourdomain.com>")'
+          );
+        }
 
         const { Resend } = await import('resend');
         const resend = new Resend(process.env.RESEND_API_KEY);
