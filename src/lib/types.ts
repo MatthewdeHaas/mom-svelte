@@ -199,7 +199,7 @@ export interface PersonWithAllergens extends Person {
 export interface Attendance {
   id: string;
   person_id: string;
-  serving_date: Date;
+  serving_date: Date | string;
   attending: boolean;
 }
 
@@ -319,6 +319,31 @@ export interface ImportRowError {
   raw_value?: string | null;
 }
 
+
+// -------------------------------------------------------------
+// INVITE
+// -------------------------------------------------------------
+
+export interface Invite {
+  id: string;
+  company_id: string;
+  email: string;
+  token: string;
+  expires_at: Date;
+  used_at: Date | null;
+  created_at: Date;
+}
+
+export interface InsertInvite {
+  company_id: string;
+  email: string;
+  token: string;
+  expires_at: Date;
+}
+
+// -------------------------------------------------------------
+// EXCEL IMPORT (continued)
+// -------------------------------------------------------------
 
 export interface RecipeExcelRowParsed {
   recipe: string;

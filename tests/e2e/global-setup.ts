@@ -24,6 +24,19 @@ export const E2E_CLIENT_EMAIL = 'e2e-client@test.internal';
 export const E2E_PENDING_EMAIL = 'e2e-pending@test.internal';
 export const E2E_COMPANY_NAME = '__e2e_test_company__';
 
+// Client portal fixtures
+export const E2E_MENU_NAME = '__e2e_test_menu__';
+export const E2E_MENU_RECIPE_NAME = '__e2e_test_menu_recipe__';
+// Valid invite token (unused, not expired)
+export const E2E_INVITE_TOKEN = 'e2e-valid-invite-token-000000000000000';
+// A second valid token used only for the unauthenticated-redirect test
+// (the first valid token is consumed by the pending-user stamp test)
+export const E2E_INVITE_TOKEN_UNAUTH = 'e2e-valid-invite-token-unauth-00000';
+// Expired invite token
+export const E2E_INVITE_TOKEN_EXPIRED = 'e2e-expired-invite-token-00000000000';
+// Already-used invite token
+export const E2E_INVITE_TOKEN_USED = 'e2e-used-invite-token-000000000000000';
+
 // Fixed far-future date used for export test orders.
 // serving_date and shipment_date are the same (constraint: shipment <= serving).
 // This date falls in the week 2099-01-12→2099-01-18, so the packing-slips
@@ -65,6 +78,16 @@ async function cleanup(pool: Pool) {
   await pool.query(`DELETE FROM ingredient WHERE name = $1`, [E2E_INGREDIENT_NAME]);
   await pool.query(`DELETE FROM allergen WHERE name = $1`, [E2E_ALLERGEN_NAME]);
   await pool.query(`DELETE FROM company WHERE name = $1`, [E2E_COMPANY_NAME]);
+  // Client portal fixtures: menus and invite tokens
+  await pool.query(`DELETE FROM invite WHERE token = ANY($1)`, [
+    [E2E_INVITE_TOKEN, E2E_INVITE_TOKEN_UNAUTH, E2E_INVITE_TOKEN_EXPIRED, E2E_INVITE_TOKEN_USED],
+  ]);
+  await pool.query(
+    `DELETE FROM menu_recipe WHERE menu_id IN (SELECT id FROM menu WHERE name = $1)`,
+    [E2E_MENU_NAME]
+  );
+  await pool.query(`DELETE FROM menu WHERE name = $1`, [E2E_MENU_NAME]);
+  await pool.query(`DELETE FROM recipe WHERE name = $1`, [E2E_MENU_RECIPE_NAME]);
 }
 
 export default async function globalSetup() {
@@ -184,6 +207,120 @@ export default async function globalSetup() {
          'lunch', 3, $5, $5, false, true)`,
       [randomUUID(), companyId, recipeId, adminId, E2E_EXPORT_DATE]
     );
+
+    // ---------------------------------------------------------------
+    // Client portal seed data
+    // ---------------------------------------------------------------
+
+    // A recipe that will appear in the test menu
+    const menuRecipeId = randomUUID();
+    await pool.query(
+      `INSERT INTO recipe (id, name, active, created_at, updated_at)
+       VALUES ($1, $2, true, now(), now())`,
+      [menuRecipeId, E2E_MENU_RECIPE_NAME]
+    );
+
+    // A menu active from today spanning 28 days, with one slot on each
+    // cycle_week=1, day_of_week matching today+1 (tomorrow, guaranteed future).
+    // We pick 'monday' as a concrete day — tests that need a specific date
+    // must compute the next monday dynamically.
+    const menuId = randomUUID();
+    const todayStr = new Date().toISOString().slice(0, 10);
+    // end_date = today + 56 days (well past the 4-week look-ahead)
+    const horizonStr = new Date(Date.now() + 56 * 86400000).toISOString().slice(0, 10);
+    await pool.query(
+      `INSERT INTO menu (id, name, is_active, start_date, end_date, created_at)
+       VALUES ($1, $2, true, $3, $4, now())`,
+      [menuId, E2E_MENU_NAME, todayStr, horizonStr]
+    );
+
+    // Add a slot for every day-of-week so tests can hit the menu on any day.
+    // cycle_week=1 for all — the test menu is a simple 1-week repeating cycle.
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+    for (const day of days) {
+      await pool.query(
+        `INSERT INTO menu_recipe (id, menu_id, recipe_id, cycle_week, day_of_week, meal_category)
+         VALUES ($1, $2, $3, 1, $4, 'Lunch')`,
+        [randomUUID(), menuId, menuRecipeId, day]
+      );
+    }
+
+    // A confirmed order for the client — serving_date = tomorrow.
+    // Used to verify attendance dates are populated from orders.
+    const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    await pool.query(
+      `INSERT INTO "order" (id, company_id, recipe_id, created_by, order_source, status,
+         meal_category, amount, serving_date, shipment_date, frozen, chilled)
+       VALUES ($1, $2, $3, $4, 'client_portal', 'confirmed',
+         'Lunch', 10, $5, $5, false, false)`,
+      [randomUUID(), companyId, menuRecipeId, clientId, tomorrowStr]
+    );
+
+    // Invite tokens for invite flow tests
+    // 1. Valid, unused token pointing to the test company
+    await pool.query(
+      `INSERT INTO invite (id, company_id, email, token, expires_at)
+       VALUES ($1, $2, 'invited@test.internal', $3, now() + interval '48 hours')`,
+      [randomUUID(), companyId, E2E_INVITE_TOKEN]
+    );
+    // 1b. Second valid token used only by the unauthenticated-redirect test
+    //     (the primary token is consumed by the pending-user stamp test)
+    await pool.query(
+      `INSERT INTO invite (id, company_id, email, token, expires_at)
+       VALUES ($1, $2, 'invited2@test.internal', $3, now() + interval '48 hours')`,
+      [randomUUID(), companyId, E2E_INVITE_TOKEN_UNAUTH]
+    );
+    // 2. Expired token
+    await pool.query(
+      `INSERT INTO invite (id, company_id, email, token, expires_at)
+       VALUES ($1, $2, 'expired@test.internal', $3, now() - interval '1 hour')`,
+      [randomUUID(), companyId, E2E_INVITE_TOKEN_EXPIRED]
+    );
+    // 3. Already-used token
+    await pool.query(
+      `INSERT INTO invite (id, company_id, email, token, expires_at, used_at)
+       VALUES ($1, $2, 'used@test.internal', $3, now() + interval '48 hours', now())`,
+      [randomUUID(), companyId, E2E_INVITE_TOKEN_USED]
+    );
+
+    // Persist extra IDs needed by tests
+    const state = JSON.parse(
+      (await import('fs')).readFileSync(join(process.cwd(), 'tests/e2e/.auth/state.json'), 'utf-8')
+    );
+    (await import('fs')).writeFileSync(
+      join(process.cwd(), 'tests/e2e/.auth/state.json'),
+      JSON.stringify({ ...state, menuId, menuRecipeId, tomorrowStr }, null, 2)
+    );
+
+    // Pre-warm Vite dev-mode routes so the first browser navigation to each
+    // route doesn't trigger an SSR HMR reload that cancels in-flight navigations.
+    const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5174';
+    const warmupRoutes = [
+      '/client',
+      '/client/roster',
+      `/client/roster/${companyId}`, // intentionally 404 — still compiles the module
+      '/client/menu',
+      '/client/orders',
+      '/client/orders/new',
+      '/client/attendance',
+      '/client/settings',
+      '/admin',
+      '/admin/companies',
+      `/admin/companies/${companyId}`,
+      '/admin/orders',
+      '/admin/orders/import',
+      '/admin/ingredients',
+      '/invite/warmup-placeholder',
+      '/login',
+    ];
+    await Promise.allSettled(
+      warmupRoutes.map((path) =>
+        fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(8000) }).catch(() => {})
+      )
+    );
+    // Give Vite a moment to finish any SSR invalidation signals before tests begin
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
   } finally {
     await pool.end();
   }

@@ -4,9 +4,12 @@
   let { children, data } = $props();
 
   const navItems = [
-    { label: 'Dashboard', href: '/client' },
-    { label: 'Orders',    href: '/client/orders' },
-    { label: 'People',    href: '/client/persons' },
+    { label: 'Dashboard',  href: '/client' },
+    { label: 'Menu',       href: '/client/menu' },
+    { label: 'Orders',     href: '/client/orders' },
+    { label: 'Attendance', href: '/client/attendance' },
+    { label: 'Roster',     href: '/client/roster' },
+    { label: 'Settings',   href: '/client/settings' },
   ];
 </script>
 

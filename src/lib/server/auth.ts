@@ -8,6 +8,24 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')
   .map((e) => e.trim())
   .filter(Boolean);
 
+export async function sendInviteEmail(email: string, inviteUrl: string): Promise<void> {
+  const EMAIL_FROM = process.env.EMAIL_FROM;
+  if (!EMAIL_FROM) throw new Error('EMAIL_FROM is not configured');
+  const { Resend } = await import('resend');
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  await resend.emails.send({
+    from: EMAIL_FROM,
+    to: email,
+    subject: "You've been invited to Meals on the Move",
+    html: `
+      <p>You've been invited to access the Meals on the Move client portal.</p>
+      <p>Click the link below to set up your account. This invite expires in 48 hours.</p>
+      <p><a href="${inviteUrl}">Accept invitation</a></p>
+      <p style="color:#888;font-size:12px;">If you weren't expecting this, you can ignore this email.</p>
+    `,
+  });
+}
+
 export const auth = betterAuth({
   database: pool,
   secret: process.env.BETTER_AUTH_SECRET,
