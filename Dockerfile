@@ -5,6 +5,13 @@ RUN npm install -g pnpm
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
+# BETTER_AUTH_SECRET/URL are only needed so Better Auth doesn't throw during
+# SvelteKit's post-build SSR analysis. The defaults are placeholders — the real
+# values are injected by Railway at runtime and never enter the final image.
+ARG BETTER_AUTH_SECRET=build-time-placeholder
+ARG BETTER_AUTH_URL=http://localhost:3000
+ENV BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
+ENV BETTER_AUTH_URL=$BETTER_AUTH_URL
 RUN pnpm run build
 
 # Run the app
