@@ -1,8 +1,5 @@
-import type { RequestHandler } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = () => {
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { 'content-type': 'application/json' }
-  });
+  return new Response('ok', { status: 200 });
 };
