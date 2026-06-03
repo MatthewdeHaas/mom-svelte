@@ -5,9 +5,9 @@
   const { data, form }: { data: PageData; form: ActionData } = $props();
 
   // Initialise selected allergens from form repopulation on validation error
-  let selected = $state<Set<string>>(
-    new Set(form?.values?.allergenIds ?? [])
-  );
+  let selected = $state<Set<string>>(new Set());
+
+  $effect(() => { selected = new Set(form?.values?.allergenIds ?? []); });
 
   function toggleAllergen(id: string) {
     if (selected.has(id)) selected.delete(id);
@@ -55,7 +55,7 @@
   }
 
   .field { display: flex; flex-direction: column; gap: 5px; }
-  label { font-size: 12.5px; font-weight: 600; color: var(--motm-text); }
+  label, .field-label { font-size: 12.5px; font-weight: 600; color: var(--motm-text); }
   .field-hint { font-size: 12px; color: var(--motm-text-muted); }
   .field-error { font-size: 12px; color: #A32D2D; }
 
@@ -172,7 +172,7 @@
       </div>
 
       <div class="field">
-        <label>Allergens</label>
+        <span class="field-label">Allergens</span>
         <p class="field-hint">Select all that apply</p>
         {#if data.allergens.length === 0}
           <p class="no-allergens">No allergens configured yet.</p>

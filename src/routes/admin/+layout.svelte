@@ -82,7 +82,11 @@
     await goto('/');
   }
 
-  let mobileOpen = false;
+  import type { Snippet } from 'svelte';
+
+  let { children }: { children: Snippet } = $props();
+
+  let mobileOpen = $state(false);
 </script>
 
 <!-- ───────────────────────── CSS custom properties ───────────────────────── -->
@@ -375,7 +379,7 @@
               class="nav-item"
               class:active={isRootActive(item.href)}
             >
-              <svelte:component this={item.icon} />
+              <item.icon />
               {item.label}
               {#if item.badge}
                 <span style="margin-left: auto; font-size: 11px; background: var(--motm-pink-light); color: var(--motm-pink-dark); padding: 1px 6px; border-radius: 4px;">
@@ -420,7 +424,7 @@
                       class:active={isRootActive(item.href)}
                       onclick={() => (mobileOpen = false)}
                     >
-                      <svelte:component this={item.icon} />
+                      <item.icon />
                       {item.label}
                     </a>
                   {/each}
@@ -448,7 +452,7 @@
     </header>
 
     <main class="page-slot">
-      <slot />
+      {@render children()}
     </main>
   </div>
 </div>

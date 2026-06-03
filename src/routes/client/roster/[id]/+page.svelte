@@ -9,7 +9,9 @@
   // Local editable name state. Initialized from server data; user edits update it
   // via bind:value. After a successful save the value is retained (since it's what
   // the user typed). On fresh navigation data.person.name will re-initialize.
-  let nameValue = $state(data.person.name);
+  let nameValue = $state('');
+
+  $effect(() => { nameValue = data.person.name; });
 
   const selectedAllergenIds = $derived(
     new Set(
@@ -54,7 +56,7 @@
   }
 
   .field { display: flex; flex-direction: column; gap: 5px; }
-  label { font-size: 12.5px; font-weight: 600; color: #2C1F24; }
+  label, .field-label { font-size: 12.5px; font-weight: 600; color: #2C1F24; }
   input {
     padding: 8px 11px; border: 1px solid #EDE8E3; border-radius: 7px;
     font-size: 13.5px; font-family: inherit; color: #2C1F24; background: #fff;
@@ -172,7 +174,7 @@
           </div>
 
           <div class="field">
-            <label>Allergens</label>
+            <span class="field-label">Allergens</span>
             <div class="allergen-grid">
               {#each data.allAllergens as allergen}
                 <label class="allergen-check">

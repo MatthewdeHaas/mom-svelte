@@ -39,7 +39,7 @@
   }
 
   .field { display: flex; flex-direction: column; gap: 5px; }
-  label { font-size: 12.5px; font-weight: 600; color: #2C1F24; }
+  label, .field-label { font-size: 12.5px; font-weight: 600; color: #2C1F24; }
   input {
     padding: 8px 11px;
     border: 1px solid #EDE8E3;
@@ -131,8 +131,8 @@
         </div>
 
         <div class="field">
-          <label>Email</label>
-          <input type="email" value={data.user.email} disabled />
+          <label for="settings-email">Email</label>
+          <input id="settings-email" type="email" value={data.user.email} disabled />
           <p class="hint">Email cannot be changed — sign in uses a magic link sent to this address.</p>
         </div>
       </div>
@@ -150,23 +150,23 @@
     </div>
     <div class="card-body">
       <div class="field">
-        <label>Company name</label>
+        <span class="field-label">Company name</span>
         <div class="read-only-value">{data.company?.name ?? '—'}</div>
       </div>
       <div class="field">
-        <label>Contact email</label>
+        <span class="field-label">Contact email</span>
         <div class="read-only-value" class:read-only-empty={!data.company?.contact_email}>
           {data.company?.contact_email ?? '—'}
         </div>
       </div>
       <div class="field">
-        <label>Phone</label>
+        <span class="field-label">Phone</span>
         <div class="read-only-value" class:read-only-empty={!data.company?.phone}>
           {data.company?.phone ?? '—'}
         </div>
       </div>
       <div class="field">
-        <label>Shipping address</label>
+        <span class="field-label">Shipping address</span>
         <div class="read-only-value" class:read-only-empty={!data.company?.shipping_address}
              style="white-space: pre-line;">
           {data.company?.shipping_address ?? '—'}

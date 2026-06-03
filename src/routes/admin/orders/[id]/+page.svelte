@@ -22,9 +22,11 @@
   const canCancel   = $derived(['pending', 'confirmed'].includes(data.order.status));
 
   // Frozen/chilled are mutually exclusive — manage as a single selection
-  let tempMode = $state(
-    data.order.frozen ? 'frozen' : data.order.chilled ? 'chilled' : 'none'
-  );
+  let tempMode = $state('none');
+
+  $effect(() => {
+    tempMode = data.order.frozen ? 'frozen' : data.order.chilled ? 'chilled' : 'none';
+  });
 
   function formatDate(val: string | Date | null): string {
     if (!val) return '—';
@@ -112,11 +114,11 @@
   /* Fields */
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .field { display: flex; flex-direction: column; gap: 5px; }
-  label { font-size: 12.5px; font-weight: 600; color: var(--motm-text); }
+  label, .field-label { font-size: 12.5px; font-weight: 600; color: var(--motm-text); }
   .field-error { font-size: 12px; color: #A32D2D; }
   .field-hint { font-size: 12px; color: var(--motm-text-muted); }
 
-  input[type="text"], input[type="number"], input[type="date"], select, textarea {
+  input[type="number"], input[type="date"], select, textarea {
     padding: 8px 11px;
     border: 1px solid var(--motm-border);
     border-radius: 7px;
@@ -255,12 +257,6 @@
   }
   .btn-primary { background: var(--motm-pink); color: #fff; }
   .btn-primary:hover { background: var(--motm-pink-dark); }
-  .btn-ghost {
-    background: transparent;
-    color: var(--motm-text-muted);
-    border: 1px solid var(--motm-border);
-  }
-  .btn-ghost:hover { background: #FAF8F6; color: var(--motm-text); }
 </style>
 
 <a href="/admin/orders" class="back-link">
@@ -399,7 +395,7 @@
           </div>
 
           <div class="field">
-            <label>Temperature</label>
+            <span class="field-label">Temperature</span>
             <div class="temp-pills">
               <button
                 type="button"

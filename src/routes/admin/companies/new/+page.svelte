@@ -76,7 +76,7 @@
     resize: vertical;
   }
   input:focus, textarea:focus { border-color: var(--motm-pink); }
-  input.error, textarea.error { border-color: #E24B4A; }
+  input.error { border-color: #E24B4A; }
   .field-error {
     font-size: 12px;
     color: #A32D2D;

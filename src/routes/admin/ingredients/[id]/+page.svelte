@@ -6,11 +6,15 @@
 
   // Seed selected allergens from the ingredient's current allergens,
   // or from form repopulation on validation error
-  const initialIds = form?.values?.allergenIds
-    ?? data.ingredient.allergen?.map((a: { id: string }) => a.id)
-    ?? [];
+  const initialIds = $derived(
+    form?.values?.allergenIds
+      ?? data.ingredient.allergen?.map((a: { id: string }) => a.id)
+      ?? []
+  );
 
-  let selected = $state<Set<string>>(new Set(initialIds));
+  let selected = $state<Set<string>>(new Set());
+
+  $effect(() => { selected = new Set(initialIds); });
 
   function toggleAllergen(id: string) {
     if (selected.has(id)) selected.delete(id);
@@ -171,12 +175,6 @@
   }
   .btn-primary { background: var(--motm-pink); color: #fff; }
   .btn-primary:hover { background: var(--motm-pink-dark); }
-  .btn-ghost {
-    background: transparent;
-    color: var(--motm-text-muted);
-    border: 1px solid var(--motm-border);
-  }
-  .btn-ghost:hover { background: #FAF8F6; color: var(--motm-text); }
   .btn-danger {
     background: transparent;
     color: #A32D2D;

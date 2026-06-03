@@ -227,19 +227,6 @@
     line-height: 1.55;
   }
 
-  /* Side summary */
-  .summary-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    padding: 9px 0;
-    border-bottom: 1px solid var(--motm-border);
-    font-size: 13px;
-  }
-  .summary-row:last-child { border-bottom: none; }
-  .summary-label { color: var(--motm-text-muted); }
-  .summary-value { font-weight: 500; color: var(--motm-text); }
-
   .status-badge {
     display: inline-flex;
     padding: 2px 7px;

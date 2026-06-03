@@ -12,13 +12,12 @@
   );
 
   // Local state for the amount input so user edits are preserved across re-renders
-  let amountValue = $state(values?.amount ?? '');
+  let amountValue = $state('');
 
   // Sync from form action result (e.g. after validation failure echoes the value back)
   $effect(() => {
-    if (form?.action === 'create' && (form?.values as Record<string, string>)?.amount) {
-      amountValue = (form.values as Record<string, string>).amount;
-    }
+    const v = values?.amount;
+    if (v) amountValue = v;
   });
 
   function formatDate(d: string) {
@@ -49,16 +48,8 @@
     display: flex; gap: 10px; justify-content: flex-end;
   }
 
-  .summary-row {
-    display: flex; justify-content: space-between; font-size: 13.5px;
-    padding: 6px 0; border-bottom: 1px solid #EDE8E3;
-  }
-  .summary-row:last-child { border-bottom: none; }
-  .summary-label { color: #7A6670; }
-  .summary-value { font-weight: 500; color: #2C1F24; }
-
   .field { display: flex; flex-direction: column; gap: 5px; }
-  label { font-size: 12.5px; font-weight: 600; color: #2C1F24; }
+  label, .field-label { font-size: 12.5px; font-weight: 600; color: #2C1F24; }
   input, textarea {
     padding: 8px 11px; border: 1px solid #EDE8E3; border-radius: 7px;
     font-size: 13.5px; font-family: inherit; color: #2C1F24; background: #fff;
@@ -133,7 +124,7 @@
       </div>
 
       <div class="field">
-        <label>Storage preference</label>
+        <span class="field-label">Storage preference</span>
         <div class="storage-group">
           <label class="storage-option">
             <input type="radio" name="storage" value="ambient"

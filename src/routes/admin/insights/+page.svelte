@@ -251,10 +251,10 @@
 <div class="page-header">
   <h1 class="page-title">Insights</h1>
   <div class="date-controls">
-    <label>From</label>
-    <input type="date" bind:value={rangeFrom} />
-    <label>To</label>
-    <input type="date" bind:value={rangeTo} />
+    <label for="insights-from">From</label>
+    <input id="insights-from" type="date" bind:value={rangeFrom} />
+    <label for="insights-to">To</label>
+    <input id="insights-to" type="date" bind:value={rangeTo} />
     <div class="granularity-toggle">
       <button class:active={granularity === 'daily'} onclick={() => granularity = 'daily'}>Daily</button>
       <button class:active={granularity === 'weekly'} onclick={() => granularity = 'weekly'}>Weekly</button>

@@ -4,9 +4,9 @@
   import type { ImportRowError } from '$lib/types';
 
   let { form }: { form: ActionData } = $props();
-  let file: File | null = null;
-  let dragging = false;
-  let submitting = false;
+  let file = $state<File | null>(null);
+  let dragging = $state(false);
+  let submitting = $state(false);
 
   function onFileChange(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -104,9 +104,9 @@
         class:dragging
         class:has-file={!!file}
         for="file-input"
-        on:dragover|preventDefault={() => (dragging = true)}
-        on:dragleave={() => (dragging = false)}
-        on:drop={onDrop}
+        ondragover={(e) => { e.preventDefault(); dragging = true; }}
+        ondragleave={() => (dragging = false)}
+        ondrop={onDrop}
       >
         {#if file}
           <svg viewBox="0 0 20 20" fill="currentColor" width="32" height="32" class="drop-icon drop-icon--file" aria-hidden="true">
@@ -126,7 +126,7 @@
           type="file"
           name="file"
           accept=".xlsx"
-          on:change={onFileChange}
+          onchange={onFileChange}
           class="sr-only"
         />
       </label>

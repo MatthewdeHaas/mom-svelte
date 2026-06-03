@@ -16,7 +16,9 @@
     return g;
   }
 
-  let grid = $state(buildGrid(data.attendance));
+  let grid = $state<Record<string, boolean>>({});
+
+  $effect(() => { grid = buildGrid(data.attendance); });
 
   function shortDate(d: string): string {
     return new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });

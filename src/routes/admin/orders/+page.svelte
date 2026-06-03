@@ -29,7 +29,9 @@
   };
 
   // Local filter state — mirrors URL params
-  let filters = $state({ ...data.filters });
+  let filters = $state<Record<string, any>>({});
+
+  $effect(() => { filters = { ...data.filters }; });
 
   // Bulk selection state
   let selected = $state(new Set<string>());

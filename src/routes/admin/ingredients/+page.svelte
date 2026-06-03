@@ -6,8 +6,10 @@
 
   const { data }: { data: PageData } = $props();
 
-  let search = $state(data.search);
+  let search = $state('');
   let debounceTimer: ReturnType<typeof setTimeout>;
+
+  $effect(() => { search = data.search; });
 
   function onSearchInput(e: Event) {
     search = (e.target as HTMLInputElement).value;
