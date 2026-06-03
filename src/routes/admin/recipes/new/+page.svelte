@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ActionData } from './$types';
+  import type { ImportRowError } from '$lib/types';
   import { enhance } from '$app/forms';
 
   const { form }: { form: ActionData } = $props();
@@ -7,10 +8,13 @@
   let importFile = $state<File | null>(null);
   let dragging = $state(false);
   let submitting = $state(false);
+  let mode = $state<'replace' | 'add'>('replace');
+  let confirmed = $state(false);
 
   function onFileChange(e: Event) {
     const input = e.target as HTMLInputElement;
     importFile = input.files?.[0] ?? null;
+    confirmed = false;
   }
 
   function onDrop(e: DragEvent) {
@@ -23,18 +27,26 @@
       const dt = new DataTransfer();
       dt.items.add(dropped);
       input.files = dt.files;
+      confirmed = false;
     }
   }
 
   const parseErrors = $derived(
     (form as any)?.parseErrors as Array<{ row: number; field: string; message: string; raw_value: string }> | undefined
   );
+  const warnings = $derived((form as any)?.warnings as ImportRowError[] | undefined);
   const importResult = $derived((form as any)?.result);
   const importError = $derived((form as any)?.importError as string | undefined);
+
+  function handleProceedAnyway() {
+    confirmed = true;
+    const formEl = document.getElementById('import-form') as HTMLFormElement;
+    formEl?.requestSubmit();
+  }
 </script>
 
 <style>
-  /* ── Shared with existing /new styles ── */
+  /* ── Shared styles ── */
   .back-link {
     display: inline-flex;
     align-items: center;
@@ -167,7 +179,7 @@
     }
   }
 
-  /* ── Warning notice ── */
+  /* ── Notice ── */
   .notice {
     display: flex;
     align-items: flex-start;
@@ -181,6 +193,33 @@
     line-height: 1.5;
   }
   .notice svg { flex-shrink: 0; margin-top: 1px; }
+
+  /* ── Mode toggle ── */
+  .mode-toggle {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .mode-option {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 8px 12px;
+    border: 1px solid var(--motm-border);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: border-color 120ms, background 120ms;
+    flex: 1;
+    min-width: 120px;
+  }
+  .mode-option input[type="radio"] { display: none; }
+  .mode-option strong { font-size: 12.5px; color: var(--motm-text); }
+  .mode-option span { font-size: 11px; color: var(--motm-text-muted); }
+  .mode-option:hover { border-color: var(--motm-pink); }
+  .mode-option.active {
+    border-color: var(--motm-pink);
+    background: #FDF5F7;
+  }
 
   /* ── Dropzone ── */
   .dropzone {
@@ -267,8 +306,9 @@
   .badge-req { background: #FEE2E2; color: #B91C1C; }
   .badge-opt { background: #F3F4F6; color: #6B7280; }
 
-  /* ── Validation errors ── */
-  .error-table {
+  /* ── Error / warning tables ── */
+  .error-table,
+  .warning-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 12px;
@@ -289,8 +329,37 @@
     vertical-align: top;
   }
   .error-table tr:last-child td { border-bottom: none; }
+
+  .warning-table th {
+    background: #FEFCE8;
+    text-align: left;
+    padding: 7px 10px;
+    font-weight: 600;
+    color: #92400e;
+    border-bottom: 1px solid #FDE68A;
+    white-space: nowrap;
+  }
+  .warning-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #FEF3C7;
+    color: var(--motm-text);
+    vertical-align: top;
+  }
+  .warning-table tr:last-child td { border-bottom: none; }
+
   .mono { font-family: ui-monospace, monospace; font-size: 11px; }
   .truncate { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .suggestion { color: #16a34a; font-weight: 500; }
+
+  /* ── Warning actions ── */
+  .warning-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .warning-hint { font-size: 11px; color: var(--motm-text-muted); }
 
   /* ── Import result ── */
   .result-grid {
@@ -319,6 +388,18 @@
     color: #14532d;
     line-height: 1;
   }
+
+  /* ── Template link ── */
+  .template-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--motm-text-muted);
+    text-decoration: none;
+    transition: color 120ms;
+  }
+  .template-link:hover { color: var(--motm-pink); }
 
   /* ── Spinner ── */
   .spinner {
@@ -395,19 +476,49 @@
   <!-- ── Excel import ── -->
   <div class="card">
     <div class="card-header">
-      <p class="card-title">Import from spreadsheet</p>
-      <p class="card-sub">Upload an .xlsx file to bulk-import recipes and ingredients</p>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <p class="card-title">Import from spreadsheet</p>
+          <p class="card-sub">Upload an .xlsx file to bulk-import recipes and ingredients</p>
+        </div>
+        <a href="/admin/recipes/new/template" class="template-link" download>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Template
+        </a>
+      </div>
     </div>
 
     <div class="card-body" style="display: flex; flex-direction: column; gap: 14px;">
 
-      <div class="notice">
-        <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
-          <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
-        </svg>
-        <span><strong>Re-importing a recipe replaces its ingredient list entirely.</strong> Ingredients not in the file will be removed from that recipe.</span>
+      <!-- Mode toggle -->
+      <div class="mode-toggle">
+        <label class="mode-option" class:active={mode === 'replace'}>
+          <input type="radio" name="mode-radio" value="replace" bind:group={mode} />
+          <strong>Replace</strong>
+          <span>Overwrite ingredients for existing recipes</span>
+        </label>
+        <label class="mode-option" class:active={mode === 'add'}>
+          <input type="radio" name="mode-radio" value="add" bind:group={mode} />
+          <strong>Add new</strong>
+          <span>Skip existing; warn on similar ingredients</span>
+        </label>
       </div>
 
+      <!-- Warning banner for replace mode -->
+      {#if mode === 'replace'}
+        <div class="notice">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
+            <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+          </svg>
+          <span><strong>Re-importing a recipe replaces its ingredient list entirely.</strong> Ingredients not in the file will be removed from that recipe.</span>
+        </div>
+      {/if}
+
+      <!-- Success result -->
       {#if importResult}
         <dl class="result-grid">
           <div class="result-item">
@@ -429,6 +540,42 @@
         </dl>
       {/if}
 
+      <!-- Fuzzy match warnings -->
+      {#if warnings?.length}
+        <div>
+          <p style="font-size: 12.5px; font-weight: 600; color: #92400e; margin: 0 0 6px;">
+            {warnings.length} similar ingredient{warnings.length === 1 ? '' : 's'} found
+          </p>
+          <p style="font-size: 11.5px; color: var(--motm-text-muted); margin: 0 0 8px;">
+            These names are similar to existing ones — this might indicate a typo.
+          </p>
+          <div class="table-wrap" style="margin-top: 0;">
+            <table class="warning-table">
+              <thead>
+                <tr><th>Row</th><th>Your ingredient</th><th>Existing match</th><th>Score</th></tr>
+              </thead>
+              <tbody>
+                {#each warnings as w}
+                  <tr>
+                    <td class="mono">{w.row}</td>
+                    <td><strong>{w.raw_value}</strong></td>
+                    <td class="suggestion">{w.suggestion}</td>
+                    <td class="mono">{w.message.match(/\d+%/)?.[0] ?? ''}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <div class="warning-actions">
+            <button type="button" class="btn btn-primary" onclick={handleProceedAnyway}>
+              Proceed anyway
+            </button>
+            <span class="warning-hint">Or fix the file and re-upload</span>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Validation errors -->
       {#if parseErrors?.length}
         <div>
           <p style="font-size: 12.5px; font-weight: 600; color: #B91C1C; margin: 0 0 6px;">
@@ -454,6 +601,7 @@
         </div>
       {/if}
 
+      <!-- Global import error -->
       {#if importError}
         <div class="alert-error" role="alert">
           <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
@@ -463,7 +611,9 @@
         </div>
       {/if}
 
+      <!-- Upload form -->
       <form
+        id="import-form"
         method="POST"
         action="?/import"
         enctype="multipart/form-data"
@@ -473,6 +623,9 @@
         }}
         style="display: flex; flex-direction: column; gap: 10px;"
       >
+        <input type="hidden" name="mode" value={mode} />
+        <input type="hidden" name="confirmed" value={confirmed ? 'true' : 'false'} />
+
         <label
           class="dropzone"
           class:dragging
