@@ -16,6 +16,7 @@
     UtensilsCrossed,
     Carrot,
     Download,
+    BarChart3,
     Menu,
     LogOut,
     ChevronRight,
@@ -58,6 +59,7 @@
     {
       title: 'Data',
       items: [
+        { label: 'Insights',    href: '/admin/insights',    icon: BarChart3 },
         { label: 'Exports',     href: '/admin/exports',     icon: Download },
       ],
     },

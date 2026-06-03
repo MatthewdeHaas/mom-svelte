@@ -20,7 +20,8 @@
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes",
 		"migrate": "tsx scripts/migrate.ts",
 		"seed:admin": "tsx scripts/seed-admin.ts",
-		"seed:dev": "tsx --env-file=.env scripts/seed-dev.ts"
+		"seed:dev": "tsx --env-file=.env scripts/seed-dev.ts",
+		"backfill": "tsx --env-file=.env scripts/backfill.ts"
 	},
 	"devDependencies": {
 		"@better-auth/cli": "~1.4.21",
@@ -36,7 +37,7 @@
 		"@tailwindcss/forms": "^0.5.11",
 		"@tailwindcss/typography": "^0.5.19",
 		"@tailwindcss/vite": "^4.2.2",
-"@types/node": "^24",
+		"@types/node": "^24",
 		"@types/pdfkit": "^0.17.6",
 		"@types/pg": "^8.20.0",
 		"@vitest/browser-playwright": "^4.1.3",
@@ -69,6 +70,7 @@
 	},
 	"dependencies": {
 		"@sveltejs/adapter-node": "^5.5.4",
+		"chart.js": "^4.5.1",
 		"exceljs": "^4.4.0",
 		"jszip": "^3.10.1",
 		"pdfkit": "^0.18.0",
