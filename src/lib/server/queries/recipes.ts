@@ -9,6 +9,12 @@ import type {
   Allergen,
 } from '$lib/types';
 import type { Db } from '$lib/server/db';
+import {
+  type PaginationParams,
+  type PaginatedResult,
+  paginationSQL,
+  buildPaginatedResult,
+} from './pagination';
 
 // -------------------------------------------------------------
 // READ
@@ -19,7 +25,7 @@ export async function getRecipes(
   opts: { includeInactive?: boolean } = {}
 ): Promise<Recipe[]> {
   const result = await db.query<Recipe>(
-    `SELECT id, name, active, created_at
+    `SELECT id, name, active, created_at, price_per_meal
      FROM recipe
      ${opts.includeInactive ? '' : 'WHERE active = TRUE'}
      ORDER BY name ASC`
@@ -33,7 +39,7 @@ export async function getRecipeById(
   opts: { includeInactive?: boolean } = {}
 ): Promise<Recipe | null> {
   const result = await db.query<Recipe>(
-    `SELECT id, name, active, created_at
+    `SELECT id, name, active, created_at, price_per_meal
      FROM recipe
      WHERE id = $1
      ${opts.includeInactive ? '' : 'AND active = TRUE'}`,
@@ -48,7 +54,7 @@ export async function getRecipeByName(
   opts: { includeInactive?: boolean } = {}
 ): Promise<Recipe | null> {
   const result = await db.query<Recipe>(
-    `SELECT id, name, active, created_at
+    `SELECT id, name, active, created_at, price_per_meal
      FROM recipe
      WHERE LOWER(name) = LOWER($1)
      ${opts.includeInactive ? '' : 'AND active = TRUE'}`,
@@ -90,6 +96,7 @@ export async function getRecipesWithIngredientsByIds(
        r.name,
        r.active,
        r.created_at,
+       r.price_per_meal,
        ARRAY_AGG(i.id      ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_ids,
        ARRAY_AGG(i.name    ORDER BY i.name) FILTER (WHERE i.name IS NOT NULL)   AS ingredient_names,
        ARRAY_AGG(ri.amount ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_amounts,
@@ -124,6 +131,7 @@ export async function getRecipesWithIngredientsByIds(
       name: row.name,
       active: row.active,
       created_at: row.created_at,
+      price_per_meal: row.price_per_meal,
       ingredients: (row.ingredient_ids ?? []).map((iid, idx) => {
         const allergenIdSet = (row.allergen_id_sets ?? [])[idx];
         const allergenNameSet = (row.allergen_name_sets ?? [])[idx];
@@ -171,6 +179,7 @@ export async function getRecipesWithIngredients(
        r.name,
        r.active,
        r.created_at,
+       r.price_per_meal,
        ARRAY_AGG(i.id      ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_ids,
        ARRAY_AGG(i.name    ORDER BY i.name) FILTER (WHERE i.name IS NOT NULL)   AS ingredient_names,
        ARRAY_AGG(ri.amount ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_amounts,
@@ -204,6 +213,7 @@ export async function getRecipesWithIngredients(
     name: row.name,
     active: row.active,
     created_at: row.created_at,
+    price_per_meal: row.price_per_meal,
     ingredients: (row.ingredient_ids ?? []).map((iid, idx) => {
       const allergenIdSet = (row.allergen_id_sets ?? [])[idx];
       const allergenNameSet = (row.allergen_name_sets ?? [])[idx];
@@ -225,6 +235,106 @@ export async function getRecipesWithIngredients(
       } satisfies RecipeIngredient;
     }),
   }));
+}
+
+export async function getRecipesWithIngredientsPaginated(
+  db: Db,
+  opts: { includeInactive?: boolean; search?: string },
+  pagination: PaginationParams
+): Promise<PaginatedResult<RecipeWithIngredients>> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (!opts.includeInactive) {
+    conditions.push('r.active = TRUE');
+  }
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`LOWER(r.name) LIKE LOWER($${params.length})`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countResult = await db.query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM recipe r ${where}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  const pag = paginationSQL(pagination, params.length + 1);
+  const result = await db.query<
+    Recipe & {
+      ingredient_ids: string[] | null;
+      ingredient_names: string[] | null;
+      ingredient_amounts: string[] | null;
+      ingredient_units: string[] | null;
+      allergen_id_sets: string[] | null;
+      allergen_name_sets: string[] | null;
+    }
+  >(
+    `SELECT
+       r.id,
+       r.name,
+       r.active,
+       r.created_at,
+       r.price_per_meal,
+       ARRAY_AGG(i.id      ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_ids,
+       ARRAY_AGG(i.name    ORDER BY i.name) FILTER (WHERE i.name IS NOT NULL)   AS ingredient_names,
+       ARRAY_AGG(ri.amount ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_amounts,
+       ARRAY_AGG(ri.unit   ORDER BY i.name) FILTER (WHERE i.id IS NOT NULL)     AS ingredient_units,
+       ARRAY_AGG(
+         (SELECT STRING_AGG(a.id::TEXT, ',' ORDER BY a.name)
+          FROM ingredient_allergen ia
+          JOIN allergen a ON a.id = ia.allergen_id
+          WHERE ia.ingredient_id = i.id)
+         ORDER BY i.name
+       ) FILTER (WHERE i.id IS NOT NULL) AS allergen_id_sets,
+       ARRAY_AGG(
+         (SELECT STRING_AGG(a.name, ',' ORDER BY a.name)
+          FROM ingredient_allergen ia
+          JOIN allergen a ON a.id = ia.allergen_id
+          WHERE ia.ingredient_id = i.id)
+         ORDER BY i.name
+       ) FILTER (WHERE i.id IS NOT NULL) AS allergen_name_sets
+     FROM recipe r
+     LEFT JOIN recipe_ingredient ri ON ri.recipe_id = r.id
+     LEFT JOIN ingredient i ON i.id = ri.ingredient_id
+     ${where}
+     GROUP BY r.id
+     ORDER BY r.name ASC
+     ${pag.sql}`,
+    [...params, ...pag.values]
+  );
+
+  const data = result.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    active: row.active,
+    created_at: row.created_at,
+    price_per_meal: row.price_per_meal,
+    ingredients: (row.ingredient_ids ?? []).map((iid, idx) => {
+      const allergenIdSet = (row.allergen_id_sets ?? [])[idx];
+      const allergenNameSet = (row.allergen_name_sets ?? [])[idx];
+
+      const allergenIds = allergenIdSet ? allergenIdSet.split(',') : [];
+      const allergenNames = allergenNameSet ? allergenNameSet.split(',') : [];
+
+      const allergen: Allergen[] = allergenIds.map((aid, aidx) => ({
+        id: aid,
+        name: allergenNames[aidx],
+      }));
+
+      return {
+        ingredient_id: iid,
+        name: (row.ingredient_names ?? [])[idx],
+        amount: parseFloat((row.ingredient_amounts ?? [])[idx]),
+        unit: (row.ingredient_units ?? [])[idx],
+        allergen,
+      } satisfies RecipeIngredient;
+    }),
+  }));
+
+  return buildPaginatedResult(data, total, pagination);
 }
 
 // Returns just the ingredient for a recipe — used internally and
@@ -277,7 +387,7 @@ export async function createRecipe(db: Db, data: InsertRecipe): Promise<Recipe> 
     const result = await db.query<Recipe>(
       `INSERT INTO recipe (name, active)
        VALUES ($1, $2)
-       RETURNING id, name, active, created_at`,
+       RETURNING id, name, active, created_at, price_per_meal`,
       [data.name.trim(), data.active ?? true]
     );
     return result.rows[0];
@@ -299,7 +409,7 @@ export async function updateRecipe(
          name   = COALESCE($1, name),
          active = COALESCE($2, active)
        WHERE id = $3
-       RETURNING id, name, active, created_at`,
+       RETURNING id, name, active, created_at, price_per_meal`,
       [data.name?.trim() ?? null, data.active ?? null, id]
     );
     return result.rows[0] ?? null;

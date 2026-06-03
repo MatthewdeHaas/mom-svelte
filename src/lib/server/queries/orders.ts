@@ -9,6 +9,12 @@ import type {
   OrderSource,
 } from '$lib/types';
 import type { Db } from '$lib/server/db';
+import {
+  type PaginationParams,
+  type PaginatedResult,
+  paginationSQL,
+  buildPaginatedResult,
+} from './pagination';
 
 // -------------------------------------------------------------
 // FILTERS
@@ -107,6 +113,96 @@ export async function getOrders(
   return result.rows;
 }
 
+export async function getOrdersPaginated(
+  db: Db,
+  filters: OrderFilters = {},
+  pagination: PaginationParams
+): Promise<PaginatedResult<OrderSummary>> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (filters.company_id) {
+    params.push(filters.company_id);
+    conditions.push(`o.company_id = $${params.length}`);
+  }
+  if (filters.recipe_id) {
+    params.push(filters.recipe_id);
+    conditions.push(`o.recipe_id = $${params.length}`);
+  }
+  if (filters.status) {
+    params.push(filters.status);
+    conditions.push(`o.status = $${params.length}`);
+  }
+  if (filters.order_source) {
+    params.push(filters.order_source);
+    conditions.push(`o.order_source = $${params.length}`);
+  }
+  if (filters.serving_date_from) {
+    params.push(filters.serving_date_from);
+    conditions.push(`o.serving_date >= $${params.length}::date`);
+  }
+  if (filters.serving_date_to) {
+    params.push(filters.serving_date_to);
+    conditions.push(`o.serving_date <= $${params.length}::date`);
+  }
+  if (filters.shipment_date) {
+    params.push(filters.shipment_date);
+    conditions.push(`o.shipment_date = $${params.length}::date`);
+  }
+  if (filters.frozen !== undefined) {
+    params.push(filters.frozen);
+    conditions.push(`o.frozen = $${params.length}`);
+  }
+  if (filters.chilled !== undefined) {
+    params.push(filters.chilled);
+    conditions.push(`o.chilled = $${params.length}`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Count query
+  const countResult = await db.query<{ count: string }>(
+    `SELECT COUNT(*) AS count
+     FROM "order" o
+     JOIN company c ON c.id = o.company_id
+     ${where}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  // Data query with LIMIT/OFFSET
+  const pag = paginationSQL(pagination, params.length + 1);
+  const result = await db.query<OrderSummary>(
+    `SELECT
+       o.id,
+       o.company_id,
+       o.recipe_id,
+       o.created_by,
+       o.order_source,
+       o.status,
+       o.meal_category,
+       o.amount,
+       o.serving_date,
+       o.shipment_date,
+       o.frozen,
+       o.chilled,
+       o.recurring,
+       o.client_note,
+       o.created_at,
+       c.name     AS company_name,
+       r.name     AS recipe_name
+     FROM "order" o
+     JOIN company c ON c.id = o.company_id
+     LEFT JOIN recipe r ON r.id = o.recipe_id
+     ${where}
+     ORDER BY o.serving_date DESC, c.name ASC
+     ${pag.sql}`,
+    [...params, ...pag.values]
+  );
+
+  return buildPaginatedResult(result.rows, total, pagination);
+}
+
 export async function getOrderById(db: Db, id: string): Promise<OrderDetail | null> {
   const result = await db.query<
     Order & {
@@ -119,6 +215,7 @@ export async function getOrderById(db: Db, id: string): Promise<OrderDetail | nu
       recipe_name: string | null;
       recipe_active: boolean | null;
       recipe_created_at: Date | null;
+      recipe_price_per_meal: number | null;
       created_by_email: string | null;
     }
   >(
@@ -147,6 +244,7 @@ export async function getOrderById(db: Db, id: string): Promise<OrderDetail | nu
        r.name             AS recipe_name,
        r.active           AS recipe_active,
        r.created_at       AS recipe_created_at,
+       r.price_per_meal   AS recipe_price_per_meal,
        u.email            AS created_by_email
      FROM "order" o
      JOIN company c ON c.id = o.company_id
@@ -191,6 +289,7 @@ export async function getOrderById(db: Db, id: string): Promise<OrderDetail | nu
           name: row.recipe_name!,
           active: row.recipe_active!,
           created_at: row.recipe_created_at!,
+          price_per_meal: row.recipe_price_per_meal ?? null,
         }
       : null,
   };
@@ -372,6 +471,30 @@ export async function cancelOrder(db: Db, id: string): Promise<Order | null> {
   );
   // Returns null if the order was already fulfilled or cancelled
   return result.rows[0] ?? null;
+}
+
+// -------------------------------------------------------------
+// BULK STATUS TRANSITIONS
+// Sets status unconditionally — allows moving to any state.
+// -------------------------------------------------------------
+
+export async function setOrdersStatusBatch(
+  db: Db,
+  ids: string[],
+  status: OrderStatus
+): Promise<Order[]> {
+  if (ids.length === 0) return [];
+  const result = await db.query<Order>(
+    `UPDATE "order"
+     SET status = $2
+     WHERE id = ANY($1::uuid[])
+     RETURNING
+       id, company_id, recipe_id, created_by, order_source, status,
+       meal_category, amount, serving_date, shipment_date,
+       frozen, chilled, recurring, client_note, created_at`,
+    [ids, status]
+  );
+  return result.rows;
 }
 
 // -------------------------------------------------------------

@@ -2,6 +2,12 @@ import type { Pool } from 'pg';
 import { ConflictError } from '$lib/server/errors';
 import type { Company, InsertCompany, UpdateCompany, UserWithCompany } from '$lib/types';
 import type { Db } from '$lib/server/db';
+import {
+  type PaginationParams,
+  type PaginatedResult,
+  paginationSQL,
+  buildPaginatedResult,
+} from './pagination';
 
 // -------------------------------------------------------------
 // READ
@@ -18,6 +24,43 @@ export async function getCompanies(
      ORDER BY name ASC`
   );
   return result.rows;
+}
+
+export async function getCompaniesPaginated(
+  db: Db,
+  opts: { includeInactive?: boolean; search?: string },
+  pagination: PaginationParams
+): Promise<PaginatedResult<Company>> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (!opts.includeInactive) {
+    conditions.push('active = TRUE');
+  }
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`LOWER(name) LIKE LOWER($${params.length})`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countResult = await db.query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM company ${where}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  const pag = paginationSQL(pagination, params.length + 1);
+  const result = await db.query<Company>(
+    `SELECT id, name, contact_email, phone, shipping_address, active, created_at
+     FROM company
+     ${where}
+     ORDER BY name ASC
+     ${pag.sql}`,
+    [...params, ...pag.values]
+  );
+
+  return buildPaginatedResult(result.rows, total, pagination);
 }
 
 export async function getCompanyById(db: Db, id: string): Promise<Company | null> {

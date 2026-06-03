@@ -2,6 +2,7 @@
   import type { PageData } from './$types';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import Pagination from '$lib/components/Pagination.svelte';
 
   const { data }: { data: PageData } = $props();
 
@@ -24,6 +25,7 @@
     else params.delete('q');
     if (inactive) params.set('inactive', 'true');
     else params.delete('inactive');
+    params.delete('page');
     goto(`?${params.toString()}`, { keepFocus: true, replaceState: true });
   }
 </script>
@@ -224,8 +226,8 @@
   </a>
 </div>
 
-{#if data.ingredients.length > 0}
-  <p class="result-count">{data.ingredients.length} {data.ingredients.length === 1 ? 'ingredient' : 'ingredients'}</p>
+{#if data.pagination.total > 0}
+  <p class="result-count">{data.pagination.total} {data.pagination.total === 1 ? 'ingredient' : 'ingredients'}</p>
 {/if}
 
 <div class="table-wrap">
@@ -268,5 +270,12 @@
         {/each}
       </tbody>
     </table>
+
+    <Pagination
+      page={data.pagination.page}
+      totalPages={data.pagination.totalPages}
+      total={data.pagination.total}
+      perPage={data.pagination.perPage}
+    />
   {/if}
 </div>

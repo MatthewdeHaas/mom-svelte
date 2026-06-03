@@ -1,9 +1,12 @@
 <script lang="ts">
-  import type { PageData } from './$types';
+  import type { PageData, ActionData } from './$types';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import { enhance } from '$app/forms';
+  import { weekBoundsEST, todayEST } from '$lib/utils/dates';
+  import Pagination from '$lib/components/Pagination.svelte';
 
-  const { data }: { data: PageData } = $props();
+  const { data, form }: { data: PageData; form: ActionData } = $props();
 
   const STATUS_OPTIONS = [
     { value: 'pending',   label: 'Pending' },
@@ -28,6 +31,41 @@
   // Local filter state — mirrors URL params
   let filters = $state({ ...data.filters });
 
+  // Bulk selection state
+  let selected = $state(new Set<string>());
+  let bulkTarget = $state<string>('');
+
+  const pendingOrders = $derived(data.orders.filter(o => o.status === 'pending'));
+
+  const thisWeek = $derived(weekBoundsEST(todayEST()));
+  const thisWeekPendingIds = $derived(
+    pendingOrders
+      .filter(o => {
+        const d = new Date(o.serving_date).toISOString().slice(0, 10);
+        return d >= thisWeek.from && d <= thisWeek.to;
+      })
+      .map(o => o.id)
+  );
+
+  const allSelected = $derived(
+    data.orders.length > 0 && data.orders.every(o => selected.has(o.id))
+  );
+
+  function toggleAll() {
+    if (allSelected) {
+      selected = new Set();
+    } else {
+      selected = new Set(data.orders.map(o => o.id));
+    }
+  }
+
+  function toggleOrder(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    selected = next;
+  }
+
   let debounceTimer: ReturnType<typeof setTimeout>;
 
   function applyFilters() {
@@ -37,6 +75,9 @@
         params.set(key, String(val));
       }
     }
+    // Keep per_page if set, reset page to 1 on filter change
+    const currentPerPage = $page.url.searchParams.get('per_page');
+    if (currentPerPage) params.set('per_page', currentPerPage);
     goto(`?${params.toString()}`, { replaceState: true });
   }
 
@@ -269,6 +310,90 @@
     font-size: 13.5px;
   }
   .empty-title { font-weight: 500; color: var(--motm-text); margin-bottom: 4px; }
+
+  /* Bulk action bar */
+  .bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: #F8F6F4;
+    border: 1px solid var(--motm-border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .bulk-bar-label {
+    font-size: 12.5px;
+    color: var(--motm-text-muted);
+    margin-right: auto;
+  }
+  .bulk-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 500;
+    font-family: inherit;
+    border: none;
+    cursor: pointer;
+    transition: background 120ms, opacity 120ms;
+    white-space: nowrap;
+  }
+  .bulk-btn:disabled { opacity: 0.5; cursor: default; }
+  .bulk-btn-apply {
+    background: var(--motm-pink);
+    color: #fff;
+  }
+  .bulk-btn-apply:hover:not(:disabled) { background: var(--motm-pink-dark); }
+  .bulk-btn-week {
+    background: #D1FAE5;
+    color: #1F6648;
+  }
+  .bulk-btn-week:hover:not(:disabled) { background: #A7F3D0; }
+
+  .bulk-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .bulk-select {
+    padding: 5px 8px;
+    border: 1px solid var(--motm-border);
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-family: inherit;
+    color: var(--motm-text);
+    background: #fff;
+    cursor: pointer;
+  }
+  .bulk-select:focus { border-color: var(--motm-pink); outline: none; }
+
+  /* Checkbox column */
+  .cb-cell {
+    width: 36px;
+    text-align: center;
+    padding: 8px 6px !important;
+  }
+  .cb-cell input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: var(--motm-pink);
+  }
+
+  /* Success / error banner */
+  .bulk-banner {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+  .bulk-banner-success { background: #D1FAE5; color: #1F6648; }
+  .bulk-banner-error { background: #FEE2E2; color: #991B1B; }
 </style>
 
 <div class="page-header">
@@ -412,7 +537,7 @@
   <div>
     <div class="toolbar">
       <span class="result-count">
-        {data.orders.length} {data.orders.length === 1 ? 'order' : 'orders'}
+        {data.pagination.total} {data.pagination.total === 1 ? 'order' : 'orders'}
         {#if hasActiveFilters} (filtered){/if}
       </span>
       <a href="/admin/orders/import" class="import-btn">
@@ -425,6 +550,57 @@
       </a>
     </div>
 
+    {#if form?.action === 'bulkStatus'}
+      {#if form.success}
+        <div class="bulk-banner bulk-banner-success">
+          {form.count} {form.count === 1 ? 'order' : 'orders'} marked as {form.target}
+        </div>
+      {:else}
+        <div class="bulk-banner bulk-banner-error">
+          {form.error ?? 'Something went wrong'}
+        </div>
+      {/if}
+    {/if}
+
+    {#if data.orders.length > 0}
+      <div class="bulk-bar">
+        <span class="bulk-bar-label">
+          {#if selected.size > 0}
+            {selected.size} selected (this page)
+          {:else}
+            {data.orders.length} on this page
+          {/if}
+        </span>
+        <form method="POST" action="?/bulkStatus" use:enhance={() => { return async ({ update }) => { selected = new Set(); bulkTarget = ''; await update(); }; }}>
+          {#each [...selected] as id}
+            <input type="hidden" name="order_id" value={id} />
+          {/each}
+          <input type="hidden" name="target_status" value={bulkTarget} />
+          <div class="bulk-actions">
+            <select class="bulk-select" bind:value={bulkTarget}>
+              <option value="">Mark as...</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="fulfilled">Fulfilled</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button type="submit" class="bulk-btn bulk-btn-apply" disabled={selected.size === 0 || !bulkTarget}>
+              Apply
+            </button>
+          </div>
+        </form>
+        <form method="POST" action="?/bulkStatus" use:enhance={() => { return async ({ update }) => { selected = new Set(); await update(); }; }}>
+          {#each thisWeekPendingIds as id}
+            <input type="hidden" name="order_id" value={id} />
+          {/each}
+          <input type="hidden" name="target_status" value="confirmed" />
+          <button type="submit" class="bulk-btn bulk-btn-week" disabled={thisWeekPendingIds.length === 0}>
+            Confirm all this week ({thisWeekPendingIds.length})
+          </button>
+        </form>
+      </div>
+    {/if}
+
     <div class="table-wrap">
       {#if data.orders.length === 0}
         <div class="empty-state">
@@ -435,6 +611,15 @@
         <table>
           <thead>
             <tr>
+              <th class="cb-cell">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  disabled={data.orders.length === 0}
+                  onchange={toggleAll}
+                  title="Select all orders on this page"
+                />
+              </th>
               <th>Company</th>
               <th>Recipe</th>
               <th>Serving date</th>
@@ -452,6 +637,13 @@
                 onclick={() => goto(`/admin/orders/${order.id}`)}
                 style="cursor: pointer;"
               >
+                <td class="cb-cell" onclick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(order.id)}
+                    onchange={() => toggleOrder(order.id)}
+                  />
+                </td>
                 <td style="font-weight: 500;">{order.company_name}</td>
                 <td class="td-muted">{order.recipe_name}</td>
                 <td class="td-muted">{formatDate(order.serving_date)}</td>
@@ -483,6 +675,13 @@
             {/each}
           </tbody>
         </table>
+
+        <Pagination
+          page={data.pagination.page}
+          totalPages={data.pagination.totalPages}
+          total={data.pagination.total}
+          perPage={data.pagination.perPage}
+        />
       {/if}
     </div>
   </div>

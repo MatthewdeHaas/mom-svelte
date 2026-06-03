@@ -1,7 +1,10 @@
-import type { PageServerLoad } from './$types';
-import { getOrders } from '$lib/server/queries/orders';
+import { fail } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
+import { getOrdersPaginated, setOrdersStatusBatch } from '$lib/server/queries/orders';
 import { getCompanies } from '$lib/server/queries/companies';
+import { parsePaginationParams } from '$lib/server/queries/pagination';
 import { pool } from '$lib/server/db';
+import type { OrderStatus } from '$lib/types';
 
 export const load: PageServerLoad = async ({ url }) => {
   const p = url.searchParams;
@@ -37,13 +40,21 @@ export const load: PageServerLoad = async ({ url }) => {
   if (chilled === 'true') filters.chilled = true;
   else if (chilled === 'false') filters.chilled = false;
 
-  const [orders, companies] = await Promise.all([
-    getOrders(pool, filters),
+  const pagination = parsePaginationParams(url);
+
+  const [ordersResult, companies] = await Promise.all([
+    getOrdersPaginated(pool, filters, pagination),
     getCompanies(pool, { includeInactive: false }),
   ]);
 
   return {
-    orders,
+    orders: ordersResult.data,
+    pagination: {
+      page: ordersResult.page,
+      perPage: ordersResult.perPage,
+      total: ordersResult.total,
+      totalPages: ordersResult.totalPages,
+    },
     companies,
     filters: {
       status: status ?? '',
@@ -57,4 +68,24 @@ export const load: PageServerLoad = async ({ url }) => {
       chilled: chilled ?? '',
     },
   };
+};
+
+export const actions: Actions = {
+  bulkStatus: async ({ request }) => {
+    const form = await request.formData();
+    const ids = form.getAll('order_id') as string[];
+    const target = form.get('target_status') as string;
+
+    if (ids.length === 0) {
+      return fail(400, { action: 'bulkStatus', error: 'No orders selected' });
+    }
+
+    const validStatuses: OrderStatus[] = ['pending', 'confirmed', 'fulfilled', 'cancelled'];
+    if (!validStatuses.includes(target as OrderStatus)) {
+      return fail(400, { action: 'bulkStatus', error: 'Invalid target status' });
+    }
+
+    const updated = await setOrdersStatusBatch(pool, ids, target as OrderStatus);
+    return { action: 'bulkStatus', success: true, count: updated.length, target };
+  },
 };

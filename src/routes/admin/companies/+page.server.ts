@@ -1,16 +1,28 @@
 import type { PageServerLoad } from './$types';
-import { getCompanies } from '$lib/server/queries/companies';
+import { getCompaniesPaginated } from '$lib/server/queries/companies';
+import { parsePaginationParams } from '$lib/server/queries/pagination';
 import { pool } from '$lib/server/db';
 
 export const load: PageServerLoad = async ({ url }) => {
   const showInactive = url.searchParams.get('inactive') === 'true';
-  const search = url.searchParams.get('q')?.toLowerCase() ?? '';
+  const search = url.searchParams.get('q') ?? '';
+  const pagination = parsePaginationParams(url, { perPage: 25 });
 
-  const companies = await getCompanies(pool, { includeInactive: showInactive });
+  const result = await getCompaniesPaginated(
+    pool,
+    { includeInactive: showInactive, search: search || undefined },
+    pagination
+  );
 
-  const filtered = search
-    ? companies.filter(c => c.name.toLowerCase().includes(search))
-    : companies;
-
-  return { companies: filtered, showInactive, search };
+  return {
+    companies: result.data,
+    pagination: {
+      page: result.page,
+      perPage: result.perPage,
+      total: result.total,
+      totalPages: result.totalPages,
+    },
+    showInactive,
+    search,
+  };
 };

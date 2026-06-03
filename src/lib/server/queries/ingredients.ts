@@ -8,6 +8,12 @@ import type {
   Allergen,
 } from '$lib/types';
 import type { Db } from '$lib/server/db';
+import {
+  type PaginationParams,
+  type PaginatedResult,
+  paginationSQL,
+  buildPaginatedResult,
+} from './pagination';
 
 // -------------------------------------------------------------
 // READ
@@ -18,7 +24,7 @@ export async function getIngredients(
   opts: { includeInactive?: boolean } = {}
 ): Promise<Ingredient[]> {
   const result = await db.query<Ingredient>(
-    `SELECT id, name, active
+    `SELECT id, name, active, cost_per_unit
      FROM ingredient
      ${opts.includeInactive ? '' : 'WHERE active = TRUE'}
      ORDER BY name ASC`
@@ -32,7 +38,7 @@ export async function getIngredientById(
   opts: { includeInactive?: boolean } = {}
 ): Promise<Ingredient | null> {
   const result = await db.query<Ingredient>(
-    `SELECT id, name, active
+    `SELECT id, name, active, cost_per_unit
      FROM ingredient
      WHERE id = $1
      ${opts.includeInactive ? '' : 'AND active = TRUE'}`,
@@ -74,6 +80,7 @@ export async function getIngredientsWithAllergens(
        i.id,
        i.name,
        i.active,
+       i.cost_per_unit,
        ARRAY_AGG(a.id ORDER BY a.name)   FILTER (WHERE a.id IS NOT NULL)   AS allergen_ids,
        ARRAY_AGG(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL) AS allergen_names
      FROM ingredient i
@@ -88,11 +95,71 @@ export async function getIngredientsWithAllergens(
     id: row.id,
     name: row.name,
     active: row.active,
+    cost_per_unit: row.cost_per_unit,
     allergen: (row.allergen_ids ?? []).map((aid, idx) => ({
       id: aid,
       name: (row.allergen_names ?? [])[idx],
     })),
   }));
+}
+
+export async function getIngredientsWithAllergensPaginated(
+  db: Db,
+  opts: { includeInactive?: boolean; search?: string },
+  pagination: PaginationParams
+): Promise<PaginatedResult<IngredientWithAllergens>> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (!opts.includeInactive) {
+    conditions.push('i.active = TRUE');
+  }
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`LOWER(i.name) LIKE LOWER($${params.length})`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countResult = await db.query<{ count: string }>(
+    `SELECT COUNT(*) AS count FROM ingredient i ${where}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  const pag = paginationSQL(pagination, params.length + 1);
+  const result = await db.query<
+    Ingredient & { allergen_ids: string[] | null; allergen_names: string[] | null }
+  >(
+    `SELECT
+       i.id,
+       i.name,
+       i.active,
+       i.cost_per_unit,
+       ARRAY_AGG(a.id ORDER BY a.name)   FILTER (WHERE a.id IS NOT NULL)   AS allergen_ids,
+       ARRAY_AGG(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL) AS allergen_names
+     FROM ingredient i
+     LEFT JOIN ingredient_allergen ia ON ia.ingredient_id = i.id
+     LEFT JOIN allergen a ON a.id = ia.allergen_id
+     ${where}
+     GROUP BY i.id
+     ORDER BY i.name ASC
+     ${pag.sql}`,
+    [...params, ...pag.values]
+  );
+
+  const data = result.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    active: row.active,
+    cost_per_unit: row.cost_per_unit,
+    allergen: (row.allergen_ids ?? []).map((aid, idx) => ({
+      id: aid,
+      name: (row.allergen_names ?? [])[idx],
+    })),
+  }));
+
+  return buildPaginatedResult(data, total, pagination);
 }
 
 // -------------------------------------------------------------
@@ -107,7 +174,7 @@ export async function createIngredient(
     const result = await db.query<Ingredient>(
       `INSERT INTO ingredient (name, active)
        VALUES ($1, $2)
-       RETURNING id, name, active`,
+       RETURNING id, name, active, cost_per_unit`,
       [data.name.trim(), data.active ?? true]
     );
     return result.rows[0];
@@ -129,7 +196,7 @@ export async function updateIngredient(
          name   = COALESCE($1, name),
          active = COALESCE($2, active)
        WHERE id = $3
-       RETURNING id, name, active`,
+       RETURNING id, name, active, cost_per_unit`,
       [data.name?.trim() ?? null, data.active ?? null, id]
     );
     return result.rows[0] ?? null;
