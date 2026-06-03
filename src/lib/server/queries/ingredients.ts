@@ -32,6 +32,14 @@ export async function getIngredients(
   return result.rows;
 }
 
+/** Lightweight: returns only ingredient names for fuzzy matching during import. */
+export async function getIngredientNames(db: Db): Promise<string[]> {
+  const { rows } = await db.query<{ name: string }>(
+    `SELECT name FROM ingredient ORDER BY name`
+  );
+  return rows.map((r) => r.name);
+}
+
 export async function getIngredientById(
   db: Db,
   id: string,

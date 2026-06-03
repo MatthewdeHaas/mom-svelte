@@ -319,6 +319,8 @@ export interface ImportRowError {
   field: string | null; // null = row-level error (e.g. company not found)
   message: string;
   raw_value?: string | null;
+  severity?: 'error' | 'warning';  // default 'error'
+  suggestion?: string | null;      // e.g. "Did you mean 'Chicken Breast'?"
 }
 
 
