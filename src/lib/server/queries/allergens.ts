@@ -1,4 +1,3 @@
-import type { Pool } from 'pg';
 import type { Allergen, InsertAllergen } from '$lib/types';
 import type { Db } from '$lib/server/db';
 
@@ -64,9 +63,21 @@ export async function updateAllergen(
   return result.rows[0] ?? null;
 }
 
-// Hard delete — safe only if no ingredient references this allergen.
-// The FK on ingredient_allergen is CASCADE so rows there are cleaned up,
-// but person_allergen is also CASCADE. Callers should confirm intent.
+/** Count how many ingredients and persons reference this allergen. */
+export async function getAllergenRefCount(
+  db: Db,
+  id: string
+): Promise<{ ingredients: number; persons: number }> {
+  const result = await db.query<{ ingredients: string; persons: string }>(
+    `SELECT
+       (SELECT COUNT(*) FROM ingredient_allergen WHERE allergen_id = $1) AS ingredients,
+       (SELECT COUNT(*) FROM person_allergen WHERE allergen_id = $1) AS persons`,
+    [id]
+  );
+  const row = result.rows[0];
+  return { ingredients: Number(row.ingredients), persons: Number(row.persons) };
+}
+
 export async function deleteAllergen(db: Db, id: string): Promise<boolean> {
   const result = await db.query(
     `DELETE FROM allergen WHERE id = $1`,

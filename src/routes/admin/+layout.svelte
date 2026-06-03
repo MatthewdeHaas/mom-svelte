@@ -15,6 +15,7 @@
     BookOpen,
     UtensilsCrossed,
     Carrot,
+    ShieldAlert,
     Download,
     BarChart3,
     DollarSign,
@@ -55,6 +56,7 @@
         { label: 'Menus',       href: '/admin/menus',       icon: BookOpen },
         { label: 'Recipes',     href: '/admin/recipes',     icon: UtensilsCrossed },
         { label: 'Ingredients', href: '/admin/ingredients', icon: Carrot },
+        { label: 'Allergens',   href: '/admin/allergens',   icon: ShieldAlert },
       ],
     },
     {
