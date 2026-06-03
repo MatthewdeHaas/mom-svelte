@@ -108,9 +108,9 @@
     <div class="pagination-info">
       <span>Showing {rangeStart}–{rangeEnd} of {props.total}</span>
       <span>
-        <select class="per-page-select" onchange={changePerPage} value={String(props.perPage)}>
+        <select class="per-page-select" onchange={changePerPage}>
           {#each PER_PAGE_OPTIONS as opt}
-            <option value={String(opt)}>{opt} / page</option>
+            <option value={String(opt)} selected={opt === props.perPage}>{opt} / page</option>
           {/each}
         </select>
       </span>

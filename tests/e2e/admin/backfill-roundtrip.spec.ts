@@ -16,7 +16,7 @@
 import ExcelJS from 'exceljs';
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
-import { writeFileSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
 import type { Page } from '@playwright/test';
@@ -255,11 +255,12 @@ test.describe('Backfill round-trip: import → export', () => {
     const buffer = Buffer.from(await res.body());
     const sheet = await parseXlsx(buffer);
 
-    // Save to ~/Downloads for manual inspection
-    writeFileSync(
-      join(os.homedir(), 'Downloads', 'backfill-test-production-order.xlsx'),
-      buffer
-    );
+    // Save to ~/Downloads for manual inspection (skip if dir missing in CI)
+    try {
+      const dlDir = join(os.homedir(), 'Downloads');
+      mkdirSync(dlDir, { recursive: true });
+      writeFileSync(join(dlDir, 'backfill-test-production-order.xlsx'), buffer);
+    } catch { /* non-critical */ }
 
     // Verify header
     const headers = rowValues(sheet.getRow(1));
@@ -283,11 +284,12 @@ test.describe('Backfill round-trip: import → export', () => {
     const buffer = Buffer.from(await res.body());
     const sheet = await parseXlsx(buffer);
 
-    // Save to ~/Downloads for manual inspection
-    writeFileSync(
-      join(os.homedir(), 'Downloads', 'backfill-test-shopping-list.xlsx'),
-      buffer
-    );
+    // Save to ~/Downloads for manual inspection (skip if dir missing in CI)
+    try {
+      const dlDir = join(os.homedir(), 'Downloads');
+      mkdirSync(dlDir, { recursive: true });
+      writeFileSync(join(dlDir, 'backfill-test-shopping-list.xlsx'), buffer);
+    } catch { /* non-critical */ }
 
     // Verify header
     const headers = rowValues(sheet.getRow(1));

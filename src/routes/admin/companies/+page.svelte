@@ -285,12 +285,12 @@
         {/each}
       </tbody>
     </table>
-
-    <Pagination
-      page={data.pagination.page}
-      totalPages={data.pagination.totalPages}
-      total={data.pagination.total}
-      perPage={data.pagination.perPage}
-    />
   {/if}
+
+  <Pagination
+    page={data.pagination.page}
+    totalPages={data.pagination.totalPages}
+    total={data.pagination.total}
+    perPage={data.pagination.perPage}
+  />
 </div>
