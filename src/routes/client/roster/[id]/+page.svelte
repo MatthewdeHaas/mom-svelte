@@ -6,12 +6,18 @@
 
   const person = $derived(data.person);
 
-  // Local editable name state. Initialized from server data; user edits update it
-  // via bind:value. After a successful save the value is retained (since it's what
-  // the user typed). On fresh navigation data.person.name will re-initialize.
-  let nameValue = $state('');
+  // svelte-ignore state_referenced_locally — intentional one-time capture; $effect below
+  // handles re-sync on navigation to a different person
+  let nameValue = $state(data.person.name);
+  // svelte-ignore state_referenced_locally
+  let trackedPersonId = data.person.id;
 
-  $effect(() => { nameValue = data.person.name; });
+  $effect(() => {
+    if (data.person.id !== trackedPersonId) {
+      nameValue = data.person.name;
+      trackedPersonId = data.person.id;
+    }
+  });
 
   const selectedAllergenIds = $derived(
     new Set(
