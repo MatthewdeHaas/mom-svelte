@@ -27,7 +27,7 @@ test.describe('Pagination', () => {
       await perPageSelect.selectOption('100');
       await expect(adminPage).toHaveURL(/per_page=100/, { timeout: 10000 });
       // Should reset to page 1 (page param absent)
-      await expect(adminPage).not.toHaveURL(/page=/);
+      await expect(adminPage).not.toHaveURL(/[?&]page=\d/);
     });
 
     test('page param composes with existing filters', async ({ adminPage }) => {
