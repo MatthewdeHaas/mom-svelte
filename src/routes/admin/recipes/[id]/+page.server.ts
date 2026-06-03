@@ -35,9 +35,9 @@ export const actions: Actions = {
 
     if (!parsed.success) {
       return fail(422, {
-        action: 'updateName',
-        errors: parsed.errors,
-        values: { name: form.get('name')?.toString() ?? '' },
+        action: 'updateName' as const,
+        errors: parsed.errors as Record<string, string>,
+        values: { name: form.get('name')?.toString() ?? '' } as Record<string, string>,
       });
     }
 
@@ -48,15 +48,33 @@ export const actions: Actions = {
     } catch (err: any) {
       if (err instanceof ConflictError) {
         return fail(422, {
-          action: 'updateName',
-          errors: { name: 'A recipe with this name already exists' },
-          values: { name },
+          action: 'updateName' as const,
+          errors: { name: 'A recipe with this name already exists' } as Record<string, string>,
+          values: { name } as Record<string, string>,
         });
       }
       throw err;
     }
 
-    return { action: 'updateName', success: true };
+    return { action: 'updateName' as const, success: true };
+  },
+
+  updatePrice: async ({ request, params }) => {
+    const form = await request.formData();
+    const rawPrice = form.get('price_per_meal')?.toString()?.trim() ?? '';
+    const price_per_meal = rawPrice === '' ? null : parseFloat(rawPrice);
+
+    if (rawPrice !== '' && (isNaN(price_per_meal!) || price_per_meal! < 0)) {
+      return fail(422, {
+        action: 'updatePrice' as const,
+        errors: { price_per_meal: 'Must be a positive number' } as Record<string, string>,
+        values: { price_per_meal: rawPrice } as Record<string, string>,
+      });
+    }
+
+    await updateRecipe(pool, params.id, { price_per_meal });
+
+    return { action: 'updatePrice' as const, success: true };
   },
 
   addIngredient: async ({ request, params }) => {

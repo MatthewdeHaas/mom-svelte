@@ -85,7 +85,7 @@ export interface InsertIngredient {
   name: string;
   active?: boolean;
 }
-export type UpdateIngredient = Partial<InsertIngredient>;
+export type UpdateIngredient = Partial<InsertIngredient> & { cost_per_unit?: number | null };
 
 export interface IngredientWithAllergens extends Ingredient {
   allergen: Allergen[];
@@ -107,7 +107,7 @@ export interface InsertRecipe {
   name: string;
   active?: boolean;
 }
-export type UpdateRecipe = Partial<InsertRecipe>;
+export type UpdateRecipe = Partial<InsertRecipe> & { price_per_meal?: number | null };
 
 // recipe_ingredients join row — used internally by query layer
 export interface RecipeIngredientRow {

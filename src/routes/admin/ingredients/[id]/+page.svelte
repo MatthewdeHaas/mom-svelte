@@ -93,7 +93,8 @@
   .field-hint { font-size: 12px; color: var(--motm-text-muted); }
   .field-error { font-size: 12px; color: #A32D2D; }
 
-  input[type="text"] {
+  input[type="text"],
+  input[type="number"] {
     padding: 8px 11px;
     border: 1px solid var(--motm-border);
     border-radius: 7px;
@@ -104,9 +105,12 @@
     outline: none;
     transition: border-color 120ms;
   }
-  input[type="text"]:focus { border-color: var(--motm-pink); }
-  input[type="text"].error { border-color: #E24B4A; }
-  input[type="text"]:disabled {
+  input[type="text"]:focus,
+  input[type="number"]:focus { border-color: var(--motm-pink); }
+  input[type="text"].error,
+  input[type="number"].error { border-color: #E24B4A; }
+  input[type="text"]:disabled,
+  input[type="number"]:disabled {
     background: #FAF8F6;
     color: var(--motm-text-muted);
     cursor: not-allowed;
@@ -262,6 +266,25 @@
         {#if form?.errors?.name}
           <span class="field-error">{form.errors.name}</span>
         {/if}
+      </div>
+
+      <div class="field">
+        <label for="cost_per_unit">Cost per unit ($)</label>
+        <input
+          id="cost_per_unit"
+          name="cost_per_unit"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="e.g. 2.50"
+          class:error={form?.errors?.cost_per_unit}
+          value={data.ingredient.cost_per_unit ?? ''}
+          disabled={!data.ingredient.active}
+        />
+        {#if form?.errors?.cost_per_unit}
+          <span class="field-error">{form.errors.cost_per_unit}</span>
+        {/if}
+        <span class="field-hint">Used to compute recipe margins on the financials page</span>
       </div>
 
       <div class="field">
