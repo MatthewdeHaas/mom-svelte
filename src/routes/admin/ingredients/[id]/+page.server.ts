@@ -31,21 +31,32 @@ export const actions: Actions = {
 
     if (!parsed.success) {
       return fail(422, {
-        action: 'update',
-        errors: parsed.errors,
+        action: 'update' as const,
+        errors: parsed.errors as Record<string, string>,
         values: { name: form.get('name')?.toString() ?? '', allergenIds },
       });
     }
 
     const { name } = parsed.data;
 
+    // Parse cost_per_unit — empty string means clear (set to null)
+    const rawCost = form.get('cost_per_unit')?.toString()?.trim() ?? '';
+    const cost_per_unit = rawCost === '' ? null : parseFloat(rawCost);
+    if (rawCost !== '' && (isNaN(cost_per_unit!) || cost_per_unit! < 0)) {
+      return fail(422, {
+        action: 'update' as const,
+        errors: { cost_per_unit: 'Must be a positive number' } as Record<string, string>,
+        values: { name, allergenIds },
+      });
+    }
+
     try {
-      await updateIngredient(pool, params.id, { name });
+      await updateIngredient(pool, params.id, { name, cost_per_unit });
     } catch (err: any) {
       if (err instanceof ConflictError) {
         return fail(422, {
-          action: 'update',
-          errors: { name: 'An ingredient with this name already exists' },
+          action: 'update' as const,
+          errors: { name: 'An ingredient with this name already exists' } as Record<string, string>,
           values: { name, allergenIds },
         });
       }
@@ -54,7 +65,7 @@ export const actions: Actions = {
 
     await setIngredientAllergens(pool, params.id, allergenIds);
 
-    return { action: 'update', success: true };
+    return { action: 'update' as const, success: true };
   },
 
   deactivate: async ({ params }) => {

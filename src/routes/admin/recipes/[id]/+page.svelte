@@ -319,6 +319,41 @@
   {/if}
 </div>
 
+<!-- Pricing card -->
+<div class="card">
+  <div class="card-header">
+    <div>
+      <p class="card-title">Pricing</p>
+      <p class="card-sub">Used to compute margins on the financials page</p>
+    </div>
+  </div>
+  <form method="POST" action="?/updatePrice" use:enhance>
+    <div class="card-body">
+      <div class="name-field">
+        <input
+          name="price_per_meal"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="e.g. 12.00"
+          class:error={form?.action === 'updatePrice' && form?.errors?.price_per_meal}
+          value={form?.action === 'updatePrice' ? (form?.values?.price_per_meal ?? data.recipe.price_per_meal ?? '') : (data.recipe.price_per_meal ?? '')}
+          disabled={!data.recipe.active}
+        />
+        {#if data.recipe.active}
+          <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 1px;">Save</button>
+        {/if}
+      </div>
+      {#if form?.action === 'updatePrice' && form?.errors?.price_per_meal}
+        <p class="field-error">{form.errors.price_per_meal}</p>
+      {/if}
+      {#if form?.action === 'updatePrice' && form?.success}
+        <p style="font-size: 12.5px; color: #1F6648; margin-top: 4px;">Price updated</p>
+      {/if}
+    </div>
+  </form>
+</div>
+
 <!-- Ingredients card -->
 <div class="card">
   <div class="card-header">

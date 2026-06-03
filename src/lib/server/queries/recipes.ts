@@ -406,11 +406,18 @@ export async function updateRecipe(
     const result = await db.query<Recipe>(
       `UPDATE recipe
        SET
-         name   = COALESCE($1, name),
-         active = COALESCE($2, active)
-       WHERE id = $3
+         name           = COALESCE($1, name),
+         active         = COALESCE($2, active),
+         price_per_meal = CASE WHEN $4 THEN $3::numeric ELSE price_per_meal END
+       WHERE id = $5
        RETURNING id, name, active, created_at, price_per_meal`,
-      [data.name?.trim() ?? null, data.active ?? null, id]
+      [
+        data.name?.trim() ?? null,
+        data.active ?? null,
+        data.price_per_meal ?? null,
+        'price_per_meal' in data,
+        id,
+      ]
     );
     return result.rows[0] ?? null;
   } catch (err: any) {
