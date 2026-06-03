@@ -7,7 +7,9 @@ const pool = new pg.Pool({
   password: process.env.POSTGRES_PASSWORD ?? process.env.PGPASSWORD,
   database: process.env.POSTGRES_DB       ?? process.env.PGDATABASE,
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('@db:') && !process.env.DATABASE_URL.includes('@localhost')
+    ? { rejectUnauthorized: false }
+    : false,
 });
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')

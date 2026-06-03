@@ -78,6 +78,7 @@ export interface Ingredient {
   id: string;
   name: string;
   active: boolean;
+  cost_per_unit: number | null;
 }
 
 export interface InsertIngredient {
@@ -99,6 +100,7 @@ export interface Recipe {
   name: string;
   active: boolean;
   created_at: Date;
+  price_per_meal: number | null;
 }
 
 export interface InsertRecipe {

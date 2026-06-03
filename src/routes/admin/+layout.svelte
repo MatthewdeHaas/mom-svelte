@@ -17,6 +17,7 @@
     Carrot,
     Download,
     BarChart3,
+    DollarSign,
     Menu,
     LogOut,
     ChevronRight,
@@ -60,6 +61,7 @@
       title: 'Data',
       items: [
         { label: 'Insights',    href: '/admin/insights',    icon: BarChart3 },
+        { label: 'Financials',  href: '/admin/financials',  icon: DollarSign },
         { label: 'Exports',     href: '/admin/exports',     icon: Download },
       ],
     },
