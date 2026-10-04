@@ -14,14 +14,33 @@ export async function generateProductionOrderSheet(
     serving_date_to: to,
   });
 
-  // Sort by recipe, then customer, then id as a total-order tiebreaker so
-  // two runs over the same data produce byte-identical output.
+  // Sort by content-based keys so two runs over the same semantic data
+  // produce byte-identical output. We can't tie-break on `o.id` because
+  // IDs are fresh UUIDs per import — same inputs, different UUIDs, so
+  // the pre-tiebreak sort flipped order between runs. The composite below
+  // (serving_date, meal_category, portion_size, amount, client, storage)
+  // is unique per logical order in the import domain.
   const sortedOrders = [...orders].sort((a, b) => {
     const recipe = (a.recipe_name ?? '').localeCompare(b.recipe_name ?? '');
     if (recipe !== 0) return recipe;
     const company = a.company_name.localeCompare(b.company_name);
     if (company !== 0) return company;
-    return a.id.localeCompare(b.id);
+    const serving = String(a.serving_date ?? '').localeCompare(String(b.serving_date ?? ''));
+    if (serving !== 0) return serving;
+    const meal = (a.meal_category ?? '').localeCompare(b.meal_category ?? '');
+    if (meal !== 0) return meal;
+    const portion = (Number(a.portion_size ?? 0)) - (Number(b.portion_size ?? 0));
+    if (portion !== 0) return portion;
+    const amount = Number(a.amount) - Number(b.amount);
+    if (amount !== 0) return amount;
+    const client = (a.client ?? '').localeCompare(b.client ?? '');
+    if (client !== 0) return client;
+    // Storage flags disambiguate the last remaining case (same recipe, same
+    // customer, same date, same meal, same portion, same amount, same client —
+    // only split by frozen/chilled).
+    const storage = Number(a.frozen) - Number(b.frozen);
+    if (storage !== 0) return storage;
+    return Number(a.chilled) - Number(b.chilled);
   });
 
   // Build workbook — explicitly pin every metadata field that ExcelJS would

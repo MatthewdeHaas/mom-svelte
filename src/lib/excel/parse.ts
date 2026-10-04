@@ -12,6 +12,17 @@ function coerceCell(value: ExcelJS.CellValue): string | number | null {
   if (value instanceof Date) return toYMD(value);
   if (typeof value === 'number') return value;
   if (typeof value === 'string') return value;
+  // Formula cell — ExcelJS exposes { formula, result }. The real client's
+  // weekly workbook has formula-based Portion Size (`=100*1.3`) and Qty
+  // columns; we want the computed `result`, not the formula string. The
+  // result itself can be a number, Date, or string, so recurse.
+  if (typeof value === 'object' && 'formula' in (value as object)) {
+    const r = (value as ExcelJS.CellFormulaValue).result;
+    if (r === null || r === undefined) return null;
+    // Error results (`{error: '#DIV/0!'}`) land here — ignore.
+    if (typeof r === 'object' && 'error' in (r as object)) return null;
+    return coerceCell(r as ExcelJS.CellValue);
+  }
   // RichText object
   if (typeof value === 'object' && 'richText' in (value as object)) {
     return (value as ExcelJS.CellRichTextValue).richText.map((r) => r.text).join('');

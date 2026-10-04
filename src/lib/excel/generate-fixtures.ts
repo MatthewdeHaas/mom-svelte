@@ -1,211 +1,291 @@
 /**
- * Generates static .xlsx fixture files for parse.test.ts.
- * Run once: npx tsx scripts/generate-fixtures.ts
- * Commit the generated files — tests load them with fs.readFileSync.
+ * Synthetic fixture generator for the Excel importer tests.
+ *
+ * Each fixture pins ONE normalization behavior so the test suite stays
+ * focused — the real-client workbook combines many of these in one file,
+ * but the synthetic fixtures let `normalization.test.ts` isolate failures.
+ *
+ * Usage: pnpm exec tsx src/lib/excel/generate-fixtures.ts
+ * Output: tests/integration/excel/fixtures/<name>.xlsx (deterministic bytes)
  */
-
 import ExcelJS from 'exceljs';
-import fs from 'fs';
-import path from 'path';
+import { pinXlsxDates } from './determinism';
+import { writeFileSync, mkdirSync } from 'fs';
+import { resolve } from 'path';
 
-const OUT_DIR = path.resolve('tests/integration/excel/fixtures');
-fs.mkdirSync(OUT_DIR, { recursive: true });
+const OUT_DIR = resolve(process.cwd(), 'tests/integration/excel/fixtures');
 
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
-const HEADERS = [
-  'Customer',
-  'Serving Date',
-  'Recipe',
-  'Meal',
-  'Day',
-  'Portion Size',
-  'Order Amount',
-  'Client',
-  'Storage',
-  'Shipment Date',
-];
-
-/** A confirmed-valid row in display-header order */
-const VALID_ROW_VALUES = [
-  'Acme Corp',          // Customer
-  new Date('2025-06-15T00:00:00Z'), // Serving Date  — Date object so ExcelJS writes a date cell
-  'Pasta Primavera',    // Recipe
-  'Lunch',              // Meal
-  2,                    // Day
-  100,                  // Portion Size
-  10,                   // Order Amount
-  null,                 // Client
-  'c',                  // Storage (chilled)
-  new Date('2025-06-10T00:00:00Z'), // Shipment Date
-];
-
-function addHeaderRow(sheet: ExcelJS.Worksheet, headers: string[]) {
-  sheet.addRow(headers);
+interface Column {
+  header: string;
+  key: string;
 }
 
-function addDataRow(sheet: ExcelJS.Worksheet, values: unknown[]) {
-  const row = sheet.addRow(values);
-  // Mark date columns (index 2=Serving Date, 10=Shipment Date, 1-based) as date cells
-  // so ExcelJS stores them with the proper numFmt and returns them as Date objects on read-back.
-  [2, 10].forEach((col1Based) => {
-    const cell = row.getCell(col1Based);
-    if (cell.value instanceof Date) {
-      cell.numFmt = 'yyyy-mm-dd';
-    }
-  });
-}
+type RowValue = string | number | Date | null;
 
-async function save(wb: ExcelJS.Workbook, name: string) {
-  const dest = path.join(OUT_DIR, name);
-  await wb.xlsx.writeFile(dest);
-  console.log(`  wrote ${dest}`);
-}
-
-// ---------------------------------------------------------------------------
-// valid-week.xlsx — happy path, 3 data rows, all columns, real date cells
-// ---------------------------------------------------------------------------
-async function genValidWeek() {
+async function emitWorkbook(
+  filename: string,
+  sheetName: string,
+  columns: Column[],
+  rows: Record<string, RowValue>[],
+): Promise<void> {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Orders');
-  addHeaderRow(ws, HEADERS);
-  // Three rows with slightly different values
-  const rows = [
-    VALID_ROW_VALUES,
-    [
-      'Beta LLC',
-      new Date('2025-06-16T00:00:00Z'),
-      'Chicken Tikka',
-      'Dinner',
-      3,
-      75,
-      5,
-      'gluten free',
-      'c',
-      new Date('2025-06-11T00:00:00Z'),
-    ],
-    [
-      'Gamma Inc',
-      new Date('2025-06-17T00:00:00Z'),
-      'Caesar Salad',
-      'Lunch',
-      4,
-      100,
-      20,
-      null,
-      'f',
-      new Date('2025-06-12T00:00:00Z'),
-    ],
+  wb.created = new Date(0);
+  wb.modified = new Date(0);
+  wb.creator = '';
+  wb.lastModifiedBy = '';
+  wb.company = '';
+  wb.title = '';
+  wb.description = '';
+
+  const ws = wb.addWorksheet(sheetName);
+  ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: 16 }));
+
+  for (const row of rows) {
+    ws.addRow(row);
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const pinned = await pinXlsxDates(Buffer.from(buf));
+  mkdirSync(OUT_DIR, { recursive: true });
+  const out = resolve(OUT_DIR, filename);
+  writeFileSync(out, pinned);
+  console.log(`✓ wrote ${filename} (${pinned.length} bytes)`);
+}
+
+// -------------------------------------------------------------
+// clean-template.xlsx — the canonical format the importer accepts
+// without any warnings. Used as the baseline against which messy
+// fixtures must produce equal downstream exports.
+// -------------------------------------------------------------
+async function cleanTemplate() {
+  const columns: Column[] = [
+    { header: 'Customer',       key: 'customer' },
+    { header: 'Recipe',         key: 'recipe' },
+    { header: 'Serving Date',   key: 'serving_date' },
+    { header: 'Shipment Date',  key: 'shipment_date' },
+    { header: 'Meal',           key: 'meal' },
+    { header: 'Order Amount',   key: 'amount' },
+    { header: 'Portion Size',   key: 'portion_size' },
+    { header: 'Day',            key: 'day' },
+    { header: 'Storage',        key: 'storage' },
+    { header: 'Client',         key: 'client' },
   ];
-  for (const r of rows) addDataRow(ws, r);
-  await save(wb, 'valid-week.xlsx');
+
+  const rows: Record<string, RowValue>[] = [
+    { customer: 'Acme Co', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Lunch',  amount: 10, portion_size: 1.5, day: 1, storage: 'c', client: 'Alice' },
+    { customer: 'Acme Co', recipe: 'Beef Stew',     serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Dinner', amount: 5,  portion_size: 1.5, day: 1, storage: 'f', client: 'Bob'   },
+  ];
+
+  await emitWorkbook('clean-template.xlsx', 'Orders', columns, rows);
 }
 
-// ---------------------------------------------------------------------------
-// missing-columns.xlsx — only Company + Recipe headers present
-// ---------------------------------------------------------------------------
-async function genMissingColumns() {
+// -------------------------------------------------------------
+// frozen-chilled-split.xlsx — the real client's shape. All four
+// Frozen/Chilled combinations in 4 rows, no Storage column.
+// Expected warnings: storage_both_set (1), storage_missing_defaulted_chilled (1).
+// -------------------------------------------------------------
+async function frozenChilledSplit() {
+  const columns: Column[] = [
+    { header: 'Customer',       key: 'customer' },
+    { header: 'Recipe',         key: 'recipe' },
+    { header: 'Serving Date',   key: 'serving_date' },
+    { header: 'Shipment Date',  key: 'shipment_date' },
+    { header: 'Meal',           key: 'meal' },
+    { header: 'Order Amount',   key: 'amount' },
+    { header: 'Portion Size',   key: 'portion_size' },
+    { header: 'Day',            key: 'day' },
+    { header: 'Frozen',         key: 'frozen' },
+    { header: ' Chilled',       key: 'chilled' }, // leading-space header matches real file
+    { header: 'Client',         key: 'client' },
+  ];
+
+  const rows: Record<string, RowValue>[] = [
+    // row 2: Frozen only → storage='f'
+    { customer: 'Acme Co', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Lunch',     amount: 10, portion_size: 1.5, day: 1, frozen: 'x', chilled: '', client: 'A' },
+    // row 3: Chilled only → storage='c'
+    { customer: 'Acme Co', recipe: 'Beef Stew',     serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Dinner',    amount: 5,  portion_size: 1.5, day: 1, frozen: '',  chilled: 'x', client: 'B' },
+    // row 4: Both set → storage='f' + storage_both_set warning
+    { customer: 'Acme Co', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Breakfast', amount: 3,  portion_size: 1.5, day: 1, frozen: 'x', chilled: 'x', client: 'C' },
+    // row 5: Neither → storage='c' + storage_missing_defaulted_chilled warning
+    { customer: 'Acme Co', recipe: 'Beef Stew',     serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Snack',     amount: 2,  portion_size: 1.5, day: 1, frozen: '',  chilled: '',  client: 'D' },
+  ];
+
+  await emitWorkbook('frozen-chilled-split.xlsx', 'Orders', columns, rows);
+}
+
+// -------------------------------------------------------------
+// item-column-duplicate.xlsx — Item column present. On one row,
+// Item disagrees with Recipe (real-client Melon-vs-Banana typo).
+// Expected warnings: item_column_ignored (sheet), item_recipe_mismatch (row 3).
+// -------------------------------------------------------------
+async function itemColumnDuplicate() {
+  const columns: Column[] = [
+    { header: 'Customer',       key: 'customer' },
+    { header: 'Item',           key: 'item' },
+    { header: 'Recipe',         key: 'recipe' },
+    { header: 'Serving Date',   key: 'serving_date' },
+    { header: 'Shipment Date',  key: 'shipment_date' },
+    { header: 'Meal',           key: 'meal' },
+    { header: 'Order Amount',   key: 'amount' },
+    { header: 'Portion Size',   key: 'portion_size' },
+    { header: 'Day',            key: 'day' },
+    { header: 'Storage',        key: 'storage' },
+    { header: 'Client',         key: 'client' },
+  ];
+
+  const rows: Record<string, RowValue>[] = [
+    // row 2: Item matches Recipe — no mismatch warning
+    { customer: 'Acme Co', item: 'Chicken Curry', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Lunch',  amount: 10, portion_size: 1.5, day: 1, storage: 'c', client: 'A' },
+    // row 3: Item disagrees with Recipe — mismatch warning (Recipe wins)
+    { customer: 'Acme Co', item: 'Melon',         recipe: 'Beef Stew',     serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Dinner', amount: 5,  portion_size: 1.5, day: 1, storage: 'f', client: 'B' },
+  ];
+
+  await emitWorkbook('item-column-duplicate.xlsx', 'Orders', columns, rows);
+}
+
+// -------------------------------------------------------------
+// boilerplate-rows.xlsx — two valid rows, then a trailer of
+// office-use / packing-slip boilerplate rows that must be dropped.
+// Expected: inserted=2, boilerplate_row_stopped warning naming row 4.
+// -------------------------------------------------------------
+async function boilerplateRows() {
+  const columns: Column[] = [
+    { header: 'Customer',       key: 'customer' },
+    { header: 'Recipe',         key: 'recipe' },
+    { header: 'Serving Date',   key: 'serving_date' },
+    { header: 'Shipment Date',  key: 'shipment_date' },
+    { header: 'Meal',           key: 'meal' },
+    { header: 'Order Amount',   key: 'amount' },
+    { header: 'Portion Size',   key: 'portion_size' },
+    { header: 'Day',            key: 'day' },
+    { header: 'Storage',        key: 'storage' },
+    { header: 'Client',         key: 'client' },
+  ];
+
+  const rows: Record<string, RowValue>[] = [
+    // row 2: real order
+    { customer: 'Acme Co', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Lunch',  amount: 10, portion_size: 1.5, day: 1, storage: 'c', client: 'A' },
+    // row 3: real order
+    { customer: 'Acme Co', recipe: 'Beef Stew',     serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Dinner', amount: 5,  portion_size: 1.5, day: 1, storage: 'f', client: 'B' },
+    // row 4: boilerplate — EOF marker. Everything from here down is dropped.
+    { customer: 'PACKING SLIP', recipe: '', serving_date: null, shipment_date: null, meal: null, amount: null, portion_size: null, day: null, storage: null, client: null },
+    // row 5: ignored
+    { customer: 'OFFICE USE ONLY', recipe: '', serving_date: null, shipment_date: null, meal: null, amount: null, portion_size: null, day: null, storage: null, client: null },
+    // row 6: ignored
+    { customer: 'Cambros: 3', recipe: '', serving_date: null, shipment_date: null, meal: null, amount: null, portion_size: null, day: null, storage: null, client: null },
+  ];
+
+  await emitWorkbook('boilerplate-rows.xlsx', 'Orders', columns, rows);
+}
+
+// -------------------------------------------------------------
+// zero-amount.xlsx — single row with Order Amount = 0. Pins the
+// current reject-on-zero behavior: Zod `.positive()` rejects it,
+// surfaces as a regular error (not a warning).
+// -------------------------------------------------------------
+async function zeroAmount() {
+  const columns: Column[] = [
+    { header: 'Customer',       key: 'customer' },
+    { header: 'Recipe',         key: 'recipe' },
+    { header: 'Serving Date',   key: 'serving_date' },
+    { header: 'Shipment Date',  key: 'shipment_date' },
+    { header: 'Meal',           key: 'meal' },
+    { header: 'Order Amount',   key: 'amount' },
+    { header: 'Portion Size',   key: 'portion_size' },
+    { header: 'Day',            key: 'day' },
+    { header: 'Storage',        key: 'storage' },
+    { header: 'Client',         key: 'client' },
+  ];
+
+  const rows: Record<string, RowValue>[] = [
+    { customer: 'Acme Co', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Lunch', amount: 0, portion_size: 1.5, day: 1, storage: 'c', client: 'A' },
+  ];
+
+  await emitWorkbook('zero-amount.xlsx', 'Orders', columns, rows);
+}
+
+// -------------------------------------------------------------
+// meal-case-variants.xlsx — meal column values with varying case
+// and whitespace. Pins the meal_case_normalized warning.
+// -------------------------------------------------------------
+async function mealCaseVariants() {
+  const columns: Column[] = [
+    { header: 'Customer',       key: 'customer' },
+    { header: 'Recipe',         key: 'recipe' },
+    { header: 'Serving Date',   key: 'serving_date' },
+    { header: 'Shipment Date',  key: 'shipment_date' },
+    { header: 'Meal',           key: 'meal' },
+    { header: 'Order Amount',   key: 'amount' },
+    { header: 'Portion Size',   key: 'portion_size' },
+    { header: 'Day',            key: 'day' },
+    { header: 'Storage',        key: 'storage' },
+    { header: 'Client',         key: 'client' },
+  ];
+
+  const rows: Record<string, RowValue>[] = [
+    // row 2: ' lunch' → 'Lunch' (meal_case_normalized)
+    { customer: 'Acme Co', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: ' lunch',  amount: 10, portion_size: 1.5, day: 1, storage: 'c', client: 'A' },
+    // row 3: 'lunch r' → 'Lunch R' (meal_case_normalized)
+    { customer: 'Acme Co', recipe: 'Beef Stew',     serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'lunch r', amount: 5,  portion_size: 1.5, day: 1, storage: 'f', client: 'B' },
+    // row 4: 'Dinner' → unchanged (no warning)
+    { customer: 'Acme Co', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Dinner',  amount: 3,  portion_size: 1.5, day: 1, storage: 'c', client: 'C' },
+  ];
+
+  await emitWorkbook('meal-case-variants.xlsx', 'Orders', columns, rows);
+}
+
+// -------------------------------------------------------------
+// extra-sheets.xlsx — valid data on sheet 1, two non-data sheets
+// after. Expected warning: extra_sheets_ignored (count=2).
+// Built with raw ExcelJS calls so we can add multiple sheets.
+// -------------------------------------------------------------
+async function extraSheets() {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Orders');
-  ws.addRow(['Company', 'Recipe']);
-  ws.addRow(['Acme Corp', 'Pasta Primavera']);
-  await save(wb, 'missing-columns.xlsx');
+  wb.created = new Date(0);
+  wb.modified = new Date(0);
+  wb.creator = '';
+  wb.lastModifiedBy = '';
+  wb.company = '';
+  wb.title = '';
+  wb.description = '';
+
+  const ws1 = wb.addWorksheet('Orders');
+  ws1.columns = [
+    { header: 'Customer',       key: 'customer',      width: 16 },
+    { header: 'Recipe',         key: 'recipe',        width: 20 },
+    { header: 'Serving Date',   key: 'serving_date',  width: 14 },
+    { header: 'Shipment Date',  key: 'shipment_date', width: 14 },
+    { header: 'Meal',           key: 'meal',          width: 10 },
+    { header: 'Order Amount',   key: 'amount',        width: 10 },
+    { header: 'Portion Size',   key: 'portion_size',  width: 12 },
+    { header: 'Day',            key: 'day',           width: 6 },
+    { header: 'Storage',        key: 'storage',       width: 8 },
+    { header: 'Client',         key: 'client',        width: 16 },
+  ];
+  ws1.addRow({ customer: 'Acme Co', recipe: 'Chicken Curry', serving_date: '2025-06-15', shipment_date: '2025-06-10', meal: 'Lunch', amount: 10, portion_size: 1.5, day: 1, storage: 'c', client: 'A' });
+
+  wb.addWorksheet('Packing Slip Template').addRow(['boilerplate']);
+  wb.addWorksheet('Office Layout').addRow(['boilerplate']);
+
+  const buf = await wb.xlsx.writeBuffer();
+  const pinned = await pinXlsxDates(Buffer.from(buf));
+  mkdirSync(OUT_DIR, { recursive: true });
+  writeFileSync(resolve(OUT_DIR, 'extra-sheets.xlsx'), pinned);
+  console.log(`✓ wrote extra-sheets.xlsx (${pinned.length} bytes)`);
 }
 
-// ---------------------------------------------------------------------------
-// extra-columns.xlsx — standard headers plus two unknown extras
-// ---------------------------------------------------------------------------
-async function genExtraColumns() {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Orders');
-  const extendedHeaders = [...HEADERS, 'Internal Code', 'Priority'];
-  ws.addRow(extendedHeaders);
-  const extendedRow = [...VALID_ROW_VALUES, 'IC-001', 'High'];
-  addDataRow(ws, extendedRow);
-  await save(wb, 'extra-columns.xlsx');
+async function main() {
+  await cleanTemplate();
+  await frozenChilledSplit();
+  await itemColumnDuplicate();
+  await boilerplateRows();
+  await zeroAmount();
+  await mealCaseVariants();
+  await extraSheets();
+  console.log('\nAll fixtures regenerated.');
 }
 
-// ---------------------------------------------------------------------------
-// empty-rows.xlsx — blank rows interspersed between valid rows
-// ---------------------------------------------------------------------------
-async function genEmptyRows() {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Orders');
-  addHeaderRow(ws, HEADERS);
-  addDataRow(ws, VALID_ROW_VALUES);
-  // Blank row
-  ws.addRow([]);
-  addDataRow(ws, [
-    'Beta LLC',
-    new Date('2025-06-16T00:00:00Z'),
-    'Chicken Tikka',
-    'Dinner',
-    3,
-    75,
-    5,
-    null,
-    'c',
-    new Date('2025-06-11T00:00:00Z'),
-  ]);
-  // Another blank row at the end
-  ws.addRow([]);
-  await save(wb, 'empty-rows.xlsx');
-}
-
-// ---------------------------------------------------------------------------
-// date-as-date.xlsx — date columns as real Excel date cells (same as valid
-// week but isolated so the test assertion is explicit)
-// ---------------------------------------------------------------------------
-async function genDateAsDate() {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Orders');
-  addHeaderRow(ws, HEADERS);
-  addDataRow(ws, VALID_ROW_VALUES);
-  await save(wb, 'date-as-date.xlsx');
-}
-
-// ---------------------------------------------------------------------------
-// multiple-sheets.xlsx — two sheets; only the first should be parsed
-// ---------------------------------------------------------------------------
-async function genMultipleSheets() {
-  const wb = new ExcelJS.Workbook();
-
-  const ws1 = wb.addWorksheet('Sheet One');
-  addHeaderRow(ws1, HEADERS);
-  addDataRow(ws1, VALID_ROW_VALUES);
-
-  // Second sheet has a single row with different data — must NOT appear in output
-  const ws2 = wb.addWorksheet('Sheet Two');
-  ws2.addRow(['Company', 'Recipe']);
-  ws2.addRow(['Should Not Appear', 'Ignored Recipe']);
-
-  await save(wb, 'multiple-sheets.xlsx');
-}
-
-// ---------------------------------------------------------------------------
-// empty-sheet.xlsx — headers present but zero data rows
-// ---------------------------------------------------------------------------
-async function genEmptySheet() {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Orders');
-  addHeaderRow(ws, HEADERS);
-  // No data rows
-  await save(wb, 'empty-sheet.xlsx');
-}
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-(async () => {
-  console.log('Generating fixtures...');
-  await genValidWeek();
-  await genMissingColumns();
-  await genExtraColumns();
-  await genEmptyRows();
-  await genDateAsDate();
-  await genMultipleSheets();
-  await genEmptySheet();
-  console.log('Done.');
-})();
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

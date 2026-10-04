@@ -429,6 +429,35 @@ export async function generatePackingSlips(
     groupMap.get(key)!.orders.push(detail);
   }
 
+  // Sort orders inside each group by content keys (not o.id) so two imports
+  // of the same semantic data produce byte-identical PDFs. getOrders falls
+  // back to `o.id ASC` which is a fresh UUID per import — same inputs,
+  // different UUIDs → different per-group row order → different bytes.
+  const detailKey = (d: OrderDetail) =>
+    [
+      (d.recipe?.name ?? ''),
+      String(d.serving_date ?? ''),
+      (d.meal_category ?? ''),
+      String(d.portion_size ?? ''),
+      String(d.amount),
+      (d.client ?? ''),
+      Number(d.frozen),
+      Number(d.chilled),
+    ].join('|');
+
+  for (const group of groupMap.values()) {
+    group.orders.sort((a, b) => detailKey(a).localeCompare(detailKey(b)));
+  }
+
+  // Iterate groups in a stable order too — Map iteration follows insertion
+  // order, which here mirrors the `details` list order. Content-sort the
+  // keys so run-to-run group ordering is independent of UUID tiebreaking.
+  const sortedGroups = [...groupMap.values()].sort((a, b) => {
+    const name = a.companyName.localeCompare(b.companyName);
+    if (name !== 0) return name;
+    return String(a.shipmentDate).localeCompare(String(b.shipmentDate));
+  });
+
   // 4. Load logo SVG once (null if file not found)
   const logoSvg: string | null = fs.existsSync(LOGO_PATH)
     ? fs.readFileSync(LOGO_PATH, 'utf8')
@@ -437,7 +466,7 @@ export async function generatePackingSlips(
   // 5. Render one PDF per group
 	const results: Array<{ filename: string; companyName: string; buffer: Buffer }> = [];
 
-  for (const group of groupMap.values()) {
+  for (const group of sortedGroups) {
     const rawBuf = await new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size:    [PAGE_W, PAGE_H],
