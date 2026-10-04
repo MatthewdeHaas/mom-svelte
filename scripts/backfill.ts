@@ -267,7 +267,7 @@ async function importOrders(recipeIds: Record<string, string>) {
 			`INSERT INTO "order" (
 				company_id, recipe_id, order_source, status,
 				meal_category, amount, serving_date, shipment_date,
-				frozen, chilled, client_note
+				frozen, chilled, client
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 			[
 				companyId,

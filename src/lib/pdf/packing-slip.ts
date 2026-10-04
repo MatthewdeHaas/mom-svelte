@@ -261,7 +261,7 @@ function drawOrderRow(
     order.meal_category ?? '—',
     String(order.amount),
     order.frozen ? 'Frozen' : 'Chilled',
-    order.client_note?.trim() || '',
+    order.client?.trim() || '',
   ];
 
   let x = ML;

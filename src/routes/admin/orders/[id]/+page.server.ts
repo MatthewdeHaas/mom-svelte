@@ -30,16 +30,18 @@ export const actions: Actions = {
       });
     }
 
-    const { amount, meal_category, serving_date, shipment_date, frozen, chilled, notes } = parsed.data;
+    const { amount, portion_size, day, meal_category, serving_date, shipment_date, frozen, chilled, client } = parsed.data;
 
     await updateOrder(pool, params.id, {
       amount,
+      portion_size,
+      day,
       meal_category,
       serving_date: new Date(serving_date),
       shipment_date: shipment_date ? new Date(shipment_date) : undefined,
       frozen,
       chilled,
-      client_note: notes,
+      client,
     });
 
     return { action: 'update', success: true };

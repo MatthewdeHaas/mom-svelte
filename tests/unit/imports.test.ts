@@ -13,20 +13,55 @@ describe('ExcelRowSchema', () => {
     shipment_date: '2025-06-10',
     meal_category: 'Lunch',
     amount: 10,
-    storage: 'frozen',
-    notes: null,
+    portion_size: 100,
+    day: 2,
+    storage: 'f',
+    client: null,
   };
 
   it('accepts a fully valid row', () => {
     expect(ExcelRowSchema.safeParse(valid).success).toBe(true);
   });
 
-  it('accepts notes as undefined and coerces to null', () => {
-    const { notes, ...withoutNotes } = valid;
-    const result = ExcelRowSchema.safeParse(withoutNotes);
+  it('accepts client as undefined and coerces to null', () => {
+    const { client, ...withoutClient } = valid;
+    const result = ExcelRowSchema.safeParse(withoutClient);
 
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.notes).toBeNull();
+    if (result.success) expect(result.data.client).toBeNull();
+  });
+
+  it('accepts portion_size as null/undefined', () => {
+    const result = ExcelRowSchema.safeParse({ ...valid, portion_size: null });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.portion_size).toBeNull();
+  });
+
+  it('accepts day as null/undefined', () => {
+    const result = ExcelRowSchema.safeParse({ ...valid, day: null });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.day).toBeNull();
+  });
+
+  it('rejects day outside 1-7 range', () => {
+    expect(ExcelRowSchema.safeParse({ ...valid, day: 0 }).success).toBe(false);
+    expect(ExcelRowSchema.safeParse({ ...valid, day: 8 }).success).toBe(false);
+  });
+
+  it('accepts storage as null (ambient)', () => {
+    const result = ExcelRowSchema.safeParse({ ...valid, storage: null });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.storage).toBeNull();
+  });
+
+  it('accepts both valid storage values', () => {
+    expect(ExcelRowSchema.safeParse({ ...valid, storage: 'f' }).success).toBe(true);
+    expect(ExcelRowSchema.safeParse({ ...valid, storage: 'c' }).success).toBe(true);
+  });
+
+  it('rejects an invalid storage value', () => {
+    const result = ExcelRowSchema.safeParse({ ...valid, storage: 'ambient' });
+    expect(result.success).toBe(false);
   });
 
   it('accepts serving_date equal to shipment_date', () => {
@@ -68,19 +103,9 @@ describe('ExcelRowSchema', () => {
   });
 
   it('accepts all valid meal_category values', () => {
-    for (const meal_category of ['Breakfast', 'Lunch', 'Snack', 'Soup', 'Dinner']) {
+    for (const meal_category of ['Breakfast', 'Lunch', 'Snack', 'Snack R', 'Soup', 'Dinner']) {
       expect(ExcelRowSchema.safeParse({ ...valid, meal_category }).success).toBe(true);
     }
-  });
-
-  it('rejects an invalid storage value', () => {
-    const result = ExcelRowSchema.safeParse({ ...valid, storage: 'ambient' });
-    expect(result.success).toBe(false);
-  });
-
-  it('accepts both valid storage values', () => {
-    expect(ExcelRowSchema.safeParse({ ...valid, storage: 'frozen' }).success).toBe(true);
-    expect(ExcelRowSchema.safeParse({ ...valid, storage: 'chilled' }).success).toBe(true);
   });
 
   it('rejects amount of zero', () => {
@@ -160,8 +185,10 @@ const validRow = {
   shipment_date: '2025-06-10',
   meal_category: 'Lunch',
   amount: 10,
-  storage: 'frozen',
-  notes: null,
+  portion_size: 100,
+  day: 2,
+  storage: 'f',
+  client: null,
 };
 
 describe('importOrdersFromRows — empty input', () => {
@@ -266,14 +293,16 @@ describe('importOrdersFromRows — reference resolution phase', () => {
 describe('importOrdersFromRows — header normalisation', () => {
   it('maps friendly display headers to schema field names', async () => {
     const rowWithDisplayHeaders = {
-      'Company':        'Acme Corp',
+      'Customer':       'Acme Corp',
       'Recipe':         'Pasta Primavera',
       'Serving Date':   '2025-06-15',
       'Shipment Date':  '2025-06-10',
-      'Meal Category':  'Lunch',
-      'Amount':         10,
-      'Storage':        'frozen',
-      'Notes':          null,
+      'Meal':           'Lunch',
+      'Order Amount':   10,
+      'Portion Size':   100,
+      'Day':            2,
+      'Storage':        'f',
+      'Client':         null,
     };
 
     const result = await importOrdersFromRows(
@@ -288,35 +317,32 @@ describe('importOrdersFromRows — header normalisation', () => {
     expect(result.inserted).toBe(1);
   });
 
-  it('maps alternative header variants (Meal Type, ServingDate)', async () => {
-    const rowWithAltHeaders = {
-      'Company':      'Acme Corp',
-      'Recipe':       'Pasta Primavera',
-      'ServingDate':  '2025-06-15',
-      'ShipmentDate': '2025-06-10',
-      'Meal Type':    'Lunch',
-      'Amount':       10,
-      'Storage':      'frozen',
-      'Notes':        null,
+  it('ignores the Item column (duplicate of Recipe)', async () => {
+    const rowWithItem = {
+      'Customer':       'Acme Corp',
+      'Recipe':         'Pasta Primavera',
+      'Item':           'Pasta Primavera',  // should be ignored
+      'Serving Date':   '2025-06-15',
+      'Shipment Date':  '2025-06-10',
+      'Meal':           'Lunch',
+      'Order Amount':   10,
+      'Storage':        'c',
+      'Client':         null,
     };
 
     const result = await importOrdersFromRows(
       makeMockDb() as any,
-      [rowWithAltHeaders],
+      [rowWithItem],
       'user-1',
-      Object.keys(rowWithAltHeaders)
+      Object.keys(rowWithItem)
     );
 
     expect(result.errors).toHaveLength(0);
     expect(result.inserted).toBe(1);
   });
-});
 
-describe('importOrdersFromRows — storage mapping', () => {
-  it('maps storage: frozen to frozen: true, chilled: false', async () => {
-    // Verify the mapping is correct by checking what gets inserted.
-    // We intercept the insertOrdersBatch call via the mock.
-    let capturedOrders: any[] = [];
+  it('maps storage f/c to frozen/chilled booleans in the insert', async () => {
+    let capturedParams: any[] = [];
 
     const db = {
       query: async (sql: string) => {
@@ -327,8 +353,7 @@ describe('importOrdersFromRows — storage mapping', () => {
       connect: async () => ({
         query: async (sql: string, params?: unknown[]) => {
           if (sql.includes('INSERT INTO "order"')) {
-            // params are flat — frozen is at index 9 (0-based) per insertOrdersBatch param order
-            capturedOrders = params as any[];
+            capturedParams = params as any[];
           }
           return { rows: [{ id: 'order-uuid' }] };
         },
@@ -336,15 +361,15 @@ describe('importOrdersFromRows — storage mapping', () => {
       }),
     };
 
-    await importOrdersFromRows(db as any, [{ ...validRow, storage: 'frozen' }], 'user-1');
+    await importOrdersFromRows(db as any, [{ ...validRow, storage: 'f' }], 'user-1');
 
-    // frozen is param index 9, chilled is 10 (0-based) in the flat params array
-    expect(capturedOrders[9]).toBe(true);  // frozen
-    expect(capturedOrders[10]).toBe(false); // chilled
+    // frozen is at index 11, chilled is 12 in the 15-param insertOrdersBatch layout
+    expect(capturedParams[11]).toBe(true);  // frozen
+    expect(capturedParams[12]).toBe(false); // chilled
   });
 
-  it('maps storage: chilled to frozen: false, chilled: true', async () => {
-    let capturedOrders: any[] = [];
+  it('maps storage c to frozen: false, chilled: true', async () => {
+    let capturedParams: any[] = [];
 
     const db = {
       query: async (sql: string) => {
@@ -354,16 +379,16 @@ describe('importOrdersFromRows — storage mapping', () => {
       },
       connect: async () => ({
         query: async (sql: string, params?: unknown[]) => {
-          if (sql.includes('INSERT INTO "order"')) capturedOrders = params as any[];
+          if (sql.includes('INSERT INTO "order"')) capturedParams = params as any[];
           return { rows: [{ id: 'order-uuid' }] };
         },
         release: () => {},
       }),
     };
 
-    await importOrdersFromRows(db as any, [{ ...validRow, storage: 'chilled' }], 'user-1');
+    await importOrdersFromRows(db as any, [{ ...validRow, storage: 'c' }], 'user-1');
 
-    expect(capturedOrders[9]).toBe(false);  // frozen
-    expect(capturedOrders[10]).toBe(true);  // chilled
+    expect(capturedParams[11]).toBe(false);  // frozen
+    expect(capturedParams[12]).toBe(true);   // chilled
   });
 });

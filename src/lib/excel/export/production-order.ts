@@ -1,5 +1,4 @@
 import ExcelJS from 'exceljs';
-import { getRecipesWithIngredientsByIds } from '$lib/server/queries/recipes';
 import { getOrders } from '$lib/server/queries/orders';
 import type { Pool } from 'pg';
 
@@ -14,68 +13,29 @@ export async function generateProductionOrderSheet(
     serving_date_to: to,
   });
 
-
-  // 2. Collect unique recipe IDs and resolve all recipes in one query
-  const recipeIds = [...new Set(orders.map((o) => o.recipe_id).filter((id): id is string => !!id))];
-
-  const recipeMap = await getRecipesWithIngredientsByIds(db, recipeIds);
-
-  // 4. Build one row per recipe, aggregating total amount across orders
-  type Row = {
-    recipe: string;
-    mealCategory: string | null;
-    amount: number;
-    frozen: boolean;
-    chilled: boolean;
-    allergens: string;
-  };
-
-  const rowMap = new Map<string, Row>();
-
-  for (const order of orders) {
-    if (!order.recipe_id) continue;
-    const recipe = recipeMap.get(order.recipe_id);
-    if (!recipe) continue;
-
-    if (!rowMap.has(order.recipe_id)) {
-      // Derive allergens: flatten ingredients → allergens, deduplicate
-      const allergenNames = [
-        ...new Set(
-          recipe.ingredients.flatMap((ing) => ing.allergen.map((a) => a.name))
-        ),
-      ].sort();
-
-			rowMap.set(order.recipe_id, {
-				recipe: recipe.name,
-				mealCategory: order.meal_category,
-				amount: 0,
-				frozen: order.frozen,
-				chilled: order.chilled,
-				allergens: allergenNames.join(', '),
-			});
-    }
-
-    rowMap.get(order.recipe_id)!.amount += Number(order.amount);
-  }
-
-  // 5. Sort by meal category, then recipe name
-  const rows = [...rowMap.values()].sort((a, b) => {
-    const cat = (a.mealCategory ?? '').localeCompare(b.mealCategory ?? '');
-    return cat !== 0 ? cat : a.recipe.localeCompare(b.recipe);
+  // Sort by recipe name, then customer
+  const sortedOrders = [...orders].sort((a, b) => {
+    const recipe = (a.recipe_name ?? '').localeCompare(b.recipe_name ?? '');
+    return recipe !== 0 ? recipe : a.company_name.localeCompare(b.company_name);
   });
 
-  // 6. Build workbook
+  // Build workbook
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Production Order');
 
-  // Column definitions
+  // Column definitions matching the new format
   sheet.columns = [
-    { header: 'Recipe',        key: 'recipe',       width: 32 },
-    { header: 'Meal Category', key: 'mealCategory', width: 18 },
-    { header: 'Amount',        key: 'amount',       width: 10 },
-    { header: 'Frozen',        key: 'frozen',       width: 10 },
-    { header: 'Chilled',       key: 'chilled',      width: 10 },
-    { header: 'Allergens',     key: 'allergens',    width: 36 },
+    { header: 'Customer',                  key: 'customer',      width: 24 },
+    { header: 'Serving Date',              key: 'serving_date',  width: 14 },
+    { header: 'Recipe',                    key: 'recipe',        width: 32 },
+    { header: 'Meal',                      key: 'meal',          width: 12 },
+    { header: 'Day',                       key: 'day',           width: 6 },
+    { header: 'Portion Size',              key: 'portion_size',  width: 14 },
+    { header: 'Order Amount',              key: 'amount',        width: 14 },
+    { header: 'Quantity to Produce/Ship',  key: 'qty_produce',   width: 22 },
+    { header: 'Client',                    key: 'client',        width: 32 },
+    { header: 'Storage',                   key: 'storage',       width: 10 },
+    { header: 'Shipment Date',             key: 'shipment_date', width: 14 },
   ];
 
   // Style header row
@@ -90,25 +50,36 @@ export async function generateProductionOrderSheet(
   headerRow.height = 20;
 
   // Add data rows
-  for (const row of rows) {
+  for (const order of sortedOrders) {
+    const portionSize = order.portion_size != null ? Number(order.portion_size) : null;
+    const amount = Number(order.amount);
+    const qtyProduce = portionSize != null ? portionSize * amount : amount;
+
     sheet.addRow({
-      recipe: row.recipe,
-      mealCategory: row.mealCategory,
-      amount: row.amount,
-      frozen: row.frozen ? '✓' : '',
-      chilled: row.chilled ? '✓' : '',
-      allergens: row.allergens,
+      customer: order.company_name,
+      serving_date: order.serving_date,
+      recipe: order.recipe_name ?? '—',
+      meal: order.meal_category ?? '',
+      day: order.day ?? '',
+      portion_size: portionSize ?? '',
+      amount: amount,
+      qty_produce: qtyProduce,
+      client: order.client ?? '',
+      storage: order.frozen ? 'f' : order.chilled ? 'c' : '',
+      shipment_date: order.shipment_date,
     });
   }
 
-  // Style data rows: centre the checkmark columns, zebra-stripe
+  // Style data rows
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
 
     const isEven = rowNumber % 2 === 0;
-    row.getCell('frozen').alignment  = { horizontal: 'center' };
-    row.getCell('chilled').alignment = { horizontal: 'center' };
-    row.getCell('amount').alignment  = { horizontal: 'right' };
+    row.getCell('storage').alignment = { horizontal: 'center' };
+    row.getCell('amount').alignment = { horizontal: 'right' };
+    row.getCell('portion_size').alignment = { horizontal: 'right' };
+    row.getCell('qty_produce').alignment = { horizontal: 'right' };
+    row.getCell('day').alignment = { horizontal: 'center' };
 
     if (isEven) {
       row.eachCell((cell) => {
@@ -120,6 +91,10 @@ export async function generateProductionOrderSheet(
       });
     }
   });
+
+  // Date format for serving_date and shipment_date columns
+  sheet.getColumn('serving_date').numFmt = 'yyyy-mm-dd';
+  sheet.getColumn('shipment_date').numFmt = 'yyyy-mm-dd';
 
   // Freeze header row
   sheet.views = [{ state: 'frozen', ySplit: 1 }];

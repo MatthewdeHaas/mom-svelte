@@ -1,5 +1,5 @@
 # Bundle the Svelte app into vanilla JavaScript for production
-FROM node:25-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 RUN npm install -g pnpm
 COPY package.json pnpm-lock.yaml ./
@@ -15,7 +15,7 @@ ENV BETTER_AUTH_URL=$BETTER_AUTH_URL
 RUN pnpm run build
 
 # Run the app
-FROM node:25-alpine
+FROM node:22-alpine
 WORKDIR /app
 RUN npm install -g pnpm
 COPY --from=builder /app/build build/

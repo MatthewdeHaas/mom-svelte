@@ -16,26 +16,30 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 // ---------------------------------------------------------------------------
 
 const HEADERS = [
-  'Company',
-  'Recipe',
+  'Customer',
   'Serving Date',
-  'Shipment Date',
-  'Meal Category',
-  'Amount',
+  'Recipe',
+  'Meal',
+  'Day',
+  'Portion Size',
+  'Order Amount',
+  'Client',
   'Storage',
-  'Notes',
+  'Shipment Date',
 ];
 
 /** A confirmed-valid row in display-header order */
 const VALID_ROW_VALUES = [
-  'Acme Corp',          // Company
-  'Pasta Primavera',    // Recipe
+  'Acme Corp',          // Customer
   new Date('2025-06-15T00:00:00Z'), // Serving Date  — Date object so ExcelJS writes a date cell
+  'Pasta Primavera',    // Recipe
+  'Lunch',              // Meal
+  2,                    // Day
+  100,                  // Portion Size
+  10,                   // Order Amount
+  null,                 // Client
+  'c',                  // Storage (chilled)
   new Date('2025-06-10T00:00:00Z'), // Shipment Date
-  'Lunch',              // Meal Category
-  10,                   // Amount
-  'frozen',             // Storage
-  null,                 // Notes
 ];
 
 function addHeaderRow(sheet: ExcelJS.Worksheet, headers: string[]) {
@@ -44,10 +48,9 @@ function addHeaderRow(sheet: ExcelJS.Worksheet, headers: string[]) {
 
 function addDataRow(sheet: ExcelJS.Worksheet, values: unknown[]) {
   const row = sheet.addRow(values);
-  // Mark date columns (index 2 and 3, 0-based) as date cells so ExcelJS
-  // stores them with the proper numFmt and returns them as Date objects on
-  // read-back.
-  [3, 4].forEach((col1Based) => {
+  // Mark date columns (index 2=Serving Date, 10=Shipment Date, 1-based) as date cells
+  // so ExcelJS stores them with the proper numFmt and returns them as Date objects on read-back.
+  [2, 10].forEach((col1Based) => {
     const cell = row.getCell(col1Based);
     if (cell.value instanceof Date) {
       cell.numFmt = 'yyyy-mm-dd';
@@ -73,23 +76,27 @@ async function genValidWeek() {
     VALID_ROW_VALUES,
     [
       'Beta LLC',
-      'Chicken Tikka',
       new Date('2025-06-16T00:00:00Z'),
-      new Date('2025-06-11T00:00:00Z'),
+      'Chicken Tikka',
       'Dinner',
+      3,
+      75,
       5,
-      'chilled',
       'gluten free',
+      'c',
+      new Date('2025-06-11T00:00:00Z'),
     ],
     [
       'Gamma Inc',
-      'Caesar Salad',
       new Date('2025-06-17T00:00:00Z'),
-      new Date('2025-06-12T00:00:00Z'),
+      'Caesar Salad',
       'Lunch',
+      4,
+      100,
       20,
-      'frozen',
       null,
+      'f',
+      new Date('2025-06-12T00:00:00Z'),
     ],
   ];
   for (const r of rows) addDataRow(ws, r);
@@ -132,13 +139,15 @@ async function genEmptyRows() {
   ws.addRow([]);
   addDataRow(ws, [
     'Beta LLC',
-    'Chicken Tikka',
     new Date('2025-06-16T00:00:00Z'),
-    new Date('2025-06-11T00:00:00Z'),
+    'Chicken Tikka',
     'Dinner',
+    3,
+    75,
     5,
-    'chilled',
     null,
+    'c',
+    new Date('2025-06-11T00:00:00Z'),
   ]);
   // Another blank row at the end
   ws.addRow([]);

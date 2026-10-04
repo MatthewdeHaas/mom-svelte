@@ -225,12 +225,14 @@ export interface Order {
   status: OrderStatus;
   meal_category: string | null;
   amount: number;
+  portion_size: number | null;
+  day: number | null;
   serving_date: Date;
   shipment_date: Date;
   frozen: boolean;
   chilled: boolean;
   recurring: boolean;
-  client_note: string | null;
+  client: string | null;
   created_at: Date;
 }
 
@@ -242,12 +244,14 @@ export interface InsertOrder {
   status?: OrderStatus;
   meal_category?: string | null;
   amount: number;
+  portion_size?: number | null;
+  day?: number | null;
   serving_date: Date | string;
   shipment_date: Date | string;
   frozen?: boolean;
   chilled?: boolean;
   recurring?: boolean;
-  client_note?: string | null;
+  client?: string | null;
 }
 export type UpdateOrder = Partial<Omit<InsertOrder, 'order_source' | 'created_by'>>;
 
@@ -277,8 +281,10 @@ export interface ExcelRowRaw {
   shipment_date: unknown;
   meal_category: unknown;
   amount: unknown;
+  portion_size: unknown;
+  day: unknown;
   storage: unknown;
-  notes: unknown;
+  client: unknown;
 }
 
 // Validated, parsed row — ready for DB reference lookups.
@@ -289,8 +295,10 @@ export interface ExcelRowParsed {
   shipment_date: string;  // YYYY-MM-DD
   meal_category: string;
   amount: number;
-  storage: 'frozen' | 'chilled' | null;
-  notes: string | null;
+  portion_size: number | null;
+  day: number | null;
+  storage: 'f' | 'c' | null;
+  client: string | null;
 }
 
 // A row that has passed both Zod validation and DB reference checks.
@@ -302,9 +310,11 @@ export interface ExcelRowResolved {
   shipment_date: string;
   meal_category: string;
   amount: number;
+  portion_size: number | null;
+  day: number | null;
   frozen: boolean;
   chilled: boolean;
-  client_note: string | null;
+  client: string | null;
 }
 
 // Result returned to the caller after an import attempt

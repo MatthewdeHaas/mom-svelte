@@ -51,7 +51,10 @@ export const auth = betterAuth({
     magicLink({
       sendMagicLink: async ({ email, url }) => {
         // Rate limit: max 3 magic link requests per email per 15 minutes
-        if (isRateLimited('magic-link', email, 3, 15 * 60_000)) return;
+        if (isRateLimited('magic-link', email, 3, 15 * 60_000)) {
+					console.log('[magic-link] RATE LIMITED:', email);
+					return;
+				}
 
         // Only send magic links to registered users. Querying Better Auth's
         // own "user" table is the authoritative check regardless of role.

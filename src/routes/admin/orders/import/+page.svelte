@@ -421,15 +421,16 @@
         </thead>
         <tbody>
           {#each [
-            { col: 'company',       req: true,  note: 'Must match existing company name' },
-            { col: 'recipe',        req: true,  note: 'Must match existing recipe name' },
-            { col: 'serving_date',  req: true,  note: 'YYYY-MM-DD' },
-            { col: 'amount',        req: true,  note: 'Positive integer' },
-            { col: 'meal_category', req: true,  note: 'Breakfast, Lunch, Snack, or Dinner' },
-            { col: 'shipment_date', req: false, note: 'YYYY-MM-DD, ≤ serving_date' },
-            { col: 'frozen',        req: false, note: 'TRUE or FALSE' },
-            { col: 'chilled',       req: false, note: 'TRUE or FALSE, not both' },
-            { col: 'notes',         req: false, note: 'Free text' },
+            { col: 'Customer',      req: true,  note: 'Must match existing company name' },
+            { col: 'Recipe',        req: true,  note: 'Must match existing recipe name' },
+            { col: 'Serving Date',  req: true,  note: 'YYYY-MM-DD' },
+            { col: 'Order Amount',  req: true,  note: 'Positive number' },
+            { col: 'Meal',          req: true,  note: 'Breakfast, Lunch, Snack, Snack R, or Dinner' },
+            { col: 'Shipment Date', req: true,  note: 'YYYY-MM-DD, ≤ serving date' },
+            { col: 'Portion Size',  req: false, note: 'Positive number (grams/units per serving)' },
+            { col: 'Day',           req: false, note: '1-7 (production cycle day)' },
+            { col: 'Storage',       req: false, note: 'f = frozen, c = chilled (blank = ambient)' },
+            { col: 'Client',        req: false, note: 'Client name and/or allergens' },
           ] as row}
             <tr>
               <td style="padding: 7px 10px; font-family: monospace; font-size: 12px; border-bottom: 1px solid var(--motm-border); color: var(--motm-text);">{row.col}</td>

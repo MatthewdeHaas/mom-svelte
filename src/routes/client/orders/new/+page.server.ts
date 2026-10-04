@@ -85,7 +85,7 @@ export const actions: Actions = {
       shipment_date: serving_date, // admin adjusts shipment date later
       frozen: storage === 'frozen',
       chilled: storage === 'chilled',
-      client_note,
+      client: client_note,
     });
 
     redirect(303, '/client/orders');

@@ -142,6 +142,21 @@ function findDataRow(sheet: ExcelJS.Worksheet, text: string): ExcelJS.Row | unde
   return undefined;
 }
 
+/** Return every data row whose cell at `col` (1-based) matches. */
+function findRowsByColumn(
+  sheet: ExcelJS.Worksheet,
+  col: number,
+  text: string
+): ExcelJS.Row[] {
+  const matches: ExcelJS.Row[] = [];
+  for (let i = 2; i <= sheet.rowCount; i++) {
+    const row = sheet.getRow(i);
+    const val = String(row.getCell(col).value ?? '').trim();
+    if (val === text) matches.push(row);
+  }
+  return matches;
+}
+
 // ─── Setup / Teardown ────────────────────────────────────────────────────────
 
 let pool: Pool;
@@ -246,7 +261,7 @@ test.describe('Backfill round-trip: import → export', () => {
     expect(rows[0].n).toBe(IMPORT_ROWS.length);
   });
 
-  test('production order export contains correct aggregated recipe amounts', async ({ adminPage }) => {
+  test('production order export contains correct per-order recipe amounts', async ({ adminPage }) => {
     const res = await adminPage.request.get(
       `/admin/exports/production-order?shipment_date=${SERVING_DATE}`
     );
@@ -262,16 +277,21 @@ test.describe('Backfill round-trip: import → export', () => {
       writeFileSync(join(dlDir, 'backfill-test-production-order.xlsx'), buffer);
     } catch { /* non-critical */ }
 
-    // Verify header
+    // Verify header — production sheet is now per-order (one row per order)
     const headers = rowValues(sheet.getRow(1));
-    expect(headers).toEqual(['Recipe', 'Meal Category', 'Amount', 'Frozen', 'Chilled', 'Allergens']);
+    expect(headers).toEqual([
+      'Customer', 'Serving Date', 'Recipe', 'Meal', 'Day',
+      'Portion Size', 'Order Amount', 'Quantity to Produce/Ship',
+      'Client', 'Storage', 'Shipment Date',
+    ]);
 
-    // Verify each expected recipe row
+    // Verify the sum of Order Amount across all rows per recipe matches the
+    // expected aggregate (3 recipes, 6 import rows → 6 output rows).
     for (const expected of EXPECTED_PRODUCTION) {
-      const row = findDataRow(sheet, expected.recipe);
-      expect(row, `Row for "${expected.recipe}" not found in production order`).toBeDefined();
-      const amount = Number(row!.getCell(3).value);
-      expect(amount).toBe(expected.amount);
+      const rows = findRowsByColumn(sheet, 3, expected.recipe);
+      expect(rows.length, `Rows for "${expected.recipe}" not found in production order`).toBeGreaterThan(0);
+      const sum = rows.reduce((acc, r) => acc + Number(r.getCell(7).value), 0);
+      expect(sum).toBe(expected.amount);
     }
   });
 
@@ -305,25 +325,16 @@ test.describe('Backfill round-trip: import → export', () => {
     }
   });
 
-  test('allergen info is carried through to exports', async ({ adminPage }) => {
-    // Mac and Cheese has Dairy allergen via Cheddar Cheese ingredient
+  test('allergen info is carried through to the shopping list export', async ({ adminPage }) => {
+    // Mac and Cheese has Dairy allergen via Cheddar Cheese ingredient.
+    // Allergens are only carried on the shopping list — the production sheet
+    // is per-order and no longer surfaces allergens (ingredient-level data
+    // doesn't belong on a production-planning row).
     const res = await adminPage.request.get(
-      `/admin/exports/production-order?shipment_date=${SERVING_DATE}`
-    );
-    const sheet = await parseXlsx(Buffer.from(await res.body()));
-    const row = findDataRow(sheet, RECIPES[2].name);
-    expect(row).toBeDefined();
-
-    // Allergens column (6th)
-    const allergens = String(row!.getCell(6).value ?? '').trim();
-    expect(allergens).toContain(`${PREFIX}Dairy`);
-
-    // Shopping list — allergen on the ingredient
-    const res2 = await adminPage.request.get(
       `/admin/exports/shopping-list?shipment_date=${SERVING_DATE}`
     );
-    const sheet2 = await parseXlsx(Buffer.from(await res2.body()));
-    const ingRow = findDataRow(sheet2, RECIPES[2].ingredient);
+    const sheet = await parseXlsx(Buffer.from(await res.body()));
+    const ingRow = findDataRow(sheet, RECIPES[2].ingredient);
     expect(ingRow).toBeDefined();
     const ingAllergens = String(ingRow!.getCell(4).value ?? '').trim();
     expect(ingAllergens).toContain(`${PREFIX}Dairy`);

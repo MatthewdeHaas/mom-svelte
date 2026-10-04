@@ -10,14 +10,16 @@ export const GET: RequestHandler = async ({ locals }) => {
   const ws = workbook.addWorksheet('Orders');
 
   ws.columns = [
-    { header: 'company',       key: 'company',       width: 28 },
-    { header: 'recipe',        key: 'recipe',        width: 28 },
-    { header: 'serving_date',  key: 'serving_date',  width: 16 },
-    { header: 'shipment_date', key: 'shipment_date', width: 16 },
-    { header: 'meal_category', key: 'meal_category', width: 18 },
-    { header: 'amount',        key: 'amount',        width: 10 },
-    { header: 'storage',       key: 'storage',       width: 14 },
-    { header: 'notes',         key: 'notes',         width: 32 },
+    { header: 'Customer',       key: 'customer',       width: 28 },
+    { header: 'Serving Date',   key: 'serving_date',   width: 16 },
+    { header: 'Recipe',         key: 'recipe',         width: 28 },
+    { header: 'Meal',           key: 'meal',           width: 14 },
+    { header: 'Day',            key: 'day',            width: 8 },
+    { header: 'Portion Size',   key: 'portion_size',   width: 14 },
+    { header: 'Order Amount',   key: 'amount',         width: 14 },
+    { header: 'Client',         key: 'client',         width: 32 },
+    { header: 'Storage',        key: 'storage',        width: 10 },
+    { header: 'Shipment Date',  key: 'shipment_date',  width: 16 },
   ];
 
   // Blue header row — matching production-order.ts style
@@ -39,9 +41,10 @@ export const GET: RequestHandler = async ({ locals }) => {
   };
 
   const exampleRows = [
-    ['Brightstone Partners', 'Grilled Chicken Caesar', '2025-09-01', '2025-08-31', 'Lunch',     35, 'chilled', ''],
-    ['Oakfield Group',       'Salmon & Dill Risotto',  '2025-09-01', '2025-08-31', 'Lunch',     20, 'frozen',  'Allergy note: no sesame'],
-    ['Meridian Co',          'Greek Yoghurt Parfait',  '2025-09-02', '2025-09-01', 'Breakfast', 15, 'chilled', ''],
+    ['Aurora CHATS', '2025-09-01', 'Grilled Chicken Caesar', 'Lunch', 2, 100, 28, '', 'c', '2025-08-31'],
+    ['MIYM',         '2025-09-01', 'Salmon & Dill Risotto',  'Lunch', 2, 75,  8,  '', 'f', '2025-08-29'],
+    ['SMH',          '2025-09-02', 'Greek Yoghurt Parfait',  'Breakfast', 3, 1, 24, '', 'c', '2025-09-01'],
+    ['SLEC',         '2025-09-02', 'Applesauce',             'Snack R', 3, 1, 0, 'Aston - Dairy', 'c', '2025-09-01'],
   ];
 
   for (const data of exampleRows) {

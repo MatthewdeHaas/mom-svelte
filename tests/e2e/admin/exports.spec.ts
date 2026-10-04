@@ -65,6 +65,20 @@ function findDataRow(sheet: ExcelJS.Worksheet, text: string): ExcelJS.Row | unde
   return undefined;
 }
 
+/** Find the first data row whose column `col` (1-based) matches. */
+function findRowByColumn(
+  sheet: ExcelJS.Worksheet,
+  col: number,
+  text: string
+): ExcelJS.Row | undefined {
+  for (let i = 2; i <= sheet.rowCount; i++) {
+    const row = sheet.getRow(i);
+    const val = String(row.getCell(col).value ?? '').trim();
+    if (val === text) return row;
+  }
+  return undefined;
+}
+
 // ─── Production Order (.xlsx) ─────────────────────────────────────────────────
 
 test.describe('Production Order export', () => {
@@ -95,7 +109,11 @@ test.describe('Production Order export', () => {
     );
     const sheet = await parseXlsx(Buffer.from(await res.body()));
     const headers = rowValues(sheet.getRow(1));
-    expect(headers).toEqual(['Recipe', 'Meal Category', 'Amount', 'Frozen', 'Chilled', 'Allergens']);
+    expect(headers).toEqual([
+      'Customer', 'Serving Date', 'Recipe', 'Meal', 'Day',
+      'Portion Size', 'Order Amount', 'Quantity to Produce/Ship',
+      'Client', 'Storage', 'Shipment Date',
+    ]);
   });
 
   test('contains a row for the seeded recipe with correct values', async ({ adminPage }) => {
@@ -105,17 +123,19 @@ test.describe('Production Order export', () => {
     );
     const sheet = await parseXlsx(Buffer.from(await res.body()));
 
-    const row = findDataRow(sheet, E2E_RECIPE_NAME);
+    // Production sheet is now per-order; find row by recipe name (col 3)
+    const row = findRowByColumn(sheet, 3, E2E_RECIPE_NAME);
     expect(row, `Row for "${E2E_RECIPE_NAME}" not found in sheet`).toBeDefined();
 
-    const vals = rowValues(row!);
-    // [Recipe, Meal Category, Amount, Frozen, Chilled, Allergens]
-    expect(vals[0]).toBe(E2E_RECIPE_NAME);           // recipe
-    expect(vals[1]).toBe('lunch');                   // meal category
-    expect(Number(vals[2])).toBe(3);                 // amount = order.amount
-    expect(vals[3]).toBe('');                        // frozen = false → no checkmark
-    expect(vals[4]).toBe('✓');                       // chilled = true
-    expect(vals[5]).toBe(E2E_ALLERGEN_NAME);         // allergen carried through recipe
+    // [Customer, ServingDate, Recipe, Meal, Day, PortionSize, OrderAmount,
+    //  QtyProduce, Client, Storage, ShipmentDate]
+    expect(String(row!.getCell(1).value ?? '').trim()).toBe(E2E_COMPANY_NAME);
+    expect(String(row!.getCell(3).value ?? '').trim()).toBe(E2E_RECIPE_NAME);
+    expect(String(row!.getCell(4).value ?? '').trim()).toBe('lunch');
+    expect(Number(row!.getCell(7).value)).toBe(3);        // Order Amount
+    expect(String(row!.getCell(10).value ?? '').trim()).toBe('c'); // Storage: chilled
+    // Allergens are no longer carried on the production sheet — they live on
+    // the shopping list; see the Shopping List tests below.
   });
 });
 

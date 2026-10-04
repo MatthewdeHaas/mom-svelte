@@ -18,8 +18,8 @@ import type { Db } from '$lib/server/db';
 // unknown — Zod coerces and validates in one pass.
 // -------------------------------------------------------------
 
-const MEAL_CATEGORIES = ['Breakfast', 'Lunch', 'Snack', 'Soup', 'Dinner'] as const;
-const STORAGE_VALUES = ['frozen', 'chilled'] as const;
+const MEAL_CATEGORIES = ['Breakfast', 'Lunch', 'Snack', 'Snack R', 'Soup', 'Dinner'] as const;
+const STORAGE_VALUES = ['f', 'c'] as const;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -48,11 +48,31 @@ export const ExcelRowSchema = z.object({
     .number({ error: 'Amount is required' })
     .positive('Amount must be greater than zero'),
 
-  storage: z.enum(STORAGE_VALUES, {
-    error: `Storage must be one of: ${STORAGE_VALUES.join(', ')}`,
-  }),
+  portion_size: z
+    .number()
+    .positive('Portion size must be greater than zero')
+    .optional()
+    .nullable()
+    .transform((v) => v ?? null),
 
-  notes: z.string().optional().nullable().transform((v) => v ?? null),
+  day: z
+    .number()
+    .int('Day must be a whole number')
+    .min(1, 'Day must be between 1 and 7')
+    .max(7, 'Day must be between 1 and 7')
+    .optional()
+    .nullable()
+    .transform((v) => v ?? null),
+
+  storage: z
+    .enum(STORAGE_VALUES, {
+      error: `Storage must be one of: ${STORAGE_VALUES.join(', ')} (or leave blank)`,
+    })
+    .optional()
+    .nullable()
+    .transform((v) => v ?? null),
+
+  client: z.string().optional().nullable().transform((v) => v ?? null),
 }).superRefine((data, ctx) => {
   if (data.serving_date && data.shipment_date) {
     if (data.shipment_date > data.serving_date) {
@@ -149,9 +169,11 @@ async function resolveRow(
       shipment_date: parsed.shipment_date,
       meal_category: parsed.meal_category,
       amount: parsed.amount,
-      frozen: parsed.storage === 'frozen',
-      chilled: parsed.storage === 'chilled',
-      client_note: parsed.notes ?? null,
+      portion_size: parsed.portion_size,
+      day: parsed.day,
+      frozen: parsed.storage === 'f',
+      chilled: parsed.storage === 'c',
+      client: parsed.client,
     },
   };
 }
@@ -164,29 +186,51 @@ async function resolveRow(
 // -------------------------------------------------------------
 
 const COLUMN_MAP: Record<string, keyof ExcelRowParsed> = {
-  'company':        'company',
-  'recipe':         'recipe',
-  'serving date':   'serving_date',
-  'serving_date':   'serving_date',
-  'servingdate':    'serving_date',
-  'shipment date':  'shipment_date',
-  'shipment_date':  'shipment_date',
-  'shipmentdate':   'shipment_date',
-  'meal category':  'meal_category',
-  'meal_category':  'meal_category',
-  'mealcategory':   'meal_category',
-  'meal type':      'meal_category',
-  'meal_type':      'meal_category',
-  'mealtype':       'meal_category',
-  'amount':         'amount',
-  'storage':        'storage',
-  'notes':          'notes',
+  'company':          'company',
+  'customer':         'company',
+  'recipe':           'recipe',
+  'serving date':     'serving_date',
+  'serving_date':     'serving_date',
+  'servingdate':      'serving_date',
+  'shipment date':    'shipment_date',
+  'shipment_date':    'shipment_date',
+  'shipmentdate':     'shipment_date',
+  'meal':             'meal_category',
+  'meal category':    'meal_category',
+  'meal_category':    'meal_category',
+  'mealcategory':     'meal_category',
+  'meal type':        'meal_category',
+  'meal_type':        'meal_category',
+  'mealtype':         'meal_category',
+  'amount':           'amount',
+  'order amount':     'amount',
+  'order_amount':     'amount',
+  'orderamount':      'amount',
+  'portion size':     'portion_size',
+  'portion_size':     'portion_size',
+  'portionsize':      'portion_size',
+  'day':              'day',
+  'storage':          'storage',
+  'frozen':           'storage',
+  'chilled':          'storage',
+  'frozen/chilled':   'storage',
+  'client':           'client',
 };
+
+// Columns to silently ignore during import (computed/duplicate values)
+const IGNORED_COLUMNS = new Set([
+  'item',
+  'quantity to produce/ship',
+  'quantity to produce',
+  'quantity_to_produce',
+  'qty',
+]);
 
 function normaliseHeaders(rawHeaders: string[]): Map<string, keyof ExcelRowParsed> {
   const map = new Map<string, keyof ExcelRowParsed>();
   for (const header of rawHeaders) {
     const normalised = header.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (IGNORED_COLUMNS.has(normalised)) continue;
     const field = COLUMN_MAP[normalised];
     if (field) map.set(header, field);
   }
@@ -199,7 +243,20 @@ function normaliseRow(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [header, field] of headerMap.entries()) {
-    out[field] = raw[header];
+    const value = raw[header];
+
+    // Normalise storage column: accept 'f'/'c'/'F'/'C' or blank
+    if (field === 'storage') {
+      if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        out[field] = v === 'f' || v === 'c' ? v : null;
+      } else {
+        out[field] = null;
+      }
+      continue;
+    }
+
+    out[field] = value;
   }
   return out;
 }
@@ -287,19 +344,21 @@ export async function importOrdersFromRows(
   // STEP 4 — Insert all resolved rows in a single transaction
   // -------------------------------------------------------------
   const orders: InsertOrder[] = (resolvedRows as ExcelRowResolved[]).map((row) => ({
-    company_id:   row.company_id,
-    recipe_id:    row.recipe_id,
-    created_by:   createdBy,
-    order_source: 'excel_import',
-    status:       'pending',
+    company_id:    row.company_id,
+    recipe_id:     row.recipe_id,
+    created_by:    createdBy,
+    order_source:  'excel_import',
+    status:        'pending',
     meal_category: row.meal_category,
-    amount:       row.amount,
-    serving_date: row.serving_date,   // pass YYYY-MM-DD string — avoids timezone shift
-    shipment_date: row.shipment_date, // pass YYYY-MM-DD string — avoids timezone shift
-    frozen:       row.frozen,
-    chilled:      row.chilled,
-    recurring:    false,
-    client_note:  row.client_note,
+    amount:        row.amount,
+    portion_size:  row.portion_size,
+    day:           row.day,
+    serving_date:  row.serving_date,   // pass YYYY-MM-DD string — avoids timezone shift
+    shipment_date: row.shipment_date,  // pass YYYY-MM-DD string — avoids timezone shift
+    frozen:        row.frozen,
+    chilled:       row.chilled,
+    recurring:     false,
+    client:        row.client,
   }));
 
   const client = await db.connect();

@@ -5,6 +5,20 @@ export const UpdateOrderSchema = z
     amount: z.coerce
       .number({ error: 'Amount must be a positive number' })
       .gt(0, 'Amount must be a positive number'),
+    portion_size: z.coerce
+      .number()
+      .positive('Portion size must be positive')
+      .optional()
+      .nullable()
+      .transform(v => (v === undefined || isNaN(v as number)) ? null : v),
+    day: z.coerce
+      .number()
+      .int('Day must be a whole number')
+      .min(1, 'Day must be between 1 and 7')
+      .max(7, 'Day must be between 1 and 7')
+      .optional()
+      .nullable()
+      .transform(v => (v === undefined || isNaN(v as number)) ? null : v),
     meal_category: z.string().min(1, 'Meal category is required').transform(v => v.trim()),
     serving_date: z.string().min(1, 'Serving date is required'),
     shipment_date: z
@@ -22,7 +36,7 @@ export const UpdateOrderSchema = z
       .string()
       .transform(v => v === 'true')
       .pipe(z.boolean()),
-    notes: z
+    client: z
       .string()
       .transform(v => v.trim() || null)
       .nullable()

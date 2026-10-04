@@ -322,7 +322,7 @@
         <div class="card-body">
           <div class="field-row">
             <div class="field">
-              <label for="amount">Amount</label>
+              <label for="amount">Order Amount</label>
               <input
                 id="amount"
                 name="amount"
@@ -357,6 +357,43 @@
               </select>
               {#if form?.errors?.meal_category}
                 <span class="field-error">{form.errors.meal_category}</span>
+              {/if}
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="portion_size">Portion Size <span style="font-weight: 400; color: var(--motm-text-muted);">(optional)</span></label>
+              <input
+                id="portion_size"
+                name="portion_size"
+                type="number"
+                min="0"
+                step="0.01"
+                class:error={form?.errors?.portion_size}
+                value={form?.values?.portion_size ?? data.order.portion_size ?? ''}
+                disabled={isTerminal}
+              />
+              {#if form?.errors?.portion_size}
+                <span class="field-error">{form.errors.portion_size}</span>
+              {/if}
+            </div>
+
+            <div class="field">
+              <label for="day">Day <span style="font-weight: 400; color: var(--motm-text-muted);">(1-7)</span></label>
+              <input
+                id="day"
+                name="day"
+                type="number"
+                min="1"
+                max="7"
+                step="1"
+                class:error={form?.errors?.day}
+                value={form?.values?.day ?? data.order.day ?? ''}
+                disabled={isTerminal}
+              />
+              {#if form?.errors?.day}
+                <span class="field-error">{form.errors.day}</span>
               {/if}
             </div>
           </div>
@@ -431,13 +468,13 @@
           </div>
 
           <div class="field">
-            <label for="notes">Notes <span style="font-weight: 400; color: var(--motm-text-muted); margin-left: 4px;">(optional)</span></label>
+            <label for="client">Client <span style="font-weight: 400; color: var(--motm-text-muted); margin-left: 4px;">(optional)</span></label>
             <textarea
-              id="notes"
-              name="notes"
+              id="client"
+              name="client"
               rows="2"
               disabled={isTerminal}
-            >{form?.values?.notes ?? data.order.client_note ?? ''}</textarea>
+            >{form?.values?.client ?? data.order.client ?? ''}</textarea>
           </div>
         </div>
 

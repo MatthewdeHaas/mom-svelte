@@ -420,7 +420,7 @@ async function seedOrders(
       `INSERT INTO "order" (
          company_id, recipe_id, created_by, order_source, status,
          meal_category, amount, serving_date, shipment_date,
-         frozen, chilled, recurring, client_note
+         frozen, chilled, recurring, client
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         cId, rId, createdBy, 'admin_manual', 'confirmed',

@@ -51,9 +51,13 @@ export async function generateShoppingList(
         });
       }
 
-      // recipe_ingredient.amount × order.amount = contribution to total
+      // recipe_ingredient.amount × production_quantity = contribution to total
+      // production_quantity = portion_size * order_amount (or just order_amount if no portion_size)
+      const productionQty = order.portion_size != null
+        ? Number(order.portion_size) * Number(order.amount)
+        : Number(order.amount);
       ingredientMap.get(key)!.totalAmount +=
-        ingredient.amount * order.amount;
+        ingredient.amount * productionQty;
     }
   }
 

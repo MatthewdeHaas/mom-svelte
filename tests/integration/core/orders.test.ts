@@ -429,20 +429,20 @@ describe('updateOrder', () => {
     const updated = await updateOrder(ctx.client, order.id, {
       frozen: true,
       chilled: true,
-      client_note: 'Handle with care',
+      client: 'Handle with care',
     });
 
     expect(updated!.frozen).toBe(true);
     expect(updated!.chilled).toBe(true);
-    expect(updated!.client_note).toBe('Handle with care');
+    expect(updated!.client).toBe('Handle with care');
   });
 
   it('change is reflected in subsequent read', async () => {
     const order = await seedOrder();
-    await updateOrder(ctx.client, order.id, { client_note: 'Updated note' });
+    await updateOrder(ctx.client, order.id, { client: 'Updated note' });
 
     const found = await getOrderById(ctx.client, order.id);
-    expect(found!.client_note).toBe('Updated note');
+    expect(found!.client).toBe('Updated note');
   });
 });
 

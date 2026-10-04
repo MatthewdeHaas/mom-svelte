@@ -93,12 +93,14 @@ export async function getOrders(
        o.status,
        o.meal_category,
        o.amount,
+       o.portion_size,
+       o.day,
        o.serving_date,
        o.shipment_date,
        o.frozen,
        o.chilled,
        o.recurring,
-       o.client_note,
+       o.client,
        o.created_at,
        c.name     AS company_name,
        r.name     AS recipe_name
@@ -182,12 +184,14 @@ export async function getOrdersPaginated(
        o.status,
        o.meal_category,
        o.amount,
+       o.portion_size,
+       o.day,
        o.serving_date,
        o.shipment_date,
        o.frozen,
        o.chilled,
        o.recurring,
-       o.client_note,
+       o.client,
        o.created_at,
        c.name     AS company_name,
        r.name     AS recipe_name
@@ -228,12 +232,14 @@ export async function getOrderById(db: Db, id: string): Promise<OrderDetail | nu
        o.status,
        o.meal_category,
        o.amount,
+       o.portion_size,
+       o.day,
        o.serving_date,
        o.shipment_date,
        o.frozen,
        o.chilled,
        o.recurring,
-       o.client_note,
+       o.client,
        o.created_at,
        c.name             AS company_name,
        c.contact_email    AS company_contact_email,
@@ -266,12 +272,14 @@ export async function getOrderById(db: Db, id: string): Promise<OrderDetail | nu
     status: row.status,
     meal_category: row.meal_category,
     amount: parseFloat(row.amount as unknown as string),
+    portion_size: row.portion_size != null ? parseFloat(row.portion_size as unknown as string) : null,
+    day: row.day ?? null,
     serving_date: row.serving_date,
     shipment_date: row.shipment_date,
     frozen: row.frozen,
     chilled: row.chilled,
     recurring: row.recurring,
-    client_note: row.client_note,
+    client: row.client,
     created_at: row.created_at,
     created_by_email: row.created_by_email,
     company: {
@@ -355,14 +363,14 @@ export async function createOrder(
   const result = await client.query<Order>(
     `INSERT INTO "order" (
        company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING
        id, company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note, created_at`,
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client, created_at`,
     [
       data.company_id,
       data.recipe_id ?? null,
@@ -371,12 +379,14 @@ export async function createOrder(
       data.status ?? 'pending',
       data.meal_category ?? null,
       data.amount,
+      data.portion_size ?? null,
+      data.day ?? null,
       data.serving_date,
       data.shipment_date,
       data.frozen ?? false,
       data.chilled ?? false,
       data.recurring ?? false,
-      data.client_note ?? null,
+      data.client ?? null,
     ]
   );
   return result.rows[0];
@@ -399,12 +409,14 @@ export async function updateOrder(
        frozen        = COALESCE($7,  frozen),
        chilled       = COALESCE($8,  chilled),
        recurring     = COALESCE($9,  recurring),
-       client_note   = COALESCE($10, client_note)
-     WHERE id = $11
+       client        = COALESCE($10, client),
+       portion_size  = COALESCE($11, portion_size),
+       day           = COALESCE($12, day)
+     WHERE id = $13
      RETURNING
        id, company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note, created_at`,
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client, created_at`,
     [
       data.recipe_id ?? null,
       data.status ?? null,
@@ -415,7 +427,9 @@ export async function updateOrder(
       data.frozen ?? null,
       data.chilled ?? null,
       data.recurring ?? null,
-      data.client_note ?? null,
+      data.client ?? null,
+      data.portion_size ?? null,
+      data.day ?? null,
       id,
     ]
   );
@@ -436,8 +450,8 @@ export async function confirmOrder(db: Db, id: string): Promise<Order | null> {
      WHERE id = $1 AND status = 'pending'
      RETURNING
        id, company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note, created_at`,
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client, created_at`,
     [id]
   );
   // Returns null if the order wasn't in 'pending' state
@@ -451,8 +465,8 @@ export async function fulfillOrder(db: Db, id: string): Promise<Order | null> {
      WHERE id = $1 AND status = 'confirmed'
      RETURNING
        id, company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note, created_at`,
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client, created_at`,
     [id]
   );
   return result.rows[0] ?? null;
@@ -465,8 +479,8 @@ export async function cancelOrder(db: Db, id: string): Promise<Order | null> {
      WHERE id = $1 AND status IN ('pending', 'confirmed')
      RETURNING
        id, company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note, created_at`,
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client, created_at`,
     [id]
   );
   // Returns null if the order was already fulfilled or cancelled
@@ -490,8 +504,8 @@ export async function setOrdersStatusBatch(
      WHERE id = ANY($1::uuid[])
      RETURNING
        id, company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note, created_at`,
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client, created_at`,
     [ids, status]
   );
   return result.rows;
@@ -512,9 +526,9 @@ export async function insertOrdersBatch(
   const values = orders
     .map(
       (_, i) =>
-        `($${i * 13 + 1}, $${i * 13 + 2}, $${i * 13 + 3}, $${i * 13 + 4}, $${i * 13 + 5},
-          $${i * 13 + 6}, $${i * 13 + 7}, $${i * 13 + 8}, $${i * 13 + 9}, $${i * 13 + 10},
-          $${i * 13 + 11}, $${i * 13 + 12}, $${i * 13 + 13})`
+        `($${i * 15 + 1}, $${i * 15 + 2}, $${i * 15 + 3}, $${i * 15 + 4}, $${i * 15 + 5},
+          $${i * 15 + 6}, $${i * 15 + 7}, $${i * 15 + 8}, $${i * 15 + 9}, $${i * 15 + 10},
+          $${i * 15 + 11}, $${i * 15 + 12}, $${i * 15 + 13}, $${i * 15 + 14}, $${i * 15 + 15})`
     )
     .join(', ');
 
@@ -526,25 +540,27 @@ export async function insertOrdersBatch(
     o.status ?? 'pending',
     o.meal_category ?? null,
     o.amount,
+    o.portion_size ?? null,
+    o.day ?? null,
     o.serving_date,
     o.shipment_date,
     o.frozen ?? false,
     o.chilled ?? false,
     o.recurring ?? false,
-    o.client_note ?? null,
+    o.client ?? null,
   ]);
 
   const result = await client.query<Order>(
     `INSERT INTO "order" (
        company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client
      )
      VALUES ${values}
      RETURNING
        id, company_id, recipe_id, created_by, order_source, status,
-       meal_category, amount, serving_date, shipment_date,
-       frozen, chilled, recurring, client_note, created_at`,
+       meal_category, amount, portion_size, day, serving_date, shipment_date,
+       frozen, chilled, recurring, client, created_at`,
     params
   );
 

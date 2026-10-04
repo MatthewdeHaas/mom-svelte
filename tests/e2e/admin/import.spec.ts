@@ -257,8 +257,8 @@ test.describe('Order import', () => {
     });
 
     expect(headers).toEqual([
-      'company', 'recipe', 'serving_date', 'shipment_date',
-      'meal_category', 'amount', 'storage', 'notes',
+      'Customer', 'Serving Date', 'Recipe', 'Meal', 'Day',
+      'Portion Size', 'Order Amount', 'Client', 'Storage', 'Shipment Date',
     ]);
 
     // Header row + at least 2 example rows
