@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { admin, magicLink } from 'better-auth/plugins';
+import { createAuthMiddleware, APIError } from 'better-auth/api';
 import { pool } from './db';
 import { isRateLimited } from './rate-limit';
 
@@ -34,17 +35,41 @@ export const auth = betterAuth({
   database: pool,
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
+  // Email+password is the customer-facing login path. Magic-link is kept
+  // dormant below for future customer self-serve once a verified sending
+  // domain is wired up.
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: false,
+    minPasswordLength: 10,
+    autoSignIn: true,
+  },
   user: {
     additionalFields: {
       // company_id lives on the "user" table. It is managed by the admin
       // via the app — not settable through the auth API (input: false).
       companyId: {
         type: 'string',
-        nullable: true,
+        required: false,
         fieldName: 'company_id',
         input: false,
       },
     },
+  },
+  hooks: {
+    // Per-email brute-force throttle on password login. Better Auth's
+    // built-in rate limiter is IP-scoped; this complements it with a
+    // per-identity cap so one address can't be hammered from many IPs.
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/sign-in/email') return;
+      const email = (ctx.body as { email?: unknown } | undefined)?.email;
+      if (typeof email !== 'string' || !email) return;
+      if (isRateLimited('login', email.toLowerCase(), 5, 15 * 60_000)) {
+        throw new APIError('TOO_MANY_REQUESTS', {
+          message: 'Too many login attempts. Please wait 15 minutes and try again.',
+        });
+      }
+    }),
   },
   plugins: [
     admin(),
@@ -52,9 +77,9 @@ export const auth = betterAuth({
       sendMagicLink: async ({ email, url }) => {
         // Rate limit: max 3 magic link requests per email per 15 minutes
         if (isRateLimited('magic-link', email, 3, 15 * 60_000)) {
-					console.log('[magic-link] RATE LIMITED:', email);
-					return;
-				}
+          console.log('[magic-link] RATE LIMITED:', email);
+          return;
+        }
 
         // Only send magic links to registered users. Querying Better Auth's
         // own "user" table is the authoritative check regardless of role.

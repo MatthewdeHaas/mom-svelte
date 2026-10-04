@@ -377,13 +377,13 @@
               id="name"
               name="name"
               type="text"
-              value={form?.values?.name ?? data.company.name}
-              class:error={form?.errors?.name}
+              value={form?.action === 'update' ? ((form?.values as Record<string, string>)?.name ?? data.company.name) : data.company.name}
+              class:error={form?.action === 'update' && (form?.errors as Record<string, string>)?.name}
               disabled={!data.company.active}
               required
             />
-            {#if form?.errors?.name}
-              <span class="field-error">{form.errors.name}</span>
+            {#if form?.action === 'update' && (form?.errors as Record<string, string>)?.name}
+              <span class="field-error">{(form.errors as Record<string, string>).name}</span>
             {/if}
           </div>
 
@@ -512,6 +512,107 @@
                     </form>
                   {/if}
                 </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <!-- User access: create user with password + reset password -->
+    <div class="card" style="margin-bottom: 20px;">
+      <div class="card-header">
+        <p class="card-title">User access</p>
+        <p class="card-sub">Create a login for someone at this company (admin generates the password and shares it out-of-band). Use this when the client has no email access.</p>
+      </div>
+
+      {#if form?.action === 'createUserWithPassword' && form?.success}
+        <div class="card-body" style="padding-bottom: 0;">
+          <div class="success-strip" style="flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+              User created for <strong>{form.email}</strong>
+            </div>
+            <div style="font-size: 12.5px; color: #1F6648; font-weight: 400;">
+              Password (shown once — copy it now):
+              <code style="display:inline-block;margin-left:6px;padding:2px 8px;background:#fff;border:1px solid #B6E7CC;border-radius:5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;color:#2C1F24;letter-spacing:0.02em;">{form.password}</code>
+            </div>
+          </div>
+        </div>
+      {/if}
+      {#if form?.action === 'resetUserPassword' && form?.success}
+        <div class="card-body" style="padding-bottom: 0;">
+          <div class="success-strip" style="flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+              Password reset for <strong>{form.email}</strong>
+            </div>
+            <div style="font-size: 12.5px; color: #1F6648; font-weight: 400;">
+              New password (shown once — copy it now):
+              <code style="display:inline-block;margin-left:6px;padding:2px 8px;background:#fff;border:1px solid #B6E7CC;border-radius:5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;color:#2C1F24;letter-spacing:0.02em;">{form.password}</code>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <form method="POST" action="?/createUserWithPassword" use:enhance>
+        <div class="card-body">
+          <div class="field-row">
+            <div class="field">
+              <label for="user-name">Name</label>
+              <input
+                id="user-name"
+                name="name"
+                type="text"
+                placeholder="Full name"
+                value={form?.action === 'createUserWithPassword' && !('success' in form && form.success) ? (((form as unknown as { values?: Record<string, string> })?.values)?.name ?? '') : ''}
+                class:error={form?.action === 'createUserWithPassword' && ((form as unknown as { errors?: Record<string, string> })?.errors)?.name}
+                required
+              />
+              {#if form?.action === 'createUserWithPassword' && ((form as unknown as { errors?: Record<string, string> })?.errors)?.name}
+                <span class="field-error">{((form as unknown as { errors?: Record<string, string> }).errors)?.name}</span>
+              {/if}
+            </div>
+            <div class="field">
+              <label for="user-email">Email</label>
+              <input
+                id="user-email"
+                name="email"
+                type="email"
+                placeholder="user@example.com"
+                value={form?.action === 'createUserWithPassword' && !('success' in form && form.success) ? (((form as unknown as { values?: Record<string, string> })?.values)?.email ?? '') : ''}
+                class:error={form?.action === 'createUserWithPassword' && ((form as unknown as { errors?: Record<string, string> })?.errors)?.email}
+                required
+              />
+              {#if form?.action === 'createUserWithPassword' && ((form as unknown as { errors?: Record<string, string> })?.errors)?.email}
+                <span class="field-error">{((form as unknown as { errors?: Record<string, string> }).errors)?.email}</span>
+              {/if}
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button type="submit" class="btn btn-primary">Create user + generate password</button>
+        </div>
+      </form>
+
+      {#if data.users.length > 0}
+        <div class="card-body" style="padding-top: 0;">
+          <div class="invite-history">
+            <p class="invite-history-title">Existing users</p>
+            {#each data.users as u}
+              <div class="invite-item">
+                <div>
+                  <p class="invite-email">{u.name || u.email}</p>
+                  <p class="invite-expiry">{u.email}</p>
+                </div>
+                <form method="POST" action="?/resetUserPassword" use:enhance>
+                  <input type="hidden" name="user_id" value={u.id} />
+                  <button type="submit" class="invite-revoke-btn" style="color:#92600A;border-color:#F5D28A;">Reset password</button>
+                </form>
               </div>
             {/each}
           </div>

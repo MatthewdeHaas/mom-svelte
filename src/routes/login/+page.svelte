@@ -1,41 +1,56 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { authClient } from '$lib/auth-client';
 
+  // Password login is the default/customer-facing path.
   let email = $state('');
+  let password = $state('');
   let error = $state('');
-  let sent = $state(false);
   let loading = $state(false);
 
-  const handleSubmit = async () => {
-    error = '';
-    loading = true;
-    const { error: err } = await authClient.signIn.magicLink({
-      email,
-      callbackURL: '/',
-    });
-    if (err) {
-      error = err.message ?? 'Something went wrong.';
-    } else {
-      sent = true;
-    }
-    loading = false;
-  };
+  // Dev-only toggle keeps the magic-link path exercised. In production this
+  // whole block is tree-shaken out via `import.meta.env.DEV`.
+  const DEV = import.meta.env.DEV;
+  let mode = $state<'password' | 'magic'>('password');
+  let magicSent = $state(false);
 
-  const handleResend = async () => {
-    sent = false;
+  async function routeByRole() {
+    // The admin plugin stores role on the user record. Re-fetch the session
+    // (not the signIn response, which omits plugin-added fields) and dispatch.
+    // The client's getSession() type is Better Auth's base User (no plugin
+    // fields), so we cast through unknown to read the admin-plugin role.
+    const session = await authClient.getSession();
+    const role = (session.data?.user as { role?: string } | undefined)?.role;
+    goto(role === 'admin' ? '/admin/dashboard' : '/client');
+  }
+
+  async function handlePassword(e: SubmitEvent) {
+    e.preventDefault();
     error = '';
     loading = true;
-    const { error: err } = await authClient.signIn.magicLink({
-      email,
-      callbackURL: '/',
-    });
+    const { error: err } = await authClient.signIn.email({ email, password });
+    if (err) {
+      // Better Auth returns a generic "Invalid email or password" message
+      // for both unknown-email and bad-password — do not leak which.
+      error = err.message ?? 'Invalid email or password.';
+    } else {
+      await routeByRole();
+    }
+    loading = false;
+  }
+
+  async function handleMagic(e: SubmitEvent) {
+    e.preventDefault();
+    error = '';
+    loading = true;
+    const { error: err } = await authClient.signIn.magicLink({ email, callbackURL: '/' });
     if (err) {
       error = err.message ?? 'Something went wrong.';
     } else {
-      sent = true;
+      magicSent = true;
     }
     loading = false;
-  };
+  }
 </script>
 
 <style>
@@ -95,7 +110,6 @@
     overflow: hidden;
   }
 
-  /* Input state */
   .card-body { padding: 32px 32px 28px; }
   .card-title {
     font-size: 19px;
@@ -115,7 +129,8 @@
   .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
   label { font-size: 12px; font-weight: 600; color: #2C1F24; }
 
-  input[type="email"] {
+  input[type="email"],
+  input[type="password"] {
     padding: 10px 12px;
     border: 1.5px solid #EDE8E3;
     border-radius: 8px;
@@ -128,9 +143,9 @@
     width: 100%;
     box-sizing: border-box;
   }
-  input[type="email"]:focus { border-color: #C9718A; background: #fff; }
-  input[type="email"].has-error { border-color: #E24B4A; }
-  input[type="email"]::placeholder { color: #B8AEB3; }
+  input:focus { border-color: #C9718A; background: #fff; }
+  input.has-error { border-color: #E24B4A; }
+  input::placeholder { color: #B8AEB3; }
 
   .error-strip {
     display: flex;
@@ -187,29 +202,23 @@
   .sent-sub { font-size: 13px; color: #7A6670; line-height: 1.6; }
   .sent-email { font-size: 13.5px; font-weight: 600; color: #2C1F24; margin: 4px 0 8px; }
 
-  .sent-divider { height: 1px; background: #EDE8E3; margin: 22px 0; }
-  .resend-note { font-size: 12.5px; color: #7A6670; margin-bottom: 10px; }
-  .resend-btn {
-    width: 100%;
-    padding: 9px 16px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    font-family: inherit;
-    background: transparent;
-    color: #2C1F24;
-    border: 1.5px solid #EDE8E3;
-    cursor: pointer;
-    transition: border-color 150ms, background 150ms;
-  }
-  .resend-btn:hover:not(:disabled) { border-color: #C9718A; background: #FDF5F7; }
-  .resend-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-
-  /* Footer */
   .card-footer { padding: 12px 32px; border-top: 1px solid #EDE8E3; background: #FAF8F6; }
   .footer-note { font-size: 11.5px; color: #B8AEB3; text-align: center; line-height: 1.5; }
   .footer-note a { color: #7A6670; text-decoration: none; font-weight: 500; }
   .footer-note a:hover { color: #2C1F24; }
+
+  .mode-toggle {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 11.5px;
+    color: #B8AEB3;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 0;
+    font-family: inherit;
+  }
+  .mode-toggle:hover { color: #7A6670; }
 </style>
 
 <div class="page">
@@ -226,7 +235,7 @@
   </div>
 
   <div class="card">
-    {#if sent}
+    {#if mode === 'magic' && magicSent}
       <div class="sent-body">
         <div class="sent-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -239,19 +248,16 @@
         <p class="sent-sub" style="font-size: 12.5px;">
           The link expires shortly. Check your spam folder if it doesn't arrive.
         </p>
-        <div class="sent-divider"></div>
-        <p class="resend-note">Didn't receive it?</p>
-        <button class="resend-btn" onclick={handleResend} disabled={loading}>
-          {loading ? 'Sending…' : 'Resend link'}
-        </button>
       </div>
-
     {:else}
       <div class="card-body">
         <p class="card-title">Sign in</p>
         <p class="card-sub">
-          Enter your email and we'll send you a sign-in link.<br/>
-          Access is <em>by invitation only</em>.
+          {#if mode === 'password'}
+            Access is <em>by invitation only</em>. If you don't have a password yet, ask your account manager.
+          {:else}
+            Enter your email and we'll send you a sign-in link.
+          {/if}
         </p>
 
         {#if error}
@@ -263,24 +269,70 @@
           </div>
         {/if}
 
-        <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-          <div class="field">
-            <label for="email">Email address</label>
-            <input
-              id="email"
-              type="email"
-              bind:value={email}
-              class:has-error={!!error}
-              placeholder="you@yourcompany.com"
-              autocomplete="email"
-              required
-              spellcheck="false"
-            />
-          </div>
-          <button type="submit" class="submit-btn" disabled={loading}>
-            {loading ? 'Sending…' : 'Send sign-in link'}
+        {#if mode === 'password'}
+          <form onsubmit={handlePassword}>
+            <div class="field">
+              <label for="email">Email address</label>
+              <input
+                id="email"
+                type="email"
+                bind:value={email}
+                class:has-error={!!error}
+                placeholder="you@yourcompany.com"
+                autocomplete="username"
+                required
+                spellcheck="false"
+              />
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                bind:value={password}
+                class:has-error={!!error}
+                placeholder="••••••••••"
+                autocomplete="current-password"
+                required
+                spellcheck="false"
+              />
+            </div>
+            <button type="submit" class="submit-btn" disabled={loading}>
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        {:else}
+          <form onsubmit={handleMagic}>
+            <div class="field">
+              <label for="email">Email address</label>
+              <input
+                id="email"
+                type="email"
+                bind:value={email}
+                class:has-error={!!error}
+                placeholder="you@yourcompany.com"
+                autocomplete="email"
+                required
+                spellcheck="false"
+              />
+            </div>
+            <button type="submit" class="submit-btn" disabled={loading}>
+              {loading ? 'Sending…' : 'Send sign-in link'}
+            </button>
+          </form>
+        {/if}
+
+        {#if DEV}
+          <!-- Dev-only toggle keeps the dormant magic-link path testable
+               without exposing it to end users in production builds. -->
+          <button
+            type="button"
+            class="mode-toggle"
+            onclick={() => { mode = mode === 'password' ? 'magic' : 'password'; error = ''; magicSent = false; }}
+          >
+            [dev] switch to {mode === 'password' ? 'magic-link' : 'password'} mode
           </button>
-        </form>
+        {/if}
       </div>
     {/if}
 
