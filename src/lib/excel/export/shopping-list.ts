@@ -1,13 +1,14 @@
 import ExcelJS from 'exceljs';
 import { getOrders } from '$lib/server/queries/orders';
 import { getRecipesWithIngredientsByIds } from '$lib/server/queries/recipes';
+import { pinXlsxDates } from '$lib/excel/determinism';
 import type { Pool } from 'pg';
 
 export async function generateShoppingList(
   db: Pool,
   from: string,
   to: string
-): Promise<ExcelJS.Buffer> {
+): Promise<Buffer> {
 
   const orders = await getOrders(db, {
     serving_date_from: from,
@@ -66,8 +67,15 @@ export async function generateShoppingList(
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   );
 
-  // 5. Build workbook
+  // 5. Build workbook — pin metadata so two runs produce byte-identical output.
   const workbook = new ExcelJS.Workbook();
+  workbook.created = new Date(0);
+  workbook.modified = new Date(0);
+  workbook.creator = '';
+  workbook.lastModifiedBy = '';
+  workbook.company = '';
+  workbook.title = '';
+  workbook.description = '';
   const sheet = workbook.addWorksheet('Shopping List');
 
   sheet.columns = [
@@ -123,5 +131,6 @@ export async function generateShoppingList(
   // Freeze header row
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
-  return workbook.xlsx.writeBuffer();
+  const buf = await workbook.xlsx.writeBuffer();
+  return pinXlsxDates(Buffer.from(buf));
 }

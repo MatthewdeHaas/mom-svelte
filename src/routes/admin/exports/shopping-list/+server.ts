@@ -23,7 +23,7 @@ export const GET: RequestHandler = async ({ url }) => {
   const { from, to, label } = resolve(url);
   const buffer = await generateShoppingList(pool, from, to);
 
-  return new Response(buffer as ArrayBuffer, {
+  return new Response(buffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="shopping-${label}.xlsx"`,

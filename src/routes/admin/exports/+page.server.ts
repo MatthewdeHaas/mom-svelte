@@ -9,8 +9,8 @@ import { ExportDateSchema } from '$lib/server/schemas/order';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function excelResponse(buffer: ArrayBuffer, filename: string): Response {
-  return new Response(buffer, {
+function excelResponse(buffer: Buffer, filename: string): Response {
+  return new Response(buffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,

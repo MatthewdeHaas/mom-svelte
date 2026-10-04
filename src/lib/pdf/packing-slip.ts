@@ -442,9 +442,22 @@ export async function generatePackingSlips(
       const doc = new PDFDocument({
         size:    [PAGE_W, PAGE_H],
         margin:  0,
+        // compress:false keeps text streams uncompressed so patchPageTotal's
+        // ##TOTAL## placeholder is actually visible in the output buffer.
+        // Verified empirically — the compressed path hid the placeholder and
+        // every packing slip in prod shipped with the literal text.
+        compress: false,
+        // Pin every info field in a fixed insertion order. PDFKit derives
+        // /ID from the info dict via md5 iterating keys in insertion order
+        // (pdfkit.js:596), so the key order and CreationDate/ModDate values
+        // must be stable for the output to be byte-identical across runs.
         info: {
-          Title:   `Packing Slip — ${group.companyName}`,
-          Subject: `Delivery ${group.shipmentDate}`,
+          Title:        `Packing Slip — ${group.companyName}`,
+          Subject:      `Delivery ${group.shipmentDate}`,
+          Producer:     'motm-admin',
+          Creator:      'motm-admin',
+          CreationDate: new Date(0),
+          ModDate:      new Date(0),
         },
         // Disable auto first-page so we control it in renderSlip
         autoFirstPage: false,

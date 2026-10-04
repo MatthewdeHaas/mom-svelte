@@ -108,7 +108,7 @@ export async function getOrders(
      JOIN company c ON c.id = o.company_id
      LEFT JOIN recipe r ON r.id = o.recipe_id
      ${where}
-     ORDER BY o.serving_date DESC, c.name ASC`,
+     ORDER BY o.serving_date DESC, c.name ASC, o.id ASC`,
     params
   );
 
@@ -199,7 +199,7 @@ export async function getOrdersPaginated(
      JOIN company c ON c.id = o.company_id
      LEFT JOIN recipe r ON r.id = o.recipe_id
      ${where}
-     ORDER BY o.serving_date DESC, c.name ASC
+     ORDER BY o.serving_date DESC, c.name ASC, o.id ASC
      ${pag.sql}`,
     [...params, ...pag.values]
   );

@@ -1,26 +1,39 @@
 import ExcelJS from 'exceljs';
 import { getOrders } from '$lib/server/queries/orders';
+import { pinXlsxDates } from '$lib/excel/determinism';
 import type { Pool } from 'pg';
 
 export async function generateProductionOrderSheet(
   db: Pool,
   from: string,
   to: string
-): Promise<ExcelJS.Buffer> {
+): Promise<Buffer> {
 
   const orders = await getOrders(db, {
     serving_date_from: from,
     serving_date_to: to,
   });
 
-  // Sort by recipe name, then customer
+  // Sort by recipe, then customer, then id as a total-order tiebreaker so
+  // two runs over the same data produce byte-identical output.
   const sortedOrders = [...orders].sort((a, b) => {
     const recipe = (a.recipe_name ?? '').localeCompare(b.recipe_name ?? '');
-    return recipe !== 0 ? recipe : a.company_name.localeCompare(b.company_name);
+    if (recipe !== 0) return recipe;
+    const company = a.company_name.localeCompare(b.company_name);
+    if (company !== 0) return company;
+    return a.id.localeCompare(b.id);
   });
 
-  // Build workbook
+  // Build workbook — explicitly pin every metadata field that ExcelJS would
+  // otherwise stamp with `new Date()` or the running user's name.
   const workbook = new ExcelJS.Workbook();
+  workbook.created = new Date(0);
+  workbook.modified = new Date(0);
+  workbook.creator = '';
+  workbook.lastModifiedBy = '';
+  workbook.company = '';
+  workbook.title = '';
+  workbook.description = '';
   const sheet = workbook.addWorksheet('Production Order');
 
   // Column definitions matching the new format
@@ -99,5 +112,6 @@ export async function generateProductionOrderSheet(
   // Freeze header row
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
-  return workbook.xlsx.writeBuffer();
+  const buf = await workbook.xlsx.writeBuffer();
+  return pinXlsxDates(Buffer.from(buf));
 }
