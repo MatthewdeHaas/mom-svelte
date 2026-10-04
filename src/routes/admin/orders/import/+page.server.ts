@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { pool } from '$lib/server/db';
-import { parseExcelBufferAsync } from '$lib/excel/parse';
+import { parseExcelBufferAsyncWithMeta } from '$lib/excel/parse';
 import { importOrdersFromRows } from '$lib/server/queries/imports';
 import logger from '$lib/server/logger';
 
@@ -50,10 +50,15 @@ export const actions: Actions = {
     // STEP 2 — Parse
     // ----------------------------------------------------------
     let rawRows: Record<string, unknown>[];
+    let extraSheetCount = 0;
+    let headers: string[] = [];
 
     try {
 			const buffer = Buffer.from(await file.arrayBuffer());
-			rawRows = await parseExcelBufferAsync(buffer);
+			const parsed = await parseExcelBufferAsyncWithMeta(buffer);
+			rawRows = parsed.rows;
+			extraSheetCount = parsed.extraSheetCount;
+			headers = parsed.headers;
     } catch (err) {
       logger.error({ err }, 'import parse error');
       return fail(400, {
@@ -71,14 +76,21 @@ export const actions: Actions = {
     // STEP 3 — Validate + resolve + insert
     // ----------------------------------------------------------
     try {
-			const headers = rawRows.length > 0 ? Object.keys(rawRows[0]) : [];
-			const result = await importOrdersFromRows(pool, rawRows, locals.user.id, headers);
+			const result = await importOrdersFromRows(
+				pool,
+				rawRows,
+				locals.user.id,
+				headers,
+				extraSheetCount,
+			);
 
       if (result.errors.length > 0) {
         // Validation or resolution errors — return them to the page
         // for display. HTTP 422 so the form knows it was a data problem.
+        // Warnings travel alongside errors so the operator sees both.
         return fail(422, {
           importErrors: result.errors,
+          importWarnings: result.warnings,
           rowCount: rawRows.length,
         });
       }
@@ -87,6 +99,7 @@ export const actions: Actions = {
         success: true,
         inserted: result.inserted,
         skipped: result.skipped,
+        warnings: result.warnings,
       };
     } catch (err) {
       logger.error({ err }, 'import pipeline error');

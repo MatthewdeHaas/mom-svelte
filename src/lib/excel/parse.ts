@@ -41,6 +41,24 @@ export function parseExcelBuffer(buffer: ArrayBuffer | Buffer): Record<string, u
 export async function parseExcelBufferAsync(
   buffer: ArrayBuffer | Buffer,
 ): Promise<Record<string, unknown>[]> {
+  const { rows } = await parseExcelBufferAsyncWithMeta(buffer);
+  return rows;
+}
+
+/**
+ * Same as `parseExcelBufferAsync` but also returns workbook-level metadata
+ * the importer needs to emit sheet-level warnings (notably: how many
+ * non-data sheets were present and ignored).
+ *
+ * Only sheet 1 is read for data — the real client's weekly workbook has
+ * 7 sheets but only sheet 1 is the production order; sheets 2–7 are
+ * packing-slip templates and office layouts. `extraSheetCount` lets the
+ * route surface a yellow `extra_sheets_ignored` warning so the operator
+ * knows the trailing sheets were skipped on purpose.
+ */
+export async function parseExcelBufferAsyncWithMeta(
+  buffer: ArrayBuffer | Buffer,
+): Promise<{ rows: Record<string, unknown>[]; extraSheetCount: number; headers: string[] }> {
   const workbook = new ExcelJS.Workbook();
   // ExcelJS types declare load(buffer: Buffer) using the legacy non-generic Buffer.
   // Node 22+ types make Buffer<ArrayBufferLike> — cast away the mismatch.
@@ -48,7 +66,9 @@ export async function parseExcelBufferAsync(
   await workbook.xlsx.load(buffer as any);
 
   const sheet = workbook.worksheets[0];
-  if (!sheet) return [];
+  if (!sheet) return { rows: [], extraSheetCount: 0, headers: [] };
+
+  const extraSheetCount = Math.max(0, workbook.worksheets.length - 1);
 
   // Extract headers from row 1
   const headerRow = sheet.getRow(1);
@@ -82,5 +102,5 @@ export async function parseExcelBufferAsync(
     rows.push(record);
   });
 
-  return rows;
+  return { rows, extraSheetCount, headers };
 }

@@ -5,6 +5,8 @@ import type {
   ExcelRowResolved,
   ImportResult,
   ImportRowError,
+  ImportWarning,
+  ImportWarningCode,
   InsertOrder,
 } from '$lib/types';
 import { getCompanyByName } from './companies';
@@ -18,7 +20,10 @@ import type { Db } from '$lib/server/db';
 // unknown — Zod coerces and validates in one pass.
 // -------------------------------------------------------------
 
-const MEAL_CATEGORIES = ['Breakfast', 'Lunch', 'Snack', 'Snack R', 'Soup', 'Dinner'] as const;
+// 'Lunch R' and 'Soup R' are real values in the client's weekly workbook.
+// They differ from Lunch/Soup only by a trailing "R" (meaning unclear —
+// surfaced through unchanged so downstream still groups by meal_category).
+const MEAL_CATEGORIES = ['Breakfast', 'Lunch', 'Lunch R', 'Snack', 'Snack R', 'Soup', 'Soup R', 'Dinner'] as const;
 const STORAGE_VALUES = ['f', 'c'] as const;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -84,6 +89,35 @@ export const ExcelRowSchema = z.object({
     }
   }
 });
+
+// -------------------------------------------------------------
+// MEAL CANONICALIZATION
+// The client's workbook contains values like " lunch", "Lunch R",
+// "soup r", etc. Normalize whitespace + case to the canonical
+// forms declared in MEAL_CATEGORIES. If the raw value differs
+// from canonical after normalization, we emit a row-level
+// `meal_case_normalized` warning so the operator can see what
+// was coerced.
+// -------------------------------------------------------------
+
+const MEAL_CANONICAL = new Map<string, (typeof MEAL_CATEGORIES)[number]>([
+  ['breakfast', 'Breakfast'],
+  ['lunch',     'Lunch'],
+  ['lunch r',   'Lunch R'],
+  ['snack',     'Snack'],
+  ['snack r',   'Snack R'],
+  ['soup',      'Soup'],
+  ['soup r',    'Soup R'],
+  ['dinner',    'Dinner'],
+]);
+
+function canonicalizeMeal(raw: unknown): { value: unknown; normalized: boolean } {
+  if (typeof raw !== 'string') return { value: raw, normalized: false };
+  const key = raw.replace(/\s+/g, ' ').trim().toLowerCase();
+  const canonical = MEAL_CANONICAL.get(key);
+  if (!canonical) return { value: raw, normalized: false }; // let Zod reject it
+  return { value: canonical, normalized: canonical !== raw };
+}
 
 // -------------------------------------------------------------
 // ROW VALIDATION
@@ -185,6 +219,9 @@ async function resolveRow(
 // use friendlier display names without breaking the parser.
 // -------------------------------------------------------------
 
+// `frozen` and `chilled` are intentionally NOT in this map — if present as
+// separate columns we detect the split-storage shape in normaliseHeaders
+// and route both columns to a single derived `storage` value.
 const COLUMN_MAP: Record<string, keyof ExcelRowParsed> = {
   'company':          'company',
   'customer':         'company',
@@ -211,42 +248,119 @@ const COLUMN_MAP: Record<string, keyof ExcelRowParsed> = {
   'portionsize':      'portion_size',
   'day':              'day',
   'storage':          'storage',
-  'frozen':           'storage',
-  'chilled':          'storage',
   'frozen/chilled':   'storage',
   'client':           'client',
 };
 
-// Columns to silently ignore during import (computed/duplicate values)
-const IGNORED_COLUMNS = new Set([
-  'item',
-  'quantity to produce/ship',
-  'quantity to produce',
-  'quantity_to_produce',
-  'qty',
+// Columns that are redundant with values already in canonical columns.
+// Present them with a sheet-level warning instead of silently dropping —
+// the real-client workbook contains both `Item` (duplicates Recipe) and
+// `Quantity to Produce/Ship` (= Order Amount × Portion Size), and the
+// operator should know we chose the authoritative column.
+type WarnRedundantSpec = { code: ImportWarningCode; message: string };
+const WARN_REDUNDANT_COLUMNS = new Map<string, WarnRedundantSpec>([
+  ['item', {
+    code: 'item_column_ignored',
+    message: 'Item column duplicates Recipe; ignored.',
+  }],
+  ['quantity to produce/ship', {
+    code: 'qty_formula_ignored',
+    message: 'Quantity to Produce/Ship is computed from Order Amount × Portion Size; ignored.',
+  }],
+  ['quantity to produce', {
+    code: 'qty_formula_ignored',
+    message: 'Quantity to Produce/Ship is computed from Order Amount × Portion Size; ignored.',
+  }],
+  ['quantity_to_produce', {
+    code: 'qty_formula_ignored',
+    message: 'Quantity to Produce/Ship is computed from Order Amount × Portion Size; ignored.',
+  }],
+  ['qty', {
+    code: 'qty_formula_ignored',
+    message: 'Quantity to Produce/Ship is computed from Order Amount × Portion Size; ignored.',
+  }],
 ]);
 
-function normaliseHeaders(rawHeaders: string[]): Map<string, keyof ExcelRowParsed> {
+function normaliseHeader(h: string): string {
+  return h.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+interface SplitStorageSpec {
+  frozenHeader: string;
+  chilledHeader: string;
+}
+
+interface HeaderAnalysis {
+  map: Map<string, keyof ExcelRowParsed>;
+  splitStorage: SplitStorageSpec | null;
+  redundantWarnings: ImportWarning[];
+  itemHeader: string | null; // present if the Item column exists — used for per-row mismatch warnings
+}
+
+function analyseHeaders(rawHeaders: string[]): HeaderAnalysis {
   const map = new Map<string, keyof ExcelRowParsed>();
+  const redundantWarnings: ImportWarning[] = [];
+  const seenRedundantCodes = new Set<ImportWarningCode>();
+  let itemHeader: string | null = null;
+  let frozenHeader: string | null = null;
+  let chilledHeader: string | null = null;
+  let hasStorage = false;
+
   for (const header of rawHeaders) {
-    const normalised = header.trim().toLowerCase().replace(/\s+/g, ' ');
-    if (IGNORED_COLUMNS.has(normalised)) continue;
+    const normalised = normaliseHeader(header);
+    if (!normalised) continue;
+
+    // Redundant columns (Item, Qty formula): emit one sheet-level warning
+    // per code and skip the column so the schema never sees it.
+    const redundant = WARN_REDUNDANT_COLUMNS.get(normalised);
+    if (redundant) {
+      if (!seenRedundantCodes.has(redundant.code)) {
+        seenRedundantCodes.add(redundant.code);
+        redundantWarnings.push({
+          code: redundant.code,
+          row: null,
+          message: redundant.message,
+        });
+      }
+      if (redundant.code === 'item_column_ignored') itemHeader = header;
+      continue;
+    }
+
+    // Track frozen/chilled separately — they fold into `storage` below.
+    if (normalised === 'frozen')  { frozenHeader = header; continue; }
+    if (normalised === 'chilled') { chilledHeader = header; continue; }
+    if (normalised === 'storage') hasStorage = true;
+
     const field = COLUMN_MAP[normalised];
     if (field) map.set(header, field);
   }
-  return map;
+
+  // Split storage shape: both Frozen + Chilled present, no Storage column.
+  // Preserve the EXACT original header strings — the real file has a
+  // leading-space " Chilled" header that must round-trip verbatim through
+  // sanitizer rebuilds.
+  let splitStorage: SplitStorageSpec | null = null;
+  if (frozenHeader && chilledHeader && !hasStorage) {
+    splitStorage = { frozenHeader, chilledHeader };
+  }
+
+  return { map, splitStorage, redundantWarnings, itemHeader };
 }
 
 function normaliseRow(
   raw: Record<string, unknown>,
-  headerMap: Map<string, keyof ExcelRowParsed>
-): Record<string, unknown> {
+  headerMap: Map<string, keyof ExcelRowParsed>,
+  splitStorage: SplitStorageSpec | null,
+  rowNumber: number
+): { row: Record<string, unknown>; warnings: ImportWarning[] } {
   const out: Record<string, unknown> = {};
+  const warnings: ImportWarning[] = [];
+
   for (const [header, field] of headerMap.entries()) {
     const value = raw[header];
 
-    // Normalise storage column: accept 'f'/'c'/'F'/'C' or blank
     if (field === 'storage') {
+      // Explicit storage column — accept 'f'/'c'/'F'/'C' or blank.
       if (typeof value === 'string') {
         const v = value.trim().toLowerCase();
         out[field] = v === 'f' || v === 'c' ? v : null;
@@ -256,9 +370,93 @@ function normaliseRow(
       continue;
     }
 
+    if (field === 'meal_category') {
+      const { value: canon, normalized } = canonicalizeMeal(value);
+      out[field] = canon;
+      if (normalized) {
+        warnings.push({
+          code: 'meal_case_normalized',
+          row: rowNumber,
+          message: `Meal "${String(value).trim()}" normalized to "${String(canon)}".`,
+          details: { from: String(value), to: String(canon) },
+        });
+      }
+      continue;
+    }
+
     out[field] = value;
   }
-  return out;
+
+  // Derive storage from the Frozen/Chilled "x" markers when the sheet
+  // uses the split-storage shape instead of a single Storage column.
+  if (splitStorage) {
+    const isSet = (v: unknown) =>
+      typeof v === 'string' && v.trim().toLowerCase() === 'x';
+    const frozenSet  = isSet(raw[splitStorage.frozenHeader]);
+    const chilledSet = isSet(raw[splitStorage.chilledHeader]);
+
+    if (frozenSet && chilledSet) {
+      // Ambiguous — default to frozen so the row still imports.
+      out.storage = 'f';
+      warnings.push({
+        code: 'storage_both_set',
+        row: rowNumber,
+        message: 'Both Frozen and Chilled are marked; defaulted to Frozen.',
+      });
+    } else if (frozenSet) {
+      out.storage = 'f';
+    } else if (chilledSet) {
+      out.storage = 'c';
+    } else {
+      // Neither marked — in the real client's workbook 8 rows look like
+      // this and the current import semantics default such rows to chilled.
+      out.storage = 'c';
+      warnings.push({
+        code: 'storage_missing_defaulted_chilled',
+        row: rowNumber,
+        message: 'Neither Frozen nor Chilled is marked; defaulted to Chilled.',
+      });
+    }
+  }
+
+  return { row: out, warnings };
+}
+
+// -------------------------------------------------------------
+// BOILERPLATE-ROW DETECTION
+// Sheet 1 of a hand-maintained workbook sometimes trails off into
+// office-use/packing-slip notes once the real orders end. Treat
+// the first row whose Customer/Recipe/Item cell matches a known
+// boilerplate token as EOF — drop it and everything after.
+// -------------------------------------------------------------
+
+const BOILERPLATE_TOKENS = [
+  'packing slip',
+  'office use only',
+  'cambros',
+  'packed by',
+  'ice packs - please return to mom',
+];
+
+function isBoilerplateRow(raw: Record<string, unknown>, itemHeader: string | null): boolean {
+  const candidates: string[] = [];
+  for (const key of ['Customer', 'customer', 'Recipe', 'recipe']) {
+    const v = raw[key];
+    if (typeof v === 'string') candidates.push(v);
+  }
+  if (itemHeader) {
+    const v = raw[itemHeader];
+    if (typeof v === 'string') candidates.push(v);
+  }
+
+  for (const text of candidates) {
+    const t = text.trim().toLowerCase();
+    if (!t) continue;
+    if (BOILERPLATE_TOKENS.some((tok) => t === tok || t.startsWith(tok))) return true;
+    // "#3 of 5" style trailer rows (meal counts) land in the Customer col.
+    if (/^#.*\bof\b/.test(t)) return true;
+  }
+  return false;
 }
 
 // -------------------------------------------------------------
@@ -275,25 +473,93 @@ export async function importOrdersFromRows(
   db: Pool,
   rawRows: Record<string, unknown>[],
   createdBy: string,
-  headers?: string[]
+  headers?: string[],
+  extraSheetCount = 0
 ): Promise<ImportResult> {
+  const allWarnings: ImportWarning[] = [];
+
+  if (extraSheetCount > 0) {
+    allWarnings.push({
+      code: 'extra_sheets_ignored',
+      row: null,
+      message: `${extraSheetCount} additional ${extraSheetCount === 1 ? 'sheet was' : 'sheets were'} ignored; only the first sheet is imported.`,
+      details: { count: extraSheetCount },
+    });
+  }
+
   if (rawRows.length === 0) {
-    return { inserted: 0, skipped: 0, errors: [] };
+    return { inserted: 0, skipped: 0, errors: [], warnings: allWarnings };
   }
 
   const allErrors: ImportRowError[] = [];
 
   // -------------------------------------------------------------
-  // STEP 1 — Normalise headers if provided
+  // STEP 1 — Analyse headers (column map, split-storage, redundant warnings)
   // -------------------------------------------------------------
-  const headerMap = headers ? normaliseHeaders(headers) : null;
-
-  const normalisedRows = headerMap
-    ? rawRows.map((row) => normaliseRow(row, headerMap))
-    : rawRows;
+  const effectiveHeaders = headers ?? Object.keys(rawRows[0]);
+  const analysis = analyseHeaders(effectiveHeaders);
+  allWarnings.push(...analysis.redundantWarnings);
 
   // -------------------------------------------------------------
-  // STEP 2 — Validate all rows with Zod (no DB calls yet)
+  // STEP 2 — Boilerplate stop: truncate rows at the first boilerplate marker
+  // -------------------------------------------------------------
+  let dataRows = rawRows;
+  for (let i = 0; i < rawRows.length; i++) {
+    if (isBoilerplateRow(rawRows[i], analysis.itemHeader)) {
+      allWarnings.push({
+        code: 'boilerplate_row_stopped',
+        row: i + 2,
+        message: `Stopped reading at boilerplate row ${i + 2}; ${rawRows.length - i} trailing ${rawRows.length - i === 1 ? 'row' : 'rows'} ignored.`,
+        details: { stopped_at: i + 2, dropped_count: rawRows.length - i },
+      });
+      dataRows = rawRows.slice(0, i);
+      break;
+    }
+  }
+
+  if (dataRows.length === 0) {
+    return { inserted: 0, skipped: 0, errors: [], warnings: allWarnings };
+  }
+
+  // -------------------------------------------------------------
+  // STEP 3 — Per-row item/recipe mismatch check (before normalisation
+  //          strips the Item column from the record)
+  // -------------------------------------------------------------
+  if (analysis.itemHeader) {
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      const itemVal   = row[analysis.itemHeader];
+      // Recipe column header may be exactly "Recipe"/"recipe".
+      const recipeVal = row['Recipe'] ?? row['recipe'];
+      if (
+        typeof itemVal === 'string' &&
+        typeof recipeVal === 'string' &&
+        itemVal.trim() &&
+        recipeVal.trim() &&
+        itemVal.trim().toLowerCase() !== recipeVal.trim().toLowerCase()
+      ) {
+        allWarnings.push({
+          code: 'item_recipe_mismatch',
+          row: i + 2,
+          message: `Item "${itemVal.trim()}" differs from Recipe "${recipeVal.trim()}"; Recipe wins.`,
+          details: { item: itemVal.trim(), recipe: recipeVal.trim() },
+        });
+      }
+    }
+  }
+
+  // -------------------------------------------------------------
+  // STEP 4 — Normalise each row (meal canonicalization, split-storage)
+  // -------------------------------------------------------------
+  const normalisedRows: Record<string, unknown>[] = [];
+  for (let i = 0; i < dataRows.length; i++) {
+    const { row, warnings } = normaliseRow(dataRows[i], analysis.map, analysis.splitStorage, i + 2);
+    normalisedRows.push(row);
+    allWarnings.push(...warnings);
+  }
+
+  // -------------------------------------------------------------
+  // STEP 5 — Validate all rows with Zod (no DB calls yet)
   // -------------------------------------------------------------
   const parsedRows: Array<ExcelRowParsed | null> = [];
 
@@ -312,11 +578,11 @@ export async function importOrdersFromRows(
   // Abort early if any rows failed schema validation —
   // no point hitting the DB for reference lookups.
   if (allErrors.length > 0) {
-    return { inserted: 0, skipped: 0, errors: allErrors };
+    return { inserted: 0, skipped: 0, errors: allErrors, warnings: allWarnings };
   }
 
   // -------------------------------------------------------------
-  // STEP 3 — Resolve company + recipe references in parallel
+  // STEP 6 — Resolve company + recipe references in parallel
   // Each row is resolved concurrently; errors accumulate.
   // -------------------------------------------------------------
   const resolvedRows: Array<ExcelRowResolved | null> = [];
@@ -337,11 +603,11 @@ export async function importOrdersFromRows(
   }
 
   if (allErrors.length > 0) {
-    return { inserted: 0, skipped: 0, errors: allErrors };
+    return { inserted: 0, skipped: 0, errors: allErrors, warnings: allWarnings };
   }
 
   // -------------------------------------------------------------
-  // STEP 4 — Insert all resolved rows in a single transaction
+  // STEP 7 — Insert all resolved rows in a single transaction
   // -------------------------------------------------------------
   const orders: InsertOrder[] = (resolvedRows as ExcelRowResolved[]).map((row) => ({
     company_id:    row.company_id,
@@ -368,7 +634,7 @@ export async function importOrdersFromRows(
     const inserted = await insertOrdersBatch(client, orders);
     await client.query('COMMIT');
 
-    return { inserted: inserted.length, skipped: 0, errors: [] };
+    return { inserted: inserted.length, skipped: 0, errors: [], warnings: allWarnings };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err; // Surface unexpected DB errors to the route handler

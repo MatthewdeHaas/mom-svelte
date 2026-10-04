@@ -1,8 +1,48 @@
 <script lang="ts">
   import type { ActionData } from './$types';
+  import type { ImportWarning } from '$lib/types';
   import { enhance } from '$app/forms';
 
   const { form }: { form: ActionData } = $props();
+
+  // Group row-level warnings by code so the UI collapses to one line per code
+  // with the row numbers listed. Sheet-level warnings (row === null) render
+  // one per line unchanged.
+  type GroupedWarning = {
+    code: string;
+    message: string;
+    rows: number[];      // empty for sheet-level
+    sheetLevel: boolean;
+  };
+
+  function groupWarnings(warnings: ImportWarning[] | undefined): GroupedWarning[] {
+    if (!warnings?.length) return [];
+    const sheetLevel: GroupedWarning[] = [];
+    const byCode = new Map<string, GroupedWarning>();
+    for (const w of warnings) {
+      if (w.row === null) {
+        sheetLevel.push({ code: w.code, message: w.message, rows: [], sheetLevel: true });
+        continue;
+      }
+      const existing = byCode.get(w.code);
+      if (existing) {
+        existing.rows.push(w.row);
+      } else {
+        byCode.set(w.code, {
+          code: w.code,
+          message: w.message,
+          rows: [w.row],
+          sheetLevel: false,
+        });
+      }
+    }
+    return [
+      ...sheetLevel,
+      ...[...byCode.values()].map((g) => ({ ...g, rows: [...g.rows].sort((a, b) => a - b) })),
+    ];
+  }
+
+  const groupedWarnings = $derived(groupWarnings(form?.warnings ?? form?.importWarnings));
 
   let fileInput = $state<HTMLInputElement | null>(null);
   let selectedFile = $state<File | null>(null);
@@ -183,6 +223,47 @@
   .error-title { font-size: 14px; font-weight: 600; color: #A32D2D; }
   .error-sub { font-size: 12.5px; color: #C05050; margin-top: 1px; }
 
+  /* Warnings strip — non-fatal normalization notices */
+  .warnings-box {
+    border: 1px solid #F5D679;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .warnings-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    background: #FFF8E1;
+    border-bottom: 1px solid #F5D679;
+  }
+  .warnings-title { font-size: 14px; font-weight: 600; color: #8B6508; }
+  .warnings-sub   { font-size: 12.5px; color: #A17A1A; margin-top: 1px; }
+  .warnings-body { padding: 10px 0; background: #FFFDF4; }
+  .warning-row {
+    padding: 8px 20px;
+    font-size: 12.5px;
+    color: #5A4710;
+    line-height: 1.5;
+  }
+  .warning-row + .warning-row { border-top: 1px solid #FBECBD; }
+  .warning-row .code {
+    display: inline-block;
+    font-family: monospace;
+    font-size: 11px;
+    color: #8B6508;
+    background: #FBECBD;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 6px;
+  }
+  .warning-row .rows {
+    color: #A17A1A;
+    font-size: 11.5px;
+    margin-left: 6px;
+  }
+
   /* Plain error (bad file) */
   .plain-error {
     display: flex;
@@ -270,6 +351,38 @@
       <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
     </svg>
     {form.error}
+  </div>
+{/if}
+
+<!-- Warnings strip — non-fatal normalization notices -->
+{#if groupedWarnings.length}
+  <div class="warnings-box">
+    <div class="warnings-header">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #8B6508;">
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9"  x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <div>
+        <p class="warnings-title">{groupedWarnings.length} normalization {groupedWarnings.length === 1 ? 'notice' : 'notices'}</p>
+        <p class="warnings-sub">The importer accepted the file but made the adjustments below</p>
+      </div>
+    </div>
+    <div class="warnings-body">
+      {#each groupedWarnings as w}
+        <div class="warning-row">
+          <span class="code">{w.code}</span>
+          {w.message}
+          {#if !w.sheetLevel && w.rows.length}
+            <span class="rows">
+              (row{w.rows.length === 1 ? '' : 's'} {w.rows.length > 20
+                ? `${w.rows.slice(0, 20).join(', ')}, … +${w.rows.length - 20} more`
+                : w.rows.join(', ')})
+            </span>
+          {/if}
+        </div>
+      {/each}
+    </div>
   </div>
 {/if}
 

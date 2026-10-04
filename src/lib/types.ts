@@ -322,6 +322,7 @@ export interface ImportResult {
   inserted: number;
   skipped: number;
   errors: ImportRowError[];
+  warnings: ImportWarning[];
 }
 
 export interface ImportRowError {
@@ -331,6 +332,32 @@ export interface ImportRowError {
   raw_value?: string | null;
   severity?: 'error' | 'warning';  // default 'error'
   suggestion?: string | null;      // e.g. "Did you mean 'Chicken Breast'?"
+}
+
+/**
+ * Non-fatal normalization notice surfaced to the user after import.
+ *
+ * Row-level warnings (`row: number`) attach to a specific sheet row and
+ * are grouped by `code` in the UI with row numbers listed. Sheet-level
+ * warnings (`row: null`) describe a global condition — e.g. a redundant
+ * column was present, extra sheets were ignored — and render as a single
+ * line.
+ */
+export type ImportWarningCode =
+  | 'item_column_ignored'
+  | 'qty_formula_ignored'
+  | 'item_recipe_mismatch'
+  | 'storage_both_set'
+  | 'storage_missing_defaulted_chilled'
+  | 'meal_case_normalized'
+  | 'boilerplate_row_stopped'
+  | 'extra_sheets_ignored';
+
+export interface ImportWarning {
+  code: ImportWarningCode;
+  row: number | null;   // null = sheet-level
+  message: string;
+  details?: Record<string, string | number | null>;
 }
 
 
