@@ -13,7 +13,17 @@ if [ ! -f .env.test ]; then
   exit 1
 fi
 
-export $(grep -v '^#' .env.test | grep -v '^$' | xargs)
+# Load .env.test by hand — `xargs` chokes on values with spaces, and
+# `source` runs the file as shell so unquoted `<` becomes a redirect.
+# Parse each KEY=value line ourselves and export without re-interpretation.
+while IFS='=' read -r key value; do
+  # Skip blanks and comments
+  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+  # Strip surrounding quotes if present
+  value="${value#\"}"; value="${value%\"}"
+  value="${value#\'}"; value="${value%\'}"
+  export "$key=$value"
+done < .env.test
 
 DB_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432"
 
