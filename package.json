@@ -19,6 +19,9 @@
 		"db:reset-test": "bash scripts/reset-test-db.sh",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes",
 		"migrate": "tsx scripts/migrate.ts",
+		"rust:sync-migrations": "bash scripts/sync-rust-migrations.sh",
+		"rust:check": "pnpm run rust:sync-migrations && cargo check --manifest-path admin-operations-rust/Cargo.toml --workspace",
+		"rust:test": "pnpm run rust:sync-migrations && cargo test --manifest-path admin-operations-rust/Cargo.toml --workspace",
 		"seed:admin": "tsx scripts/seed-admin.ts",
 		"seed:dev": "tsx --env-file=.env scripts/seed-dev.ts",
 		"backfill": "tsx --env-file=.env scripts/backfill.ts"

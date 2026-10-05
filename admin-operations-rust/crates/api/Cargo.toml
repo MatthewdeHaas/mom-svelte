@@ -1,0 +1,49 @@
+[package]
+name = "api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "api"
+path = "src/main.rs"
+
+[dependencies]
+# Local
+domain = { path = "../domain" }
+db     = { path = "../db" }
+flags  = { path = "../flags" }
+
+# HTTP + async
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+
+# Serde
+serde.workspace = true
+serde_json.workspace = true
+
+# Types
+uuid.workspace = true
+chrono.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# DB (just for the pool type on AppState)
+sqlx.workspace = true
+
+# Auth: HMAC-SHA256 + nonce cache
+hmac.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+hex.workspace = true
+dashmap.workspace = true
+
+# Errors
+thiserror.workspace = true
+anyhow.workspace = true

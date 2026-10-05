@@ -1,0 +1,6 @@
+/target
+# `migrations/` is a build-time copy of `../scripts/migrations/`.
+# Source of truth is the SvelteKit tree; the Dockerfile and
+# `pnpm rust:sync-migrations` populate this directory.
+# Checking it in would create a two-way diff risk.
+/migrations

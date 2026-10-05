@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/domain",
+    "crates/db",
+    "crates/flags",
+    "crates/excel",
+    "crates/pdf",
+    "crates/api",
+]
+
+# Shared dependency versions. Each crate opts in only to what it uses so
+# `cargo build -p domain` stays fast.
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+# Async + HTTP
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+axum = { version = "0.7", features = ["macros", "multipart"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "request-id", "util"] }
+
+# Serde + validation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+validator = { version = "0.18", features = ["derive"] }
+
+# DB
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+    "macros",
+    "migrate",
+    "json",
+] }
+
+# Types
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Auth / crypto
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"              # constant-time comparison for HMAC verify
+hex = "0.4"
+dashmap = "6"             # concurrent map for nonce cache
+rand = "0.8"
+
+# Errors
+thiserror = "1"
+anyhow = "1"
+
+# Excel / PDF (pinned here even though only one crate uses each —
+# central version management).
+calamine = "0.26"
+rust_xlsxwriter = "0.79"
+printpdf = "0.7"
+
+[profile.release]
+# Thin LTO strikes a reasonable balance between compile time and binary
+# size for a web service. Flip to "fat" if cold-start matters more than
+# CI build time; measure before deciding.
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

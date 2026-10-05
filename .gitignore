@@ -39,6 +39,11 @@ dist/
 .direnv/
 result
 
+# Rust: build output + synced migrations (populated by
+# scripts/sync-rust-migrations.sh; source of truth is scripts/migrations/)
+admin-operations-rust/target/
+admin-operations-rust/migrations/
+
 # editor
 .vscode/
 .idea/
