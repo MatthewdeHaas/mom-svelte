@@ -11,6 +11,7 @@
 //! to an ephemeral `TcpListener`.
 
 pub mod auth;
+pub mod companies;
 pub mod error;
 pub mod flags_handler;
 pub mod health;
@@ -88,6 +89,21 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/recipes/:id/deactivate", post(recipes::deactivate))
         .route("/recipes/:id/active", get(recipes::is_active))
+        // Companies surface — mirrors `src/lib/server/queries/companies.ts`.
+        // Order matters: literal paths (`/paginated`, `/by-name`) register
+        // before `/:id` or axum tries to parse "by-name" as a UUID.
+        .route("/companies", get(companies::list).post(companies::create))
+        .route("/companies/paginated", get(companies::list_paginated))
+        .route("/companies/by-name", get(companies::get_by_name))
+        .route(
+            "/companies/:id",
+            get(companies::get_by_id).patch(companies::update),
+        )
+        .route(
+            "/companies/:id/users",
+            get(companies::get_users_by_company),
+        )
+        .route("/companies/:id/deactivate", post(companies::deactivate))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::verify_internal_auth,

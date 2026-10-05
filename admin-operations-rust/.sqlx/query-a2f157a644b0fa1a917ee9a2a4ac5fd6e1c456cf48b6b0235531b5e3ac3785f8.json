@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id               AS \"id!: Uuid\",\n                name             AS \"name!\",\n                contact_email,\n                phone,\n                shipping_address,\n                active           AS \"active!\",\n                created_at       AS \"created_at!: DateTime<Utc>\"\n            FROM company\n            ORDER BY name ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "contact_email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "phone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "shipping_address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "a2f157a644b0fa1a917ee9a2a4ac5fd6e1c456cf48b6b0235531b5e3ac3785f8"
+}

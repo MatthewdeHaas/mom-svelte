@@ -1,4 +1,3 @@
-import type { Pool } from 'pg';
 import { ConflictError } from '$lib/server/errors';
 import type { Company, InsertCompany, UpdateCompany, UserWithCompany } from '$lib/types';
 import type { Db } from '$lib/server/db';
@@ -8,6 +7,74 @@ import {
   paginationSQL,
   buildPaginatedResult,
 } from './pagination';
+import {
+  useRustBackend,
+  internalJson,
+  isInternalApiError,
+  filtersToQueryString,
+  normalizeBody,
+  type InternalCaller,
+} from './_rust-dispatch';
+
+// -------------------------------------------------------------
+// RUST DISPATCH
+//
+// Every exported function below takes an optional `caller`. When
+// passed AND `use_rust_backend_companies` is on for that caller, the
+// call forwards to the Rust service; otherwise the existing SQL
+// runs unchanged. Routes stay untouched in this commit — adding
+// `caller` to specific routes is a follow-up pass once we're ready
+// to flip the flag per-company.
+//
+// Companies are global master data, but scoping differs from recipes:
+// clients can only read their OWN company row. The Rust handlers
+// enforce this server-side; the dispatcher only needs to forward.
+//
+// The wire shapes for `Company` and `UserWithCompany` match the Rust
+// `CompanyRow` / `UserWithCompanyRow` field-for-field, so decoded JSON
+// from `internalJson` can be returned as-is.
+// -------------------------------------------------------------
+
+/**
+ * 404-aware wrapper around `internalJson`. The TS SQL path returns
+ * `null` for mutations targeting a missing row (updateCompany,
+ * deactivateCompany) and for reads that miss (getCompanyById,
+ * getCompanyByName); the Rust path returns 404. Translate so the
+ * dispatcher is behaviourally transparent.
+ */
+async function internalJsonOrNull<T>(
+  path: string,
+  caller: InternalCaller,
+  opts?: Parameters<typeof internalJson>[2]
+): Promise<T | null> {
+  try {
+    return await internalJson<T>(path, caller, opts);
+  } catch (err) {
+    if (isInternalApiError(err) && err.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * 409-aware wrapper for create/update where the TS surface throws
+ * `ConflictError('A company with this name already exists')` on a
+ * UNIQUE-name violation. Rust returns 409 with the same message in
+ * the body; translate so callers can't tell the paths apart.
+ */
+async function internalJsonConflictAware<T>(
+  path: string,
+  caller: InternalCaller,
+  opts?: Parameters<typeof internalJson>[2]
+): Promise<T> {
+  try {
+    return await internalJson<T>(path, caller, opts);
+  } catch (err) {
+    if (isInternalApiError(err) && err.status === 409) {
+      throw new ConflictError('A company with this name already exists');
+    }
+    throw err;
+  }
+}
 
 // -------------------------------------------------------------
 // READ
@@ -15,8 +82,14 @@ import {
 
 export async function getCompanies(
   db: Db,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<Company[]> {
+  if (caller && (await useRustBackend('companies', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    return internalJson<Company[]>(`/api/companies${qs}`, caller);
+  }
+
   const result = await db.query<Company>(
     `SELECT id, name, contact_email, phone, shipping_address, active, created_at
      FROM company
@@ -29,8 +102,20 @@ export async function getCompanies(
 export async function getCompaniesPaginated(
   db: Db,
   opts: { includeInactive?: boolean; search?: string },
-  pagination: PaginationParams
+  pagination: PaginationParams,
+  caller?: InternalCaller
 ): Promise<PaginatedResult<Company>> {
+  if (caller && (await useRustBackend('companies', caller))) {
+    const merged = {
+      include_inactive: opts.includeInactive,
+      search: opts.search,
+      page: pagination.page,
+      per_page: pagination.perPage,
+    };
+    const qs = filtersToQueryString(merged);
+    return internalJson<PaginatedResult<Company>>(`/api/companies/paginated${qs}`, caller);
+  }
+
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -63,7 +148,15 @@ export async function getCompaniesPaginated(
   return buildPaginatedResult(result.rows, total, pagination);
 }
 
-export async function getCompanyById(db: Db, id: string): Promise<Company | null> {
+export async function getCompanyById(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<Company | null> {
+  if (caller && (await useRustBackend('companies', caller))) {
+    return internalJsonOrNull<Company>(`/api/companies/${id}`, caller);
+  }
+
   const result = await db.query<Company>(
     `SELECT id, name, contact_email, phone, shipping_address, active, created_at
      FROM company
@@ -73,7 +166,16 @@ export async function getCompanyById(db: Db, id: string): Promise<Company | null
   return result.rows[0] ?? null;
 }
 
-export async function getCompanyByName(db: Db, name: string): Promise<Company | null> {
+export async function getCompanyByName(
+  db: Db,
+  name: string,
+  caller?: InternalCaller
+): Promise<Company | null> {
+  if (caller && (await useRustBackend('companies', caller))) {
+    const qs = filtersToQueryString({ name });
+    return internalJsonOrNull<Company>(`/api/companies/by-name${qs}`, caller);
+  }
+
   const result = await db.query<Company>(
     `SELECT id, name, contact_email, phone, shipping_address, active, created_at
      FROM company
@@ -85,7 +187,15 @@ export async function getCompanyByName(db: Db, name: string): Promise<Company | 
 
 // Returns all users belonging to a company, each with the company embedded.
 // Useful for the company detail page's user list.
-export async function getUsersByCompany(db: Db, companyId: string): Promise<UserWithCompany[]> {
+export async function getUsersByCompany(
+  db: Db,
+  companyId: string,
+  caller?: InternalCaller
+): Promise<UserWithCompany[]> {
+  if (caller && (await useRustBackend('companies', caller))) {
+    return internalJson<UserWithCompany[]>(`/api/companies/${companyId}/users`, caller);
+  }
+
   const result = await db.query<UserWithCompany & {
     company_name: string;
     company_contact_email: string | null;
@@ -131,7 +241,18 @@ export async function getUsersByCompany(db: Db, companyId: string): Promise<User
 // WRITE
 // -------------------------------------------------------------
 
-export async function createCompany(db: Db, data: InsertCompany): Promise<Company> {
+export async function createCompany(
+  db: Db,
+  data: InsertCompany,
+  caller?: InternalCaller
+): Promise<Company> {
+  if (caller && (await useRustBackend('companies', caller))) {
+    return internalJsonConflictAware<Company>('/api/companies', caller, {
+      method: 'POST',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+  }
+
   try {
     const result = await db.query<Company>(
       `INSERT INTO company (name, contact_email, phone, shipping_address, active)
@@ -155,8 +276,25 @@ export async function createCompany(db: Db, data: InsertCompany): Promise<Compan
 export async function updateCompany(
   db: Db,
   id: string,
-  data: UpdateCompany
+  data: UpdateCompany,
+  caller?: InternalCaller
 ): Promise<Company | null> {
+  if (caller && (await useRustBackend('companies', caller))) {
+    // 404 → null; 409 → ConflictError (parity with SQL path).
+    try {
+      return await internalJson<Company>(`/api/companies/${id}`, caller, {
+        method: 'PATCH',
+        body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+      });
+    } catch (err) {
+      if (isInternalApiError(err) && err.status === 404) return null;
+      if (isInternalApiError(err) && err.status === 409) {
+        throw new ConflictError('A company with this name already exists');
+      }
+      throw err;
+    }
+  }
+
   try {
     const result = await db.query<Company>(
       `UPDATE company
@@ -186,6 +324,16 @@ export async function updateCompany(
 
 // Soft delete — company own persons and orders so hard delete is destructive.
 // Setting active = false preserves all historical data.
-export async function deactivateCompany(db: Db, id: string): Promise<Company | null> {
+export async function deactivateCompany(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<Company | null> {
+  if (caller && (await useRustBackend('companies', caller))) {
+    return internalJsonOrNull<Company>(`/api/companies/${id}/deactivate`, caller, {
+      method: 'POST',
+    });
+  }
+
   return updateCompany(db, id, { active: false });
 }
