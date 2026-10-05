@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            (SELECT COUNT(*) FROM ingredient_allergen WHERE allergen_id = $1) AS \"ingredients!: i64\",\n            (SELECT COUNT(*) FROM person_allergen     WHERE allergen_id = $1) AS \"persons!: i64\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ingredients!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "persons!: i64",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "90a91c11e26a338323955b29e419d225371c05863b74f6f1341e2c557084a38e"
+}

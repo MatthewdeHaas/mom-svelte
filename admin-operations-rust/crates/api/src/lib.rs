@@ -10,6 +10,7 @@
 //! call [`router`] to get a `tower`-compatible service they can bind
 //! to an ephemeral `TcpListener`.
 
+pub mod allergens;
 pub mod auth;
 pub mod companies;
 pub mod error;
@@ -142,6 +143,22 @@ pub fn router(state: AppState) -> Router {
             "/ingredients/:id/allergens/:allergen_id",
             post(ingredients::add_allergen).delete(ingredients::remove_allergen),
         )
+        // Allergens surface — mirrors `src/lib/server/queries/allergens.ts`.
+        // Order matters: literal `/by-name` registers before `/:id` or axum
+        // tries to parse "by-name" as a UUID. The `/:id/ref-count` route
+        // is unambiguous (`:id` is a UUID segment, `ref-count` is literal).
+        .route(
+            "/allergens",
+            get(allergens::list).post(allergens::create),
+        )
+        .route("/allergens/by-name", get(allergens::get_by_name))
+        .route(
+            "/allergens/:id",
+            get(allergens::get_by_id)
+                .patch(allergens::update)
+                .delete(allergens::delete),
+        )
+        .route("/allergens/:id/ref-count", get(allergens::get_ref_count))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::verify_internal_auth,
