@@ -14,6 +14,75 @@ import {
   paginationSQL,
   buildPaginatedResult,
 } from './pagination';
+import {
+  useRustBackend,
+  internalJson,
+  isInternalApiError,
+  filtersToQueryString,
+  normalizeBody,
+  type InternalCaller,
+} from './_rust-dispatch';
+
+// -------------------------------------------------------------
+// RUST DISPATCH
+//
+// Every exported function below takes an optional `caller`. When
+// passed AND `use_rust_backend_ingredients` is on for that caller,
+// the call forwards to the Rust service; otherwise the existing SQL
+// runs unchanged. Routes stay untouched in this commit — threading
+// `caller` into `src/routes/admin/ingredients/*` is a follow-up pass
+// (per orders/recipes/companies precedent).
+//
+// Ingredients are admin-only across the board: every Rust handler
+// hard-rejects client callers with 403. The dispatcher doesn't need
+// any scoping logic — the server enforces it.
+//
+// The wire shapes for `Ingredient` and `IngredientWithAllergens`
+// match the Rust `IngredientRow` / `IngredientWithAllergensRow`
+// field-for-field, so decoded JSON from `internalJson` can be
+// returned as-is.
+// -------------------------------------------------------------
+
+/**
+ * 404-aware wrapper around `internalJson`. The TS SQL path returns
+ * `null` for reads/mutations that miss (getIngredientById,
+ * getIngredientWithAllergens, updateIngredient, deactivateIngredient);
+ * the Rust path returns 404. Translate so the dispatcher is
+ * behaviourally transparent.
+ */
+async function internalJsonOrNull<T>(
+  path: string,
+  caller: InternalCaller,
+  opts?: Parameters<typeof internalJson>[2]
+): Promise<T | null> {
+  try {
+    return await internalJson<T>(path, caller, opts);
+  } catch (err) {
+    if (isInternalApiError(err) && err.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * 409-aware wrapper for create where the TS surface throws
+ * `ConflictError('An ingredient with this name already exists')` on
+ * a UNIQUE-name violation. Rust returns 409 with the same message;
+ * translate so callers can't tell the paths apart.
+ */
+async function internalJsonConflictAware<T>(
+  path: string,
+  caller: InternalCaller,
+  opts?: Parameters<typeof internalJson>[2]
+): Promise<T> {
+  try {
+    return await internalJson<T>(path, caller, opts);
+  } catch (err) {
+    if (isInternalApiError(err) && err.status === 409) {
+      throw new ConflictError('An ingredient with this name already exists');
+    }
+    throw err;
+  }
+}
 
 // -------------------------------------------------------------
 // READ
@@ -21,8 +90,14 @@ import {
 
 export async function getIngredients(
   db: Db,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<Ingredient[]> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    return internalJson<Ingredient[]>(`/api/ingredients${qs}`, caller);
+  }
+
   const result = await db.query<Ingredient>(
     `SELECT id, name, active, cost_per_unit
      FROM ingredient
@@ -33,7 +108,14 @@ export async function getIngredients(
 }
 
 /** Lightweight: returns only ingredient names for fuzzy matching during import. */
-export async function getIngredientNames(db: Db): Promise<string[]> {
+export async function getIngredientNames(
+  db: Db,
+  caller?: InternalCaller
+): Promise<string[]> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    return internalJson<string[]>('/api/ingredients/names', caller);
+  }
+
   const { rows } = await db.query<{ name: string }>(
     `SELECT name FROM ingredient ORDER BY name`
   );
@@ -43,8 +125,14 @@ export async function getIngredientNames(db: Db): Promise<string[]> {
 export async function getIngredientById(
   db: Db,
   id: string,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<Ingredient | null> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    return internalJsonOrNull<Ingredient>(`/api/ingredients/${id}${qs}`, caller);
+  }
+
   const result = await db.query<Ingredient>(
     `SELECT id, name, active, cost_per_unit
      FROM ingredient
@@ -58,8 +146,17 @@ export async function getIngredientById(
 export async function getIngredientWithAllergens(
   db: Db,
   id: string,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<IngredientWithAllergens | null> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    return internalJsonOrNull<IngredientWithAllergens>(
+      `/api/ingredients/${id}/with-allergens${qs}`,
+      caller
+    );
+  }
+
   // Fetch ingredient row first — avoids returning a shell when id is missing
   const ingredient = await getIngredientById(db, id, opts);
   if (!ingredient) return null;
@@ -78,8 +175,17 @@ export async function getIngredientWithAllergens(
 
 export async function getIngredientsWithAllergens(
   db: Db,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<IngredientWithAllergens[]> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    return internalJson<IngredientWithAllergens[]>(
+      `/api/ingredients/with-allergens${qs}`,
+      caller
+    );
+  }
+
   // Single query with LEFT JOIN + aggregation to avoid N+1
   const result = await db.query<
     Ingredient & { allergen_ids: string[] | null; allergen_names: string[] | null }
@@ -114,8 +220,23 @@ export async function getIngredientsWithAllergens(
 export async function getIngredientsWithAllergensPaginated(
   db: Db,
   opts: { includeInactive?: boolean; search?: string },
-  pagination: PaginationParams
+  pagination: PaginationParams,
+  caller?: InternalCaller
 ): Promise<PaginatedResult<IngredientWithAllergens>> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    const merged = {
+      include_inactive: opts.includeInactive,
+      search: opts.search,
+      page: pagination.page,
+      per_page: pagination.perPage,
+    };
+    const qs = filtersToQueryString(merged);
+    return internalJson<PaginatedResult<IngredientWithAllergens>>(
+      `/api/ingredients/paginated${qs}`,
+      caller
+    );
+  }
+
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -176,8 +297,16 @@ export async function getIngredientsWithAllergensPaginated(
 
 export async function createIngredient(
   db: Db,
-  data: InsertIngredient
+  data: InsertIngredient,
+  caller?: InternalCaller
 ): Promise<Ingredient> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    return internalJsonConflictAware<Ingredient>('/api/ingredients', caller, {
+      method: 'POST',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+  }
+
   try {
     const result = await db.query<Ingredient>(
       `INSERT INTO ingredient (name, active)
@@ -195,8 +324,34 @@ export async function createIngredient(
 export async function updateIngredient(
   db: Db,
   id: string,
-  data: UpdateIngredient
+  data: UpdateIngredient,
+  caller?: InternalCaller
 ): Promise<Ingredient | null> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    // Three-state cost_per_unit: present+value → set, present+null → clear,
+    // absent → leave alone. `normalizeBody` strips `undefined`, but `null`
+    // passes through — so use the `in` sentinel to decide inclusion.
+    const body: Record<string, unknown> = { ...(data as Record<string, unknown>) };
+    if (!('cost_per_unit' in data)) {
+      // Explicit delete in case the caller spread `{...data, cost_per_unit: undefined}`.
+      delete body.cost_per_unit;
+    }
+
+    // 404 → null; 409 → ConflictError (parity with SQL path).
+    try {
+      return await internalJson<Ingredient>(`/api/ingredients/${id}`, caller, {
+        method: 'PATCH',
+        body: JSON.stringify(normalizeBody(body)),
+      });
+    } catch (err) {
+      if (isInternalApiError(err) && err.status === 404) return null;
+      if (isInternalApiError(err) && err.status === 409) {
+        throw new ConflictError('An ingredient with this name already exists');
+      }
+      throw err;
+    }
+  }
+
   try {
     const result = await db.query<Ingredient>(
       `UPDATE ingredient
@@ -223,7 +378,17 @@ export async function updateIngredient(
 
 // Soft delete — sets active = false rather than removing the row.
 // Hard deletes are unsafe: recipe_ingredient has ON DELETE RESTRICT.
-export async function deactivateIngredient(db: Db, id: string): Promise<Ingredient | null> {
+export async function deactivateIngredient(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<Ingredient | null> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    return internalJsonOrNull<Ingredient>(`/api/ingredients/${id}/deactivate`, caller, {
+      method: 'POST',
+    });
+  }
+
   return updateIngredient(db, id, { active: false });
 }
 
@@ -236,8 +401,18 @@ export async function deactivateIngredient(db: Db, id: string): Promise<Ingredie
 export async function addIngredientAllergen(
   db: Db,
   ingredientId: string,
-  allergenId: string
+  allergenId: string,
+  caller?: InternalCaller
 ): Promise<void> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    await internalJson<void>(
+      `/api/ingredients/${ingredientId}/allergens/${allergenId}`,
+      caller,
+      { method: 'POST' }
+    );
+    return;
+  }
+
   await db.query(
     `INSERT INTO ingredient_allergen (ingredient_id, allergen_id)
      VALUES ($1, $2)
@@ -249,8 +424,18 @@ export async function addIngredientAllergen(
 export async function removeIngredientAllergen(
   db: Db,
   ingredientId: string,
-  allergenId: string
+  allergenId: string,
+  caller?: InternalCaller
 ): Promise<void> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    await internalJson<void>(
+      `/api/ingredients/${ingredientId}/allergens/${allergenId}`,
+      caller,
+      { method: 'DELETE' }
+    );
+    return;
+  }
+
   await db.query(
     `DELETE FROM ingredient_allergen
      WHERE ingredient_id = $1 AND allergen_id = $2`,
@@ -261,11 +446,27 @@ export async function removeIngredientAllergen(
 // Replace the full allergen set for an ingredient in one transaction.
 // Accepts a PoolClient so the caller can compose it into a larger transaction,
 // or pass db directly for standalone use (Pool satisfies PoolClient's query API).
+// When `caller` is passed and the flag is on, forwards to the Rust service —
+// no in-repo caller passes a PoolClient today, so losing the ability to compose
+// with an outer transaction on the Rust path is acceptable.
 export async function setIngredientAllergens(
   client: Pool | PoolClient,
   ingredientId: string,
-  allergenIds: string[]
+  allergenIds: string[],
+  caller?: InternalCaller
 ): Promise<void> {
+  if (caller && (await useRustBackend('ingredients', caller))) {
+    await internalJson<void>(
+      `/api/ingredients/${ingredientId}/allergens`,
+      caller,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ allergen_ids: allergenIds }),
+      }
+    );
+    return;
+  }
+
   await client.query(
     `DELETE FROM ingredient_allergen WHERE ingredient_id = $1`,
     [ingredientId]

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM ingredient_allergen WHERE ingredient_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2309eac27c4311e35ecea4f6b0e6c21b07ca06eafe1967d7d6c8851ece4af365"
+}

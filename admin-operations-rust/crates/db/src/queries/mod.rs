@@ -3,6 +3,7 @@
 //! so a Node reviewer can jump between the two without a map.
 
 pub mod companies;
+pub mod ingredients;
 pub mod orders;
 pub mod pagination;
 pub mod recipes;

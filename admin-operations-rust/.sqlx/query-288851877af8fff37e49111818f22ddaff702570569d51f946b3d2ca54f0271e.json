@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO ingredient (name, active)\n        VALUES ($1, $2)\n        RETURNING\n            id                       AS \"id!: Uuid\",\n            name                     AS \"name!\",\n            active                   AS \"active!\",\n            cost_per_unit::float8    AS \"cost_per_unit?: f64\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "cost_per_unit?: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "288851877af8fff37e49111818f22ddaff702570569d51f946b3d2ca54f0271e"
+}

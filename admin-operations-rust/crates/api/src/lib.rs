@@ -16,13 +16,14 @@ pub mod error;
 pub mod flags_handler;
 pub mod health;
 pub mod import;
+pub mod ingredients;
 pub mod orders;
 pub mod recipes;
 pub mod state;
 
 use axum::{
     middleware,
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use tower_http::{
@@ -104,6 +105,43 @@ pub fn router(state: AppState) -> Router {
             get(companies::get_users_by_company),
         )
         .route("/companies/:id/deactivate", post(companies::deactivate))
+        // Ingredients surface — mirrors `src/lib/server/queries/ingredients.ts`.
+        // Order matters: literal paths (`/names`, `/paginated`,
+        // `/with-allergens`) register before `/:id` or axum tries to
+        // parse "names" as a UUID.
+        .route(
+            "/ingredients",
+            get(ingredients::list).post(ingredients::create),
+        )
+        .route("/ingredients/names", get(ingredients::list_names))
+        .route(
+            "/ingredients/paginated",
+            get(ingredients::list_with_allergens_paginated),
+        )
+        .route(
+            "/ingredients/with-allergens",
+            get(ingredients::list_with_allergens),
+        )
+        .route(
+            "/ingredients/:id",
+            get(ingredients::get_by_id).patch(ingredients::update),
+        )
+        .route(
+            "/ingredients/:id/with-allergens",
+            get(ingredients::get_with_allergens),
+        )
+        .route(
+            "/ingredients/:id/deactivate",
+            post(ingredients::deactivate),
+        )
+        .route(
+            "/ingredients/:id/allergens",
+            put(ingredients::set_allergens),
+        )
+        .route(
+            "/ingredients/:id/allergens/:allergen_id",
+            post(ingredients::add_allergen).delete(ingredients::remove_allergen),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::verify_internal_auth,

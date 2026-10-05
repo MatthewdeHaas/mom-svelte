@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE ingredient\n        SET\n            name          = COALESCE($1, name),\n            active        = COALESCE($2, active),\n            cost_per_unit = CASE WHEN $4 THEN $3::float8::numeric ELSE cost_per_unit END\n        WHERE id = $5\n        RETURNING\n            id                       AS \"id!: Uuid\",\n            name                     AS \"name!\",\n            active                   AS \"active!\",\n            cost_per_unit::float8    AS \"cost_per_unit?: f64\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "cost_per_unit?: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool",
+        "Float8",
+        "Bool",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "15ef7fb26b1afbb88dc43ccaed838e44f9ac7ab027a39b425ac1be4870b0af59"
+}

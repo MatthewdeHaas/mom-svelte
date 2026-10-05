@@ -41,6 +41,9 @@ pub mod recipes;
 // Company-domain seed helpers (companies + user attachments).
 pub mod companies;
 
+// Ingredient-domain seed helpers (ingredients + allergen attachments).
+pub mod ingredients;
+
 /// Must stay in sync with `crates/api/src/auth.rs:SKEW_TOLERANCE` and
 /// the SvelteKit signer — any divergence here produces mysterious 401s.
 pub const TEST_SECRET: &[u8] = b"test-only-development-secret-32-bytes-min";
