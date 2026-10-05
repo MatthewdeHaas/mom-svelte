@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+name = "api"
+path = "src/lib.rs"
+
 [[bin]]
 name = "api"
 path = "src/main.rs"
@@ -15,6 +19,7 @@ path = "src/main.rs"
 domain = { path = "../domain" }
 db     = { path = "../db" }
 flags  = { path = "../flags" }
+excel  = { path = "../excel" }
 
 # HTTP + async
 tokio.workspace = true
@@ -47,3 +52,17 @@ dashmap.workspace = true
 # Errors
 thiserror.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+# Integration tests boot the live router against a bound TcpListener and
+# POST multipart from a real HTTP client; reqwest handles the multipart
+# boundary and keep-alive. tokio needs full features so the test harness
+# can spawn + sleep + handle TcpListener easily.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart", "stream"] }
+tokio   = { version = "1.40", features = ["full"] }
+# Harness pulls parse_workbook to extract Customer/Recipe names from
+# the fixture before seeding.
+excel   = { path = "../excel" }
+# For uuid::Uuid::new_v4() when minting seeded user ids.
+uuid.workspace = true
+rand.workspace = true

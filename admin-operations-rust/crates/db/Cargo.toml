@@ -13,3 +13,14 @@ tokio.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
+
+# Query modules bind UUIDs on company_id / recipe_id / returned order
+# ids, and chrono NaiveDate on serving_date / shipment_date — pull
+# both features in here rather than making every caller re-export.
+uuid.workspace = true
+chrono.workspace = true
+
+# Query types are serialised to JSON for the HTTP layer — pulled in
+# here so each query module can derive Serialize/Deserialize on its
+# row structs without the api crate having to re-wrap them.
+serde = { workspace = true }

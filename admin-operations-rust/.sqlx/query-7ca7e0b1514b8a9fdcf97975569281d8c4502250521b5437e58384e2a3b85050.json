@@ -1,0 +1,184 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            o.id                 AS \"id!: Uuid\",\n            o.company_id         AS \"company_id!: Uuid\",\n            o.recipe_id          AS \"recipe_id?: Uuid\",\n            o.created_by         AS \"created_by?\",\n            o.order_source       AS \"order_source!\",\n            o.status             AS \"status!\",\n            o.meal_category      AS \"meal_category?\",\n            o.amount::float8     AS \"amount!: f64\",\n            o.portion_size::float8 AS \"portion_size?: f64\",\n            o.day                AS \"day?: i32\",\n            o.serving_date       AS \"serving_date!: NaiveDate\",\n            o.shipment_date      AS \"shipment_date!: NaiveDate\",\n            o.frozen             AS \"frozen!\",\n            o.chilled            AS \"chilled!\",\n            o.recurring          AS \"recurring!\",\n            o.client             AS \"client?\",\n            o.created_at         AS \"created_at!: DateTime<Utc>\",\n            c.name               AS \"company_name!\",\n            c.contact_email      AS \"company_contact_email?\",\n            c.phone              AS \"company_phone?\",\n            c.shipping_address   AS \"company_shipping_address?\",\n            c.active             AS \"company_active!\",\n            c.created_at         AS \"company_created_at!: DateTime<Utc>\",\n            r.name               AS \"recipe_name?\",\n            r.active             AS \"recipe_active?\",\n            r.created_at         AS \"recipe_created_at?: DateTime<Utc>\",\n            r.price_per_meal::float8 AS \"recipe_price_per_meal?: f64\",\n            u.email              AS \"created_by_email?\"\n        FROM \"order\" o\n        JOIN company c ON c.id = o.company_id\n        LEFT JOIN recipe r ON r.id = o.recipe_id\n        LEFT JOIN \"user\" u ON u.id = o.created_by\n        WHERE o.id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "company_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "recipe_id?: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_by?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "order_source!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "meal_category?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "amount!: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 8,
+        "name": "portion_size?: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 9,
+        "name": "day?: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "serving_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 11,
+        "name": "shipment_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 12,
+        "name": "frozen!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "chilled!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 14,
+        "name": "recurring!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "client?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 17,
+        "name": "company_name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
+        "name": "company_contact_email?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "company_phone?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 20,
+        "name": "company_shipping_address?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 21,
+        "name": "company_active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 22,
+        "name": "company_created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 23,
+        "name": "recipe_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 24,
+        "name": "recipe_active?",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 25,
+        "name": "recipe_created_at?: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 26,
+        "name": "recipe_price_per_meal?: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 27,
+        "name": "created_by_email?",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      null,
+      null,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      false
+    ]
+  },
+  "hash": "7ca7e0b1514b8a9fdcf97975569281d8c4502250521b5437e58384e2a3b85050"
+}

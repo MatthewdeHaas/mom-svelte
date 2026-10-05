@@ -34,11 +34,9 @@ impl IntoResponse for ApiError {
             ApiError::Domain(DomainError::NotFound) => {
                 (StatusCode::NOT_FOUND, "not_found", "not found".to_string())
             }
-            ApiError::Domain(DomainError::Forbidden) => (
-                StatusCode::FORBIDDEN,
-                "forbidden",
-                "forbidden".to_string(),
-            ),
+            ApiError::Domain(DomainError::Forbidden) => {
+                (StatusCode::FORBIDDEN, "forbidden", "forbidden".to_string())
+            }
             ApiError::Domain(DomainError::Validation(m)) => {
                 (StatusCode::BAD_REQUEST, "validation", m.clone())
             }

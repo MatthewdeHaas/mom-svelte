@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            i.id             AS \"ingredient_id!: Uuid\",\n            i.name           AS \"name!\",\n            ri.amount::float8 AS \"amount!: f64\",\n            ri.unit          AS \"unit!\",\n            ARRAY_AGG(a.id   ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL)   AS \"allergen_ids: Vec<Uuid>\",\n            ARRAY_AGG(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL) AS \"allergen_names: Vec<String>\"\n        FROM recipe_ingredient ri\n        JOIN ingredient i ON i.id = ri.ingredient_id\n        LEFT JOIN ingredient_allergen ia ON ia.ingredient_id = i.id\n        LEFT JOIN allergen a ON a.id = ia.allergen_id\n        WHERE ri.recipe_id = $1\n        GROUP BY i.id, i.name, ri.amount, ri.unit\n        ORDER BY i.name ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ingredient_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "amount!: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 3,
+        "name": "unit!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "allergen_ids: Vec<Uuid>",
+        "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 5,
+        "name": "allergen_names: Vec<String>",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "a6ffba843659cfeff552121de589b16f78c236911256e37781fec3581af39cea"
+}

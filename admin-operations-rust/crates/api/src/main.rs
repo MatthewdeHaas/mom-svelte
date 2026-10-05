@@ -1,35 +1,16 @@
-//! Admin-operations Rust API — entry point.
+//! Admin-operations Rust API — binary entry point.
 //!
-//! Phase 1 (this commit) scaffolds:
-//! - config loading (env-driven)
-//! - a `PgPool` + migrations run on startup
-//! - `/healthz` (503 on DB outage per Track 4c)
-//! - HMAC auth middleware applied to `/api/*`
-//! - a stub `/api/flags` endpoint that proves the extractor works
-//!
-//! Business logic lands in later phases.
+//! Everything substantive lives in `lib.rs` (router, state, submodules)
+//! so integration tests under `crates/api/tests/` can mount the exact
+//! same wiring. This file only loads config, opens the pool, runs
+//! migrations, and hands off to [`api::router`].
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use axum::{
-    middleware,
-    routing::{get, post},
-    Router,
-};
-use tower_http::{
-    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
-    trace::TraceLayer,
-};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod auth;
-mod error;
-mod flags_handler;
-mod health;
-mod state;
-
-use state::AppState;
+use api::{router, AppState};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -63,27 +44,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Router wiring. Public endpoints go on the base router; everything
-/// under `/api` sits behind the HMAC auth middleware.
-fn router(state: AppState) -> Router {
-    let api = Router::new()
-        .route("/flags", get(flags_handler::list))
-        .route("/flags/check", post(flags_handler::check))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth::verify_internal_auth,
-        ));
-
-    Router::new()
-        .route("/healthz", get(health::healthz))
-        .nest("/api", api)
-        // Request-id in → traced → request-id out.
-        .layer(PropagateRequestIdLayer::x_request_id())
-        .layer(TraceLayer::new_for_http())
-        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-        .with_state(state)
-}
-
 /// Env-driven config. Missing required vars = immediate crash with a
 /// clear message, not a mysterious 500 at first request.
 struct Config {
@@ -94,8 +54,7 @@ struct Config {
 
 impl Config {
     fn from_env() -> anyhow::Result<Self> {
-        let database_url =
-            std::env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
+        let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
 
         let secret = std::env::var("INTERNAL_AUTH_SECRET")
             .context("INTERNAL_AUTH_SECRET must be set (shared with SvelteKit)")?;

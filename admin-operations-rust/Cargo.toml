@@ -64,7 +64,7 @@ anyhow = "1"
 
 # Excel / PDF (pinned here even though only one crate uses each —
 # central version management).
-calamine = "0.26"
+calamine = { version = "0.26", features = ["dates"] }
 rust_xlsxwriter = "0.79"
 printpdf = "0.7"
 

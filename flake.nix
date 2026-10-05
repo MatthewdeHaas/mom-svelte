@@ -24,12 +24,18 @@
             pkgs.nodejs_22
             pkgs.pkg-config
             pkgs.openssl
+            # sqlx-cli for offline-mode cache regeneration
+            # (`pnpm rust:prepare`). The db crate uses `query_as!`
+            # macros that type-check against `.sqlx/` in CI with
+            # SQLX_OFFLINE=1; this is how we populate / refresh it.
+            pkgs.sqlx-cli
           ];
 
           shellHook = ''
             echo "Meals on the Move dev shell"
             echo "Rust $(rustc --version | cut -d' ' -f2) 🦀"
             echo "Node $(node --version) 🟢"
+            echo "sqlx-cli $(sqlx --version 2>/dev/null | cut -d' ' -f2 || echo missing)"
           '';
         };
       });

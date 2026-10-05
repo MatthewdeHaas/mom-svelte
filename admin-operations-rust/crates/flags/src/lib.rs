@@ -9,6 +9,8 @@
 //! > `Flag::DEFAULT`. The resolver returns `Option<bool>` so callers can
 //! distinguish an explicit per-company `false` from "not registered yet".
 
+#![allow(clippy::doc_lazy_continuation)]
+
 use async_trait::async_trait;
 use domain::{Flag, FlagContext, FlagResolver};
 use serde::Serialize;
@@ -44,15 +46,13 @@ impl Flag for Allergens {
 pub struct ClientSelfOrdering;
 impl Flag for ClientSelfOrdering {
     const NAME: &'static str = "client_self_ordering";
-    const DESCRIPTION: &'static str =
-        "Let client users place their own orders through the portal.";
+    const DESCRIPTION: &'static str = "Let client users place their own orders through the portal.";
 }
 
 pub struct MagicLinkAuth;
 impl Flag for MagicLinkAuth {
     const NAME: &'static str = "magic_link_auth";
-    const DESCRIPTION: &'static str =
-        "Show the magic-link login option alongside password login.";
+    const DESCRIPTION: &'static str = "Show the magic-link login option alongside password login.";
 }
 
 // ---------------------------------------------------------------
@@ -127,16 +127,15 @@ impl FlagResolver for PgFlagResolver {
         }
 
         // Fall back to global.
-        let row: Option<(bool,)> = sqlx::query_as(
-            "SELECT enabled_global FROM feature_flag WHERE name = $1",
-        )
-        .bind(name)
-        .fetch_optional(&self.pool)
-        .await
-        .unwrap_or_else(|e| {
-            tracing::error!(error = ?e, flag = name, "feature_flag lookup failed");
-            None
-        });
+        let row: Option<(bool,)> =
+            sqlx::query_as("SELECT enabled_global FROM feature_flag WHERE name = $1")
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::error!(error = ?e, flag = name, "feature_flag lookup failed");
+                    None
+                });
         row.map(|(enabled,)| enabled)
     }
 }

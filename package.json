@@ -20,8 +20,10 @@
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes",
 		"migrate": "tsx scripts/migrate.ts",
 		"rust:sync-migrations": "bash scripts/sync-rust-migrations.sh",
-		"rust:check": "pnpm run rust:sync-migrations && cargo check --manifest-path admin-operations-rust/Cargo.toml --workspace",
+		"rust:check": "pnpm run rust:sync-migrations && SQLX_OFFLINE=true cargo check --manifest-path admin-operations-rust/Cargo.toml --workspace",
 		"rust:test": "pnpm run rust:sync-migrations && cargo test --manifest-path admin-operations-rust/Cargo.toml --workspace",
+		"rust:prepare": "bash scripts/rust-sqlx-prepare.sh",
+		"rust:prepare-check": "pnpm run rust:sync-migrations && cd admin-operations-rust && SQLX_OFFLINE=true cargo sqlx prepare --workspace --check -- --tests",
 		"seed:admin": "tsx scripts/seed-admin.ts",
 		"seed:dev": "tsx --env-file=.env scripts/seed-dev.ts",
 		"backfill": "tsx --env-file=.env scripts/backfill.ts"

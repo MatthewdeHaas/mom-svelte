@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS feature_flag (
 
 CREATE TABLE IF NOT EXISTS feature_flag_company (
     flag_name   TEXT        NOT NULL REFERENCES feature_flag(name) ON DELETE CASCADE,
-    company_id  UUID        NOT NULL REFERENCES companies(id)      ON DELETE CASCADE,
+    company_id  UUID        NOT NULL REFERENCES company(id)        ON DELETE CASCADE,
     enabled     BOOLEAN     NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),

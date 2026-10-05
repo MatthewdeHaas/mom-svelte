@@ -10,6 +10,11 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 
 pub use sqlx;
 
+/// Business-logic queries, grouped by domain. One module per TS
+/// `src/lib/server/queries/<domain>.ts` so a reviewer can hop between
+/// the two paths without a map.
+pub mod queries;
+
 /// Open a Postgres pool suitable for a web service.
 ///
 /// - `max_connections` matches Node's typical pg pool size (10). Tune
@@ -44,8 +49,11 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
 /// Cheap health-check: `SELECT 1`. Returns `Ok(())` when the pool can
 /// hand out a connection and the DB answers inside `timeout`.
 pub async fn ping(pool: &PgPool, timeout: Duration) -> Result<(), sqlx::Error> {
-    tokio::time::timeout(timeout, sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(pool))
-        .await
-        .map_err(|_| sqlx::Error::PoolTimedOut)?
-        .map(|_| ())
+    tokio::time::timeout(
+        timeout,
+        sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(pool),
+    )
+    .await
+    .map_err(|_| sqlx::Error::PoolTimedOut)?
+    .map(|_| ())
 }

@@ -1,0 +1,118 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE \"order\"\n        SET status = 'cancelled'\n        WHERE id = $1 AND status IN ('pending', 'confirmed')\n        RETURNING\n            id                    AS \"id!: Uuid\",\n            company_id            AS \"company_id!: Uuid\",\n            recipe_id             AS \"recipe_id?: Uuid\",\n            created_by            AS \"created_by?\",\n            order_source          AS \"order_source!\",\n            status                AS \"status!\",\n            meal_category         AS \"meal_category?\",\n            amount::float8        AS \"amount!: f64\",\n            portion_size::float8  AS \"portion_size?: f64\",\n            day                   AS \"day?: i32\",\n            serving_date          AS \"serving_date!: NaiveDate\",\n            shipment_date         AS \"shipment_date!: NaiveDate\",\n            frozen                AS \"frozen!\",\n            chilled               AS \"chilled!\",\n            recurring             AS \"recurring!\",\n            client                AS \"client?\",\n            created_at            AS \"created_at!: DateTime<Utc>\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "company_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "recipe_id?: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_by?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "order_source!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "meal_category?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "amount!: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 8,
+        "name": "portion_size?: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 9,
+        "name": "day?: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "serving_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 11,
+        "name": "shipment_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 12,
+        "name": "frozen!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "chilled!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 14,
+        "name": "recurring!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "client?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      null,
+      null,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "e8a081ef771c2d16507dd534f89432e5d90c6bdfd5d1e5e3be462a0ca44a7f17"
+}

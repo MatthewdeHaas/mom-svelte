@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT status AS \"status!\", COUNT(*) AS \"count!\"\n        FROM \"order\"\n        WHERE ($1::date IS NULL OR serving_date >= $1)\n          AND ($2::date IS NULL OR serving_date <= $2)\n        GROUP BY status\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "664453182b2567fd53e8a1fe0f0ec0d671e39a50afa73a69bfa5af725e2e0a30"
+}

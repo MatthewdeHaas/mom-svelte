@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE recipe\n        SET\n            name           = COALESCE($1, name),\n            active         = COALESCE($2, active),\n            price_per_meal = CASE WHEN $4 THEN $3::float8::numeric ELSE price_per_meal END\n        WHERE id = $5\n        RETURNING\n            id                       AS \"id!: Uuid\",\n            name                     AS \"name!\",\n            active                   AS \"active!\",\n            created_at               AS \"created_at!: DateTime<Utc>\",\n            price_per_meal::float8   AS \"price_per_meal?: f64\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "price_per_meal?: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool",
+        "Float8",
+        "Bool",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "73d71d364c74870cdc933ce580a7d85fb6e629ba47c13aa239bc67f7223a4956"
+}

@@ -1,11 +1,24 @@
-//! Excel import (calamine) + export (rust_xlsxwriter).
+//! Excel import pipeline. Mirrors `src/lib/excel/parse.ts` +
+//! `src/lib/server/queries/imports.ts` 1:1 — same warning taxonomy,
+//! same error messages, same row-numbering (header row is row 1,
+//! first data row is row 2). The real-client integration fixture is
+//! the parity oracle; see `crates/api/tests/import_real_client.rs`.
 //!
-//! Scaffold only. Next sub-session ports
-//! `src/lib/server/queries/imports.ts` + `src/lib/excel/parse.ts` into
-//! `import::parse_workbook` here, mirroring the normalization boundary
-//! (sheet 1 only, Frozen/Chilled → storage, meal case-fold, boilerplate
-//! stop list, structured warnings).
+//! Public surface:
+//! - [`import::plan_import`] — the orchestrator. Parses the workbook,
+//!   runs the full pipeline, returns an `ImportPlan` ready for either
+//!   preview (discard) or commit (insert).
+//! - [`import::ImportPlan`] / [`import::ImportError`] — plan output
+//!   and parse/DB error surface.
+//!
+//! Private-but-tested submodules keep the pipeline composable; the
+//! unit tests in each module cover the pure branches, and the real-
+//! client fixture test covers the integration path end-to-end.
 
-/// Placeholder so the workspace compiles. Delete when the real module
-/// lands.
-pub fn placeholder() {}
+pub mod boilerplate;
+pub mod headers;
+pub mod import;
+pub mod meals;
+pub mod normalise;
+pub mod parse;
+pub mod validate;

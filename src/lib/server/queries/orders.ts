@@ -15,6 +15,54 @@ import {
   paginationSQL,
   buildPaginatedResult,
 } from './pagination';
+import {
+  useRustBackend,
+  internalJson,
+  filtersToQueryString,
+  normalizeBody,
+  type InternalCaller,
+} from './_rust-dispatch';
+
+// -------------------------------------------------------------
+// RUST DISPATCH
+//
+// Every exported function below takes an optional `caller`. When
+// passed AND `use_rust_backend_orders` is on for that caller, the
+// call forwards to the Rust service; otherwise the existing SQL
+// runs unchanged. Routes stay untouched in this commit — adding
+// `caller` to specific routes is a follow-up pass once we're ready
+// to flip the flag per-company.
+//
+// The wire shapes for `OrderSummary` / `OrderDetail` match the Rust
+// `OrderSummaryRow` / `OrderDetailRow` field for field, so decoded
+// JSON from `internalJson` can be returned as-is.
+// -------------------------------------------------------------
+
+/**
+ * 404-aware wrapper around `internalJson`. The TS SQL path returns
+ * `null` when a mutation targets a non-existent (or non-pending for
+ * status transitions) row; the Rust path returns 404. Translate so
+ * the dispatcher is behaviourally transparent.
+ */
+async function internalJsonOrNull<T>(
+  path: string,
+  caller: InternalCaller,
+  opts?: Parameters<typeof internalJson>[2]
+): Promise<T | null> {
+  try {
+    return await internalJson<T>(path, caller, opts);
+  } catch (err) {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'status' in err &&
+      (err as { status: number }).status === 404
+    ) {
+      return null;
+    }
+    throw err;
+  }
+}
 
 // -------------------------------------------------------------
 // FILTERS
@@ -38,8 +86,14 @@ export interface OrderFilters {
 
 export async function getOrders(
   db: Db,
-  filters: OrderFilters = {}
+  filters: OrderFilters = {},
+  caller?: InternalCaller
 ): Promise<OrderSummary[]> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    const qs = filtersToQueryString(filters as Record<string, unknown>);
+    return internalJson<OrderSummary[]>(`/api/orders${qs}`, caller);
+  }
+
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -118,8 +172,22 @@ export async function getOrders(
 export async function getOrdersPaginated(
   db: Db,
   filters: OrderFilters = {},
-  pagination: PaginationParams
+  pagination: PaginationParams,
+  caller?: InternalCaller
 ): Promise<PaginatedResult<OrderSummary>> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    // Rust accepts `page` + `per_page` as flat query params alongside
+    // the filter fields; `PaginatedResult<T>` already matches the Rust
+    // `Paginated<T>` camelCase wire shape.
+    const merged = {
+      ...(filters as Record<string, unknown>),
+      page: pagination.page,
+      per_page: pagination.perPage,
+    };
+    const qs = filtersToQueryString(merged);
+    return internalJson<PaginatedResult<OrderSummary>>(`/api/orders/paginated${qs}`, caller);
+  }
+
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -207,7 +275,15 @@ export async function getOrdersPaginated(
   return buildPaginatedResult(result.rows, total, pagination);
 }
 
-export async function getOrderById(db: Db, id: string): Promise<OrderDetail | null> {
+export async function getOrderById(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<OrderDetail | null> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    return internalJsonOrNull<OrderDetail>(`/api/orders/${id}`, caller);
+  }
+
   const result = await db.query<
     Order & {
       company_name: string;
@@ -306,16 +382,23 @@ export async function getOrderById(db: Db, id: string): Promise<OrderDetail | nu
 // Useful for the dashboard — orders going out on a specific shipment date.
 export async function getOrdersByShipmentDate(
   db: Db,
-  shipmentDate: Date
+  shipmentDate: Date,
+  caller?: InternalCaller
 ): Promise<OrderSummary[]> {
-  return getOrders(db, { shipment_date: shipmentDate });
+  return getOrders(db, { shipment_date: shipmentDate }, caller);
 }
 
 // Useful for the dashboard summary counts.
 export async function getOrderCountsByStatus(
   db: Db,
-  filters: Pick<OrderFilters, 'serving_date_from' | 'serving_date_to'> = {}
+  filters: Pick<OrderFilters, 'serving_date_from' | 'serving_date_to'> = {},
+  caller?: InternalCaller
 ): Promise<Record<OrderStatus, number>> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    const qs = filtersToQueryString(filters as Record<string, unknown>);
+    return internalJson<Record<OrderStatus, number>>(`/api/orders/counts${qs}`, caller);
+  }
+
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -358,8 +441,16 @@ export async function getOrderCountsByStatus(
 
 export async function createOrder(
   client: Pool | PoolClient,
-  data: InsertOrder
+  data: InsertOrder,
+  caller?: InternalCaller
 ): Promise<Order> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    return internalJson<Order>('/api/orders', caller, {
+      method: 'POST',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+  }
+
   const result = await client.query<Order>(
     `INSERT INTO "order" (
        company_id, recipe_id, created_by, order_source, status,
@@ -395,8 +486,16 @@ export async function createOrder(
 export async function updateOrder(
   db: Db,
   id: string,
-  data: UpdateOrder
+  data: UpdateOrder,
+  caller?: InternalCaller
 ): Promise<Order | null> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    return internalJsonOrNull<Order>(`/api/orders/${id}`, caller, {
+      method: 'PATCH',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+  }
+
   const result = await db.query<Order>(
     `UPDATE "order"
      SET
@@ -443,7 +542,15 @@ export async function updateOrder(
 // ensures business rules can be added per transition later.
 // -------------------------------------------------------------
 
-export async function confirmOrder(db: Db, id: string): Promise<Order | null> {
+export async function confirmOrder(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<Order | null> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    return internalJsonOrNull<Order>(`/api/orders/${id}/confirm`, caller, { method: 'POST' });
+  }
+
   const result = await db.query<Order>(
     `UPDATE "order"
      SET status = 'confirmed'
@@ -458,7 +565,15 @@ export async function confirmOrder(db: Db, id: string): Promise<Order | null> {
   return result.rows[0] ?? null;
 }
 
-export async function fulfillOrder(db: Db, id: string): Promise<Order | null> {
+export async function fulfillOrder(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<Order | null> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    return internalJsonOrNull<Order>(`/api/orders/${id}/fulfill`, caller, { method: 'POST' });
+  }
+
   const result = await db.query<Order>(
     `UPDATE "order"
      SET status = 'fulfilled'
@@ -472,7 +587,15 @@ export async function fulfillOrder(db: Db, id: string): Promise<Order | null> {
   return result.rows[0] ?? null;
 }
 
-export async function cancelOrder(db: Db, id: string): Promise<Order | null> {
+export async function cancelOrder(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<Order | null> {
+  if (caller && (await useRustBackend('orders', caller))) {
+    return internalJsonOrNull<Order>(`/api/orders/${id}/cancel`, caller, { method: 'POST' });
+  }
+
   const result = await db.query<Order>(
     `UPDATE "order"
      SET status = 'cancelled'
@@ -495,9 +618,17 @@ export async function cancelOrder(db: Db, id: string): Promise<Order | null> {
 export async function setOrdersStatusBatch(
   db: Db,
   ids: string[],
-  status: OrderStatus
+  status: OrderStatus,
+  caller?: InternalCaller
 ): Promise<Order[]> {
   if (ids.length === 0) return [];
+  if (caller && (await useRustBackend('orders', caller))) {
+    return internalJson<Order[]>('/api/orders/batch/status', caller, {
+      method: 'POST',
+      body: JSON.stringify({ ids, status }),
+    });
+  }
+
   const result = await db.query<Order>(
     `UPDATE "order"
      SET status = $2
@@ -515,6 +646,11 @@ export async function setOrdersStatusBatch(
 // BULK INSERT
 // Used by imports.ts — accepts a PoolClient so the caller controls
 // the transaction boundary. Never call this outside a transaction.
+//
+// NOT dispatched to Rust — the Rust side has its own importer that
+// owns the whole pipeline (parse + validate + commit), gated by
+// `use_rust_backend_imports`. Routing bulk inserts here would
+// bypass the importer's warning/error machinery.
 // -------------------------------------------------------------
 
 export async function insertOrdersBatch(

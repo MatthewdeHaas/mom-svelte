@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id                       AS \"id!: Uuid\",\n                name                     AS \"name!\",\n                active                   AS \"active!\",\n                created_at               AS \"created_at!: DateTime<Utc>\",\n                price_per_meal::float8   AS \"price_per_meal?: f64\"\n            FROM recipe\n            WHERE active = TRUE\n            ORDER BY name ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "price_per_meal?: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "b1f27b36dc763ca7bc53c73f18945447f0049dc0333415300f9d89e8a72cf1c7"
+}

@@ -182,7 +182,11 @@ pub async fn verify_internal_auth(
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
-    match verify(state.auth_secret.as_ref(), &state.nonce_cache, req.headers()) {
+    match verify(
+        state.auth_secret.as_ref(),
+        &state.nonce_cache,
+        req.headers(),
+    ) {
         Ok(ctx) => {
             req.extensions_mut().insert(ctx);
             next.run(req).await
@@ -294,7 +298,10 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert("x-internal-user", HeaderValue::from_str(user).unwrap());
         h.insert("x-internal-role", HeaderValue::from_str(role).unwrap());
-        h.insert("x-internal-company", HeaderValue::from_str(company).unwrap());
+        h.insert(
+            "x-internal-company",
+            HeaderValue::from_str(company).unwrap(),
+        );
         h.insert(
             "x-internal-timestamp",
             HeaderValue::from_str(&ts.to_string()).unwrap(),

@@ -7,9 +7,40 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Workspace-internal
 domain = { path = "../domain" }
+db     = { path = "../db" }
+
+# Excel parse / export
 calamine.workspace = true
 rust_xlsxwriter.workspace = true
+
+# Serde + validation
 serde.workspace = true
+serde_json.workspace = true
+validator.workspace = true
+
+# Types
+uuid.workspace = true
 chrono.workspace = true
+
+# DB — the orchestrator looks up companies/recipes and starts the
+# insert transaction, so it needs the pool type directly.
+sqlx.workspace = true
+
+# Pattern matching on cells (regex is kept small — single pass for the
+# "#N of M" boilerplate marker and ISO date regex).
+regex = "1"
+
+# Static tables (meal canonical map, header column map, boilerplate
+# tokens) built once at startup.
+once_cell = "1"
+
+# Logging
+tracing.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# Round-trip tests exercise the parser against on-disk xlsx fixtures
+# shipped with the SvelteKit repo.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -7,6 +7,12 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// Excel-import wire types. Kept in the pure-types crate so the `excel`
+// (business logic) and `api` (HTTP) crates can both name them without a
+// shared heavy dependency.
+pub mod import;
+pub use import::{ImportPreview, ImportResult, ImportRowError, ImportWarning};
+
 // ---------------------------------------------------------------
 // Roles
 // ---------------------------------------------------------------
