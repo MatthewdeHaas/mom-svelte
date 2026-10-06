@@ -1,0 +1,61 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO invite (company_id, email, token, expires_at)\n        VALUES ($1, $2, $3, $4)\n        RETURNING\n            id         AS \"id!: Uuid\",\n            company_id AS \"company_id!: Uuid\",\n            email      AS \"email!\",\n            token      AS \"token!\",\n            expires_at AS \"expires_at!: DateTime<Utc>\",\n            used_at    AS \"used_at?: DateTime<Utc>\",\n            created_at AS \"created_at!: DateTime<Utc>\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "company_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "email!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "token!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "expires_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "used_at?: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "b440a9ca958a05f03712573f127e37cc886e141495115772a805eb3d6aa9b939"
+}

@@ -5,6 +5,7 @@
 pub mod allergens;
 pub mod companies;
 pub mod ingredients;
+pub mod invites;
 pub mod orders;
 pub mod pagination;
 pub mod persons;

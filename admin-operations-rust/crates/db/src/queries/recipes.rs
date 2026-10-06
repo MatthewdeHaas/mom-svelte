@@ -297,7 +297,10 @@ pub async fn get_by_name(
 /// `isRecipeActive` — returns `false` when the row doesn't exist.
 /// Matches TS semantics (`result.rows[0]?.active ?? false`).
 pub async fn is_active(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
-    let row = sqlx::query_scalar!(
+    // Explicit annotation pins the macro's return type so rustc 1.99.0's
+    // never-type fallback (issue #156047) doesn't collapse the inferred
+    // `Option<bool>` to `!` when the surrounding expression is terse.
+    let row: Option<bool> = sqlx::query_scalar!(
         r#"SELECT active AS "active!" FROM recipe WHERE id = $1"#,
         id,
     )
@@ -345,7 +348,12 @@ pub async fn get_ingredients(
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
+    // Explicit `Vec<RecipeIngredientRow>` annotation pins the macro's
+    // anonymous row type via back-propagation through `.collect()` →
+    // `.map()` → `.into_iter()` → `rows`, keeping rustc 1.99.0's
+    // never-type fallback (issue #156047) from collapsing the inferred
+    // row type to `!`.
+    let mapped: Vec<RecipeIngredientRow> = rows
         .into_iter()
         .map(|r| {
             let ids = r.allergen_ids.unwrap_or_default();
@@ -363,7 +371,8 @@ pub async fn get_ingredients(
                 allergen,
             }
         })
-        .collect())
+        .collect();
+    Ok(mapped)
 }
 
 /// `getRecipeWithIngredients` — recipe row + nested ingredient. Two

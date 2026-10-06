@@ -50,8 +50,28 @@ Six tracks. Spawn a fresh session per track — each eats ~200k.
 - `project_resend_domain.md` — magic-link only, non-blocking now; don't delete (dormant path).
 - `project_clean_typecheck.md` — handled in Track 4c.
 
-## Next session — Track 3 Step 3 domain-7 (users)
+## Next session — Track 3 Step 3 remaining domains
 
-Paste verbatim into a fresh session:
+### Correction to earlier handoff drafts
+The previous "domain-7 = users" and "feature-flags = query port" entries are **wrong** and should be ignored:
+- There is **no** `src/lib/server/queries/users.ts` and **no** `tests/integration/core/users.test.ts`. User-table reads are inlined in two places only: `src/routes/admin/companies/[id]/+page.server.ts` (3 inline queries: list by company, lookup by email, lookup by id+company) and the `JOIN "user"` inside `getCompanyUsers()` in `src/lib/server/queries/companies.ts` (already behind the Rust `companies` path per commit `5fa2d87f`). Porting user admin is a **route-layer refactor** (define `/api/users/*`, convert the 3 inline queries, thread `caller` through the `+page.server.ts` actions) — not the same shape as the other six query-module ports. Save it for last.
+- Feature-flags is **already Rust-owned** (`crates/api/src/flags_handler.rs`, migrations 009–010). No TS counterpart exists.
 
-> Read HANDOFF.md in the repo root. Tracks 1a/1b, 2, and Track 3 Scaffold + Step 2 + Step 3 domains 1-6 (orders, recipes, companies, ingredients, allergens, persons+attendance) are complete and local on main. Start Track 3 Step 3 domain-7: port `src/lib/server/queries/users.ts` to `admin-operations-rust/crates/db/src/queries/users.rs` with sqlx `query_as!` compile-time checks (the `.sqlx/` cache already exists — extend it with `pnpm rust:prepare`). Pattern is proven across 6 domains and is identical: full function surface, `/api/users/*` handlers under the HMAC-protected `/api` subtree with admin-vs-client scoping injected server-side, `use_rust_backend_users` migration appended under `scripts/migrations/`, TS `src/lib/server/queries/users.ts` functions turned into dispatchers via the existing `_rust-dispatch.ts` helper (optional `caller?: InternalCaller` on each exported fn; routes stay untouched). Keep both paths live; parity proven by extending `admin-operations-rust/crates/api/tests/` with a `users.rs` mirror of `tests/integration/core/users.test.ts` (plus Rust-only client-scoping tests the TS suite can't express). Verify: `pnpm rust:prepare` → `pnpm rust:check` → `SQLX_OFFLINE=true DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/meals_on_the_move" cargo test --manifest-path admin-operations-rust/Cargo.toml --test users` → `pnpm check` → `pnpm test tests/integration/core/users.test.ts`. Follow the persons pattern exactly — don't re-litigate design decisions. Ultracode. Ultrathink before acting.
+### Actual remaining real targets (sorted by surface size)
+
+| Module | LOC | Consumers | TS tests | Notes |
+|---|---|---|---|---|
+| `invites.ts` | 49 | 2 routes | **none** — add alongside | 5 fns. Admin-only surface (allergens is the template). `getInviteByToken` is used by the unauthenticated `/invite/[token]` route; that route stays on the SQL path (no caller) in this commit, same precedent as every other route. |
+| `financials.ts` | 183 | `/admin/financials` | none | Aggregations only; feature-flag-gated route. Admin-only. |
+| `recipe-imports.ts` | 269 | 1 route | none | Writer-heavy, transactional; pairs with the already-ported `imports` path at `crates/api/src/import.rs`. |
+| `menus.ts` | 290 | 5 routes | `menus.test.ts` | `setAllMenuSlots` exercises batch-dedup from persons template. Admin + client consumers. |
+| `insights.ts` | 384 | `/admin/insights` | `insights.test.ts` | KPI/CUBE-heavy; plan says "rewrite as SQL `WINDOW`/`CUBE`." |
+| `imports.ts` | 644 | import route | — | Already has a Rust path via Step 2 (`/api/import/*`); the TS dispatcher wrapper may just need completing — triage case-by-case. |
+| **users (route refactor)** | — | `/admin/companies/[id]` | — | **Different pattern.** Define `/api/users/*` for the 3 inline queries + Better Auth `setPassword`-related reset flow. Not a query-module port. Do this **last**. |
+
+### Suggested next order
+**invites → financials → recipe-imports → menus → insights → imports (triage) → users (route refactor)**
+
+### Paste verbatim into a fresh session
+
+> Read HANDOFF.md in the repo root. Tracks 1a/1b, 2, and Track 3 Scaffold + Step 2 + Step 3 domains 1-6 (orders, recipes, companies, ingredients, allergens, persons+attendance) are complete and local on main. The earlier handoff drafts named "users" and "feature-flags" as next targets — both are wrong (users has no query module; flags is already Rust-owned). The real next target is **invites** (49 LOC, admin-only, no existing TS test — add one at the same time). Follow the allergens template at `admin-operations-rust/crates/db/src/queries/allergens.rs` + `crates/api/src/allergens.rs` + `crates/api/tests/allergens.rs` + `scripts/migrations/015_use_rust_backend_allergens.sql` + `src/lib/server/queries/allergens.ts` — admin-only, 23505→409 mapping, `require_admin` scope helper. Full function surface: `get_by_token`, `list_by_company`, `create`, `mark_used`, `revoke` (`mark_used` and `revoke` emit the same SQL — both set `used_at = now()`; keep them as separate handlers for API parity with the TS surface). Wire `/api/invites/*` into `crates/api/src/lib.rs` under the `/api` subtree. Add `scripts/migrations/017_use_rust_backend_invites.sql` then `pnpm rust:sync-migrations`. Add `tests/integration/core/invites.test.ts` mirroring the 5 fns (SQL-path only, same TestContext pattern as `allergens.test.ts`). Convert `src/lib/server/queries/invites.ts` into a dispatcher using the existing `_rust-dispatch.ts` (optional `caller?: InternalCaller` on each fn; routes stay untouched — the unauthenticated `/invite/[token]` route uses the SQL path with no caller, consistent with every other route in this commit series). Verify: `pnpm rust:prepare` → `pnpm rust:check` → `SQLX_OFFLINE=true DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/meals_on_the_move" cargo test --manifest-path admin-operations-rust/Cargo.toml --test invites` → `pnpm check` → `pnpm test tests/integration/core/invites.test.ts`. Commit one domain at a time. Ultracode. Ultrathink before acting.

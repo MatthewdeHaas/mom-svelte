@@ -18,6 +18,7 @@ pub mod flags_handler;
 pub mod health;
 pub mod import;
 pub mod ingredients;
+pub mod invites;
 pub mod orders;
 pub mod persons;
 pub mod recipes;
@@ -197,6 +198,15 @@ pub fn router(state: AppState) -> Router {
                 .delete(allergens::delete),
         )
         .route("/allergens/:id/ref-count", get(allergens::get_ref_count))
+        // Invites surface — mirrors `src/lib/server/queries/invites.ts`.
+        // Admin-only across the board (the unauthenticated
+        // `/invite/[token]` SvelteKit route keeps the SQL path).
+        // Order matters: `/by-token` registers before `/:id/*` so axum
+        // doesn't try to parse "by-token" as a UUID.
+        .route("/invites", get(invites::list).post(invites::create))
+        .route("/invites/by-token", get(invites::get_by_token))
+        .route("/invites/:id/mark-used", post(invites::mark_used))
+        .route("/invites/:id/revoke", post(invites::revoke))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::verify_internal_auth,
