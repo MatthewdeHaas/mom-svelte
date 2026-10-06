@@ -13,6 +13,15 @@ use uuid::Uuid;
 pub mod import;
 pub use import::{ImportPreview, ImportResult, ImportRowError, ImportWarning};
 
+// Recipe-import wire types. Pure data; split from `excel::recipes` so
+// `db::queries::recipe_imports` can name `RecipeExcelRowParsed` without
+// requiring `db → excel` (that edge already runs the other way for the
+// orders path and reversing it would introduce a cycle).
+pub mod recipes;
+pub use recipes::{
+    FuzzyMatch, ParseRecipesResult, RecipeExcelRowParsed, RecipeImportPreview, RecipeImportResult,
+};
+
 // ---------------------------------------------------------------
 // Roles
 // ---------------------------------------------------------------

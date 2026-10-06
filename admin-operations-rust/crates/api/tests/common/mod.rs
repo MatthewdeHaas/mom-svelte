@@ -28,6 +28,7 @@ use rand::RngCore;
 use sha2::Sha256;
 use sqlx::PgPool;
 use tokio::task::JoinHandle;
+use tracing_subscriber;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -49,6 +50,9 @@ pub mod allergens;
 
 // Person-domain seed helpers (persons, allergen attachments, attendance seeds).
 pub mod persons;
+
+// Recipe-import xlsx fixture builder (in-memory .xlsx via rust_xlsxwriter).
+pub mod fixtures_recipes;
 
 /// Must stay in sync with `crates/api/src/auth.rs:SKEW_TOLERANCE` and
 /// the SvelteKit signer — any divergence here produces mysterious 401s.
@@ -81,7 +85,20 @@ impl TestServer {
 }
 
 /// Boot the live router against the given pool on `127.0.0.1:<random port>`.
+///
+/// Installs a `tracing_subscriber` (idempotent) so handler-side
+/// `tracing::error!(...)` lines land in captured test output. Without
+/// this the handlers emit structured errors into the void and the
+/// test sees only the opaque `{"error":"internal"}` body.
 pub async fn spawn_server(pool: PgPool) -> TestServer {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("api=debug,db=debug")),
+        )
+        .with_test_writer()
+        .try_init();
+
     let state = AppState::new(pool, Arc::new(TEST_SECRET.to_vec()));
     let app = router(state);
 

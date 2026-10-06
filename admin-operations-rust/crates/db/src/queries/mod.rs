@@ -10,4 +10,5 @@ pub mod invites;
 pub mod orders;
 pub mod pagination;
 pub mod persons;
+pub mod recipe_imports;
 pub mod recipes;

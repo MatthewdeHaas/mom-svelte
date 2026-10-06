@@ -66,3 +66,11 @@ excel   = { path = "../excel" }
 # For uuid::Uuid::new_v4() when minting seeded user ids.
 uuid.workspace = true
 rand.workspace = true
+# Recipe-import integration tests build .xlsx fixtures in-memory so the
+# round-trip (bytes → multipart → calamine → parser) stays byte-identical
+# to a user-authored upload. Mirrors `crates/excel`'s own test deps.
+# (`db` + `domain` already come in via `[dependencies]` above.)
+rust_xlsxwriter.workspace = true
+# Harness installs a tracing subscriber so handler-side error logs land
+# in captured test output (without one, 500s look opaque).
+tracing-subscriber.workspace = true

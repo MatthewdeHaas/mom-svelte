@@ -22,6 +22,7 @@ pub mod ingredients;
 pub mod invites;
 pub mod orders;
 pub mod persons;
+pub mod recipe_imports;
 pub mod recipes;
 pub mod state;
 
@@ -47,6 +48,10 @@ pub fn router(state: AppState) -> Router {
         .route("/flags/check", post(flags_handler::check))
         .route("/import/preview", post(import::preview))
         .route("/import/commit", post(import::commit))
+        // Recipe-imports surface — admin-only, multipart .xlsx upload.
+        // Separate preview/commit split mirrors `/import/*` (orders).
+        .route("/recipe-imports/preview", post(recipe_imports::preview))
+        .route("/recipe-imports/commit", post(recipe_imports::commit))
         // Orders surface — mirrors `src/lib/server/queries/orders.ts`.
         // Order matters: `/batch/status` must be registered before
         // `/:id` or axum tries to parse "batch" as a UUID.

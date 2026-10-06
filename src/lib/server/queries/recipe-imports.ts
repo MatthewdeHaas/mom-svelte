@@ -2,6 +2,29 @@ import type { Pool, PoolClient } from 'pg';
 import type { RecipeExcelRowParsed, RecipeImportResult } from '$lib/types';
 import type { Db } from '$lib/server/db';
 
+// -------------------------------------------------------------
+// RUST DISPATCH — intentionally not plumbed through this module.
+//
+// Unlike the other eight Rust-ported domains (orders, ingredients,
+// recipes, allergens, persons, companies, invites, financials), the
+// recipe-imports dispatcher cannot forward from inside the query layer.
+// The Rust `/api/recipe-imports/commit` endpoint consumes a multipart
+// body (the raw .xlsx), not a JSON row list — `importRecipesFromRows`
+// is called AFTER `parseRecipeExcel` has already turned bytes into a
+// `RecipeExcelRowParsed[]`, so by the time execution reaches this
+// function the multipart bytes are gone.
+//
+// The forwarding point is one level up at the route:
+//   src/routes/admin/recipes/new/+page.server.ts
+// which checks `use_rust_backend_recipe_imports` BEFORE the SvelteKit
+// parse and pipes the FormData body straight through if the flag is on.
+// This keeps the Rust path byte-identical to a direct POST against the
+// Rust service and avoids re-serialising/-deserialising the xlsx bytes
+// at the dispatcher boundary.
+//
+// Keep this module as the SQL-path implementation only.
+// -------------------------------------------------------------
+
 // ─── Batch upserts → name-to-id maps ─────────────────────────────────────────
 
 interface RecipeUpsertResult {
