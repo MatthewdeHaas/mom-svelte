@@ -5,6 +5,45 @@ import {
   paginationSQL,
   buildPaginatedResult,
 } from './pagination';
+import {
+  useRustBackend,
+  internalJson,
+  isInternalApiError,
+  filtersToQueryString,
+  type InternalCaller,
+} from './_rust-dispatch';
+
+// -------------------------------------------------------------
+// RUST DISPATCH
+//
+// Every exported function below takes an optional `caller`. When
+// passed AND `use_rust_backend_financials` is on for that caller,
+// the call forwards to the Rust service; otherwise the existing SQL
+// runs unchanged. Routes stay untouched in this commit — threading
+// `caller` into `src/routes/admin/financials/*` is a follow-up pass
+// per the invites/allergens precedent.
+//
+// Financials are admin-only across the board: every Rust handler
+// hard-rejects client callers with 403. The dispatcher doesn't need
+// any scoping logic — the server enforces it.
+//
+// Wire shapes:
+// - `RecipeMargin` ↔ Rust `RecipeMarginRow`: field names match
+//   (snake_case `price_per_meal`, `ingredient_cost`, `margin`,
+//   `margin_pct`); numeric fields are plain JSON numbers on both
+//   sides (TS parses from `::TEXT`, Rust casts to `::float8` then
+//   serde emits `f64`).
+// - `PaginatedResult<RecipeMargin>` ↔ Rust `Paginated<RecipeMarginRow>`:
+//   the Rust struct uses `#[serde(rename_all = "camelCase")]`, so the
+//   wire JSON matches `{ data, total, page, perPage, totalPages }`
+//   byte-identical to the SQL path.
+// - `InvoiceSummary` ↔ Rust `InvoiceSummary`: snake_case field names
+//   match; `serving_date` on each line item is a `YYYY-MM-DD` string
+//   from the Rust `NaiveDate` serializer. The TS SQL path returns a
+//   `Date` object (pg driver auto-casts `::date`), and the one
+//   consumer (`+page.svelte`) wraps every value in `new Date(...)`,
+//   which accepts both — see TODO at the bottom.
+// -------------------------------------------------------------
 
 // -------------------------------------------------------------
 // TYPES
@@ -22,7 +61,7 @@ export interface RecipeMargin {
 export interface InvoiceLineItem {
   order_id: string;
   recipe_name: string;
-  serving_date: Date;
+  serving_date: Date | string;
   amount: number;
   unit_price: number;
   line_total: number;
@@ -37,11 +76,37 @@ export interface InvoiceSummary {
 }
 
 // -------------------------------------------------------------
+// 404 → null wrapper for `getInvoiceData`. Rust returns 404 when
+// the company id doesn't exist; the SQL path returns `null` after
+// the `company` lookup. Translate so the dispatcher is transparent.
+// -------------------------------------------------------------
+
+async function internalJsonOrNull<T>(
+  path: string,
+  caller: InternalCaller,
+  opts?: Parameters<typeof internalJson>[2]
+): Promise<T | null> {
+  try {
+    return await internalJson<T>(path, caller, opts);
+  } catch (err) {
+    if (isInternalApiError(err) && err.status === 404) return null;
+    throw err;
+  }
+}
+
+// -------------------------------------------------------------
 // RECIPE MARGINS
 // Rolls up ingredient costs per recipe and compares to price.
 // -------------------------------------------------------------
 
-export async function getRecipesWithMargins(db: Db): Promise<RecipeMargin[]> {
+export async function getRecipesWithMargins(
+  db: Db,
+  caller?: InternalCaller
+): Promise<RecipeMargin[]> {
+  if (caller && (await useRustBackend('financials', caller))) {
+    return internalJson<RecipeMargin[]>('/api/financials/recipe-margins', caller);
+  }
+
   const result = await db.query<{
     id: string;
     name: string;
@@ -75,8 +140,20 @@ export async function getRecipesWithMargins(db: Db): Promise<RecipeMargin[]> {
 
 export async function getRecipesWithMarginsPaginated(
   db: Db,
-  pagination: PaginationParams
+  pagination: PaginationParams,
+  caller?: InternalCaller
 ): Promise<PaginatedResult<RecipeMargin>> {
+  if (caller && (await useRustBackend('financials', caller))) {
+    const qs = filtersToQueryString({
+      page: pagination.page,
+      per_page: pagination.perPage,
+    });
+    return internalJson<PaginatedResult<RecipeMargin>>(
+      `/api/financials/recipe-margins/paginated${qs}`,
+      caller
+    );
+  }
+
   const countResult = await db.query<{ count: string }>(
     `SELECT COUNT(*) AS count FROM recipe WHERE active = TRUE`
   );
@@ -127,8 +204,14 @@ export async function getInvoiceData(
   db: Db,
   companyId: string,
   from: string,
-  to: string
+  to: string,
+  caller?: InternalCaller
 ): Promise<InvoiceSummary | null> {
+  if (caller && (await useRustBackend('financials', caller))) {
+    const qs = filtersToQueryString({ company_id: companyId, from, to });
+    return internalJsonOrNull<InvoiceSummary>(`/api/financials/invoice${qs}`, caller);
+  }
+
   const companyResult = await db.query<{ id: string; name: string; shipping_address: string | null }>(
     `SELECT id, name, shipping_address FROM company WHERE id = $1`,
     [companyId]

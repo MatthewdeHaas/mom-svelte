@@ -4,6 +4,7 @@
 
 pub mod allergens;
 pub mod companies;
+pub mod financials;
 pub mod ingredients;
 pub mod invites;
 pub mod orders;

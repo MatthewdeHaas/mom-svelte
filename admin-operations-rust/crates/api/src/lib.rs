@@ -14,6 +14,7 @@ pub mod allergens;
 pub mod auth;
 pub mod companies;
 pub mod error;
+pub mod financials;
 pub mod flags_handler;
 pub mod health;
 pub mod import;
@@ -207,6 +208,21 @@ pub fn router(state: AppState) -> Router {
         .route("/invites/by-token", get(invites::get_by_token))
         .route("/invites/:id/mark-used", post(invites::mark_used))
         .route("/invites/:id/revoke", post(invites::revoke))
+        // Financials surface — mirrors `src/lib/server/queries/financials.ts`.
+        // Admin-only; three endpoints matching the three TS exports.
+        // Order matters: `/recipe-margins/paginated` registers before
+        // `/recipe-margins` would collide (same literal prefix) — axum
+        // dispatches on full path, so both work, but the explicit
+        // registration order keeps the surface easy to scan.
+        .route(
+            "/financials/recipe-margins",
+            get(financials::recipe_margins),
+        )
+        .route(
+            "/financials/recipe-margins/paginated",
+            get(financials::recipe_margins_paginated),
+        )
+        .route("/financials/invoice", get(financials::invoice))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::verify_internal_auth,

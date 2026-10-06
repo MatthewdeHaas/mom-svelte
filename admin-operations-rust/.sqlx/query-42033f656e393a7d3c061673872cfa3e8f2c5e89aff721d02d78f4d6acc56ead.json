@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            r.id                                   AS \"id!: Uuid\",\n            r.name                                 AS \"name!\",\n            r.price_per_meal::float8               AS \"price_per_meal?: f64\",\n            SUM(ri.amount * i.cost_per_unit)::float8 AS \"ingredient_cost?: f64\"\n        FROM recipe r\n        LEFT JOIN recipe_ingredient ri ON ri.recipe_id = r.id\n        LEFT JOIN ingredient i ON i.id = ri.ingredient_id\n        WHERE r.active = TRUE\n        GROUP BY r.id\n        ORDER BY r.name ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "price_per_meal?: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 3,
+        "name": "ingredient_cost?: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "42033f656e393a7d3c061673872cfa3e8f2c5e89aff721d02d78f4d6acc56ead"
+}
