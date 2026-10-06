@@ -10,6 +10,75 @@ import type {
   Attendance,
 } from '$lib/types';
 import type { Db } from '$lib/server/db';
+import {
+  useRustBackend,
+  internalJson,
+  isInternalApiError,
+  filtersToQueryString,
+  normalizeBody,
+  type InternalCaller,
+} from './_rust-dispatch';
+
+// -------------------------------------------------------------
+// RUST DISPATCH
+//
+// Every exported function below takes an optional `caller`. When
+// passed AND `use_rust_backend_persons` is on for that caller, the
+// call forwards to the Rust service; otherwise the existing SQL
+// runs unchanged. Routes stay untouched in this commit — threading
+// `caller` into `src/routes/admin/companies/[id]`, the client
+// roster/attendance/menu pages, etc. is a follow-up pass per the
+// allergens precedent.
+//
+// Persons + attendance are per-company data and the Rust handlers
+// enforce admin-vs-client scoping (admin unrestricted; client
+// restricted to its own `company_id`). The dispatcher doesn't need
+// extra scoping logic — the server lies-about-existence for
+// cross-company probes, same as orders/companies.
+//
+// Wire-shape normalisation:
+//  - `Person` / `PersonWithAllergens` / `Allergen` row shapes match
+//    the Rust `PersonRow` / `PersonWithAllergensRow` / `AllergenEmbed`
+//    field-for-field — decoded JSON passes through as-is.
+//  - `Attendance.serving_date` is a `Date` in the TS surface (the pg
+//    driver maps `DATE` → `Date`), but Rust emits ISO `YYYY-MM-DD`.
+//    `tests/integration/core/persons.test.ts:502` asserts
+//    `instanceof Date` — so we rehydrate every attendance row
+//    coming off the wire before returning it.
+//  - Date filters / body dates (`serving_date` on upsert bodies) are
+//    sent as ISO date-only to keep the Rust `NaiveDate` parser happy.
+// -------------------------------------------------------------
+
+/**
+ * 404-aware wrapper. The TS SQL path returns `null` on miss for
+ * single-row reads/mutations; the Rust path returns 404. Translate so
+ * the dispatcher is behaviourally transparent.
+ */
+async function internalJsonOrNull<T>(
+  path: string,
+  caller: InternalCaller,
+  opts?: Parameters<typeof internalJson>[2]
+): Promise<T | null> {
+  try {
+    return await internalJson<T>(path, caller, opts);
+  } catch (err) {
+    if (isInternalApiError(err) && err.status === 404) return null;
+    throw err;
+  }
+}
+
+/** Narrow a wire string (`YYYY-MM-DD`) back to a `Date`. */
+function isoToDate(iso: unknown): Date {
+  if (iso instanceof Date) return iso;
+  // `new Date("YYYY-MM-DD")` parses as UTC midnight — exactly what the
+  // pg driver produces for a `DATE` column. Matches the SQL path.
+  return new Date(iso as string);
+}
+
+/** Rehydrate `serving_date` on a single attendance payload. */
+function hydrateAttendance<T extends { serving_date: unknown }>(row: T): T {
+  return { ...row, serving_date: isoToDate(row.serving_date) };
+}
 
 // -------------------------------------------------------------
 // READ
@@ -18,8 +87,17 @@ import type { Db } from '$lib/server/db';
 export async function getPersonsByCompany(
   db: Db,
   companyId: string,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<Person[]> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    const qs = filtersToQueryString({
+      company_id: companyId,
+      include_inactive: opts.includeInactive,
+    });
+    return internalJson<Person[]>(`/api/persons${qs}`, caller);
+  }
+
   const result = await db.query<Person>(
     `SELECT id, company_id, name, active
      FROM person
@@ -34,8 +112,14 @@ export async function getPersonsByCompany(
 export async function getPersonById(
   db: Db,
   id: string,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<Person | null> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    return internalJsonOrNull<Person>(`/api/persons/${id}${qs}`, caller);
+  }
+
   const result = await db.query<Person>(
     `SELECT id, company_id, name, active
      FROM person
@@ -49,8 +133,17 @@ export async function getPersonById(
 export async function getPersonWithAllergens(
   db: Db,
   id: string,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<PersonWithAllergens | null> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    return internalJsonOrNull<PersonWithAllergens>(
+      `/api/persons/${id}/with-allergens${qs}`,
+      caller
+    );
+  }
+
   const person = await getPersonById(db, id, opts);
   if (!person) return null;
 
@@ -61,8 +154,20 @@ export async function getPersonWithAllergens(
 export async function getPersonsWithAllergensByCompany(
   db: Db,
   companyId: string,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<PersonWithAllergens[]> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    const qs = filtersToQueryString({
+      company_id: companyId,
+      include_inactive: opts.includeInactive,
+    });
+    return internalJson<PersonWithAllergens[]>(
+      `/api/persons/with-allergens${qs}`,
+      caller
+    );
+  }
+
   const result = await db.query<
     Person & { allergen_ids: string[] | null; allergen_names: string[] | null }
   >(
@@ -95,7 +200,15 @@ export async function getPersonsWithAllergensByCompany(
   }));
 }
 
-export async function getPersonAllergens(db: Db, personId: string): Promise<Allergen[]> {
+export async function getPersonAllergens(
+  db: Db,
+  personId: string,
+  caller?: InternalCaller
+): Promise<Allergen[]> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    return internalJson<Allergen[]>(`/api/persons/${personId}/allergens`, caller);
+  }
+
   const result = await db.query<Allergen>(
     `SELECT a.id, a.name
      FROM allergen a
@@ -111,7 +224,18 @@ export async function getPersonAllergens(db: Db, personId: string): Promise<Alle
 // WRITE
 // -------------------------------------------------------------
 
-export async function createPerson(db: Db, data: InsertPerson): Promise<Person> {
+export async function createPerson(
+  db: Db,
+  data: InsertPerson,
+  caller?: InternalCaller
+): Promise<Person> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    return internalJson<Person>('/api/persons', caller, {
+      method: 'POST',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+  }
+
   const result = await db.query<Person>(
     `INSERT INTO person (company_id, name, active)
      VALUES ($1, $2, $3)
@@ -124,8 +248,16 @@ export async function createPerson(db: Db, data: InsertPerson): Promise<Person> 
 export async function updatePerson(
   db: Db,
   id: string,
-  data: UpdatePerson
+  data: UpdatePerson,
+  caller?: InternalCaller
 ): Promise<Person | null> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    return internalJsonOrNull<Person>(`/api/persons/${id}`, caller, {
+      method: 'PATCH',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+  }
+
   const result = await db.query<Person>(
     `UPDATE person
      SET
@@ -139,7 +271,17 @@ export async function updatePerson(
 }
 
 // Soft delete — preserves attendance history and allergen records.
-export async function deactivatePerson(db: Db, id: string): Promise<Person | null> {
+export async function deactivatePerson(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<Person | null> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    return internalJsonOrNull<Person>(`/api/persons/${id}/deactivate`, caller, {
+      method: 'POST',
+    });
+  }
+
   return updatePerson(db, id, { active: false });
 }
 
@@ -150,8 +292,18 @@ export async function deactivatePerson(db: Db, id: string): Promise<Person | nul
 export async function addPersonAllergen(
   client: Pool | PoolClient,
   personId: string,
-  allergenId: string
+  allergenId: string,
+  caller?: InternalCaller
 ): Promise<void> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    await internalJson<void>(
+      `/api/persons/${personId}/allergens/${allergenId}`,
+      caller,
+      { method: 'POST' }
+    );
+    return;
+  }
+
   await client.query(
     `INSERT INTO person_allergen (person_id, allergen_id)
      VALUES ($1, $2)
@@ -163,8 +315,18 @@ export async function addPersonAllergen(
 export async function removePersonAllergen(
   client: Pool | PoolClient,
   personId: string,
-  allergenId: string
+  allergenId: string,
+  caller?: InternalCaller
 ): Promise<void> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    await internalJson<void>(
+      `/api/persons/${personId}/allergens/${allergenId}`,
+      caller,
+      { method: 'DELETE' }
+    );
+    return;
+  }
+
   await client.query(
     `DELETE FROM person_allergen
      WHERE person_id = $1 AND allergen_id = $2`,
@@ -175,8 +337,17 @@ export async function removePersonAllergen(
 export async function setPersonAllergens(
   client: Pool | PoolClient,
   personId: string,
-  allergenIds: string[]
+  allergenIds: string[],
+  caller?: InternalCaller
 ): Promise<void> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    await internalJson<void>(`/api/persons/${personId}/allergens`, caller, {
+      method: 'PUT',
+      body: JSON.stringify({ allergen_ids: allergenIds }),
+    });
+    return;
+  }
+
   await client.query(
     `DELETE FROM person_allergen WHERE person_id = $1`,
     [personId]
@@ -199,8 +370,25 @@ export async function setPersonAllergens(
 export async function getAttendanceByDate(
   db: Db,
   companyId: string,
-  servingDate: Date
+  servingDate: Date,
+  caller?: InternalCaller
 ): Promise<AttendanceWithPerson[]> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    const qs = filtersToQueryString({
+      company_id: companyId,
+      serving_date: servingDate,
+    });
+    const rows = await internalJson<AttendanceWithPerson[]>(
+      `/api/attendance${qs}`,
+      caller
+    );
+    // Rehydrate `serving_date` back to `Date` so callers can keep
+    // treating it as the pg driver's shape (test line 502 asserts
+    // `instanceof Date` on the single-row upsert; this list surface
+    // leaks the same type).
+    return rows.map(hydrateAttendance);
+  }
+
   const result = await db.query<
     Attendance & {
       person_name: string;
@@ -252,8 +440,17 @@ export async function getAttendanceByDate(
 // repeatedly — toggling attendance on an existing record just updates it.
 export async function upsertAttendance(
   db: Db,
-  data: UpsertAttendance
+  data: UpsertAttendance,
+  caller?: InternalCaller
 ): Promise<Attendance> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    const row = await internalJson<Attendance>('/api/attendance', caller, {
+      method: 'POST',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+    return hydrateAttendance(row);
+  }
+
   const result = await db.query<Attendance>(
     `INSERT INTO attendance (person_id, serving_date, attending)
      VALUES ($1, $2, $3)
@@ -268,8 +465,23 @@ export async function upsertAttendance(
 // Bulk upsert — used when a company submits attendance for a full day at once.
 export async function upsertAttendanceBatch(
   client: Pool | PoolClient,
-  records: UpsertAttendance[]
+  records: UpsertAttendance[],
+  caller?: InternalCaller
 ): Promise<void> {
+  if (caller && (await useRustBackend('persons', caller))) {
+    // Rust `/api/attendance/batch` returns 204 for empty + populated;
+    // forward both paths through the same request.
+    await internalJson<void>('/api/attendance/batch', caller, {
+      method: 'POST',
+      body: JSON.stringify({
+        records: records.map((r) =>
+          normalizeBody(r as unknown as Record<string, unknown>)
+        ),
+      }),
+    });
+    return;
+  }
+
   if (records.length === 0) return;
 
   const values = records

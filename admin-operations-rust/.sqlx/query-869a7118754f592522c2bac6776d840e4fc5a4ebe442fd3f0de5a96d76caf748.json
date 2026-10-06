@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                p.id         AS \"id!: Uuid\",\n                p.company_id AS \"company_id!: Uuid\",\n                p.name       AS \"name!\",\n                p.active     AS \"active!\",\n                ARRAY_AGG(a.id   ORDER BY a.name) FILTER (WHERE a.id   IS NOT NULL) AS \"allergen_ids: Vec<Uuid>\",\n                ARRAY_AGG(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL) AS \"allergen_names: Vec<String>\"\n            FROM person p\n            LEFT JOIN person_allergen pa ON pa.person_id = p.id\n            LEFT JOIN allergen a ON a.id = pa.allergen_id\n            WHERE p.company_id = $1\n            GROUP BY p.id\n            ORDER BY p.name ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "company_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "allergen_ids: Vec<Uuid>",
+        "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 5,
+        "name": "allergen_names: Vec<String>",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "869a7118754f592522c2bac6776d840e4fc5a4ebe442fd3f0de5a96d76caf748"
+}

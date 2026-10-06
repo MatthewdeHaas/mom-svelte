@@ -19,6 +19,7 @@ pub mod health;
 pub mod import;
 pub mod ingredients;
 pub mod orders;
+pub mod persons;
 pub mod recipes;
 pub mod state;
 
@@ -142,6 +143,43 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ingredients/:id/allergens/:allergen_id",
             post(ingredients::add_allergen).delete(ingredients::remove_allergen),
+        )
+        // Persons + attendance surface — mirrors
+        // `src/lib/server/queries/persons.ts`. Order matters: literal
+        // `/with-allergens` registers before `/:id` or axum tries to
+        // parse "with-allergens" as a UUID. The `/attendance/batch`
+        // route must register before `/attendance` (same prefix). The
+        // nested `/:id/allergens/:allergen_id` route is unambiguous
+        // (both segments are UUIDs; literal `/allergens` separates them).
+        .route("/persons", get(persons::list).post(persons::create))
+        .route(
+            "/persons/with-allergens",
+            get(persons::list_with_allergens),
+        )
+        .route(
+            "/persons/:id",
+            get(persons::get_by_id).patch(persons::update),
+        )
+        .route(
+            "/persons/:id/with-allergens",
+            get(persons::get_with_allergens),
+        )
+        .route(
+            "/persons/:id/allergens",
+            get(persons::get_allergens).put(persons::set_allergens),
+        )
+        .route(
+            "/persons/:id/allergens/:allergen_id",
+            post(persons::add_allergen).delete(persons::remove_allergen),
+        )
+        .route("/persons/:id/deactivate", post(persons::deactivate))
+        .route(
+            "/attendance/batch",
+            post(persons::upsert_attendance_batch),
+        )
+        .route(
+            "/attendance",
+            get(persons::get_attendance_by_date).post(persons::upsert_attendance),
         )
         // Allergens surface — mirrors `src/lib/server/queries/allergens.ts`.
         // Order matters: literal `/by-name` registers before `/:id` or axum

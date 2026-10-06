@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT a.id AS \"id!: Uuid\", a.name AS \"name!\"\n        FROM allergen a\n        JOIN person_allergen pa ON pa.allergen_id = a.id\n        WHERE pa.person_id = $1\n        ORDER BY a.name ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e4ab166784ba12520553fd915c062c6378ac6ea473a28b6f6161a023a96a5618"
+}

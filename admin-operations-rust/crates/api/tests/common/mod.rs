@@ -47,6 +47,9 @@ pub mod ingredients;
 // Allergen-domain seed helpers (allergens + ingredient/person link seeds).
 pub mod allergens;
 
+// Person-domain seed helpers (persons, allergen attachments, attendance seeds).
+pub mod persons;
+
 /// Must stay in sync with `crates/api/src/auth.rs:SKEW_TOLERANCE` and
 /// the SvelteKit signer — any divergence here produces mysterious 401s.
 pub const TEST_SECRET: &[u8] = b"test-only-development-secret-32-bytes-min";

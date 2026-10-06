@@ -7,4 +7,5 @@ pub mod companies;
 pub mod ingredients;
 pub mod orders;
 pub mod pagination;
+pub mod persons;
 pub mod recipes;

@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            att.id            AS \"id!: Uuid\",\n            att.person_id     AS \"person_id!: Uuid\",\n            att.serving_date  AS \"serving_date!: NaiveDate\",\n            att.attending     AS \"attending!\",\n            p.name            AS \"person_name!\",\n            p.active          AS \"person_active!\",\n            ARRAY_AGG(a.id   ORDER BY a.name) FILTER (WHERE a.id   IS NOT NULL) AS \"allergen_ids: Vec<Uuid>\",\n            ARRAY_AGG(a.name ORDER BY a.name) FILTER (WHERE a.name IS NOT NULL) AS \"allergen_names: Vec<String>\"\n        FROM attendance att\n        JOIN person p ON p.id = att.person_id\n        LEFT JOIN person_allergen pa ON pa.person_id = p.id\n        LEFT JOIN allergen a ON a.id = pa.allergen_id\n        WHERE p.company_id    = $1\n          AND att.serving_date = $2\n        GROUP BY att.id, p.id\n        ORDER BY p.name ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "person_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "serving_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 3,
+        "name": "attending!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "person_name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "person_active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "allergen_ids: Vec<Uuid>",
+        "type_info": "UuidArray"
+      },
+      {
+        "ordinal": 7,
+        "name": "allergen_names: Vec<String>",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "0a76f20ea15d3bddb38d439158822827b2463d81a8a047b62c0d36f315321af7"
+}
