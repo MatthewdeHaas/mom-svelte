@@ -14,6 +14,7 @@ pub mod allergens;
 pub mod auth;
 pub mod companies;
 pub mod error;
+pub mod exports;
 pub mod financials;
 pub mod flags_handler;
 pub mod health;
@@ -230,6 +231,17 @@ pub fn router(state: AppState) -> Router {
             get(financials::recipe_margins_paginated),
         )
         .route("/financials/invoice", get(financials::invoice))
+        // Exports surface — admin-only. Three endpoints that delegate to
+        // the `excel::export` and `pdf::packing_slip` generators. The
+        // xlsx handlers return raw bytes with an attachment disposition
+        // header; the packing-slips handler returns a JSON array of
+        // base64-encoded PDFs so the SvelteKit route can zip them.
+        .route(
+            "/exports/production-order",
+            get(exports::production_order),
+        )
+        .route("/exports/shopping-list", get(exports::shopping_list))
+        .route("/exports/packing-slips", get(exports::packing_slips))
         // Menus surface — mirrors `src/lib/server/queries/menus.ts`.
         // Order matters: literal paths (`/with-recipes`, `/active-for-date`)
         // register before `/:id` or axum tries to parse "with-recipes" as a

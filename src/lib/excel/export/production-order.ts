@@ -1,13 +1,32 @@
 import ExcelJS from 'exceljs';
 import { getOrders } from '$lib/server/queries/orders';
 import { pinXlsxDates } from '$lib/excel/determinism';
+import {
+  useRustBackend,
+  internalFetch,
+  type InternalCaller,
+} from '$lib/server/queries/_rust-dispatch';
 import type { Pool } from 'pg';
 
 export async function generateProductionOrderSheet(
   db: Pool,
   from: string,
-  to: string
+  to: string,
+  caller?: InternalCaller
 ): Promise<Buffer> {
+
+  // Flag-gated Rust forward. When `use_rust_backend_exports` is on
+  // for this caller, pull the xlsx bytes from the Rust service and
+  // return them wrapped in a Buffer; otherwise fall through to the
+  // existing ExcelJS path untouched. The dispatcher helper swallows
+  // transport-level flag errors, so reaching the inner branch means
+  // the flag was truly on and Rust is expected to answer.
+  if (caller && (await useRustBackend('exports', caller))) {
+    const qs = new URLSearchParams({ from, to }).toString();
+    const res = await internalFetch(`/api/exports/production-order?${qs}`, caller);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return Buffer.from(bytes);
+  }
 
   const orders = await getOrders(db, {
     serving_date_from: from,

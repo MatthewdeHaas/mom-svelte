@@ -5,6 +5,11 @@ import { createRequire } from 'module';
 import type { OrderDetail } from '$lib/types';
 import { getOrders } from '$lib/server/queries/orders';
 import { getOrderById } from '$lib/server/queries/orders';
+import {
+  useRustBackend,
+  internalJson,
+  type InternalCaller,
+} from '$lib/server/queries/_rust-dispatch';
 import type { Pool } from 'pg';
 
 // svg-to-pdfkit ships as CJS with no type declarations
@@ -395,8 +400,28 @@ function renderSlip(
  */
 export async function generatePackingSlips(
   db: Pool,
-  referenceDate: Date
+  referenceDate: Date,
+  caller?: InternalCaller
 ): Promise<Array<{ filename: string; companyName: string; buffer: Buffer }>> {
+  // Flag-gated Rust forward. Rust returns a JSON array of
+  // { filename, company_name, pdf_base64 }; we decode pdf_base64 back
+  // to a Buffer and remap to the camelCase shape callers expect.
+  // Any error in the flag check falls through to false and the TS path
+  // runs; the dispatcher helper also swallows and logs transport errors.
+  if (caller && (await useRustBackend('exports', caller))) {
+    const yyyy = referenceDate.getUTCFullYear().toString().padStart(4, '0');
+    const mm = (referenceDate.getUTCMonth() + 1).toString().padStart(2, '0');
+    const dd = referenceDate.getUTCDate().toString().padStart(2, '0');
+    const qs = new URLSearchParams({ date: `${yyyy}-${mm}-${dd}` }).toString();
+    type RustSlip = { filename: string; company_name: string; pdf_base64: string };
+    const slips = await internalJson<RustSlip[]>(`/api/exports/packing-slips?${qs}`, caller);
+    return slips.map((s) => ({
+      filename: s.filename,
+      companyName: s.company_name,
+      buffer: Buffer.from(s.pdf_base64, 'base64'),
+    }));
+  }
+
   const { from, to } = weekBoundsEST(referenceDate);
 
   // 1. Fetch all orders for the week

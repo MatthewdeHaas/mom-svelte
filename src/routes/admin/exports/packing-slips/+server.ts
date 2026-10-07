@@ -4,6 +4,7 @@ import { generatePackingSlips } from '$lib/pdf/packing-slip';
 import { weekBoundsEST } from '$lib/utils/dates';
 import { error } from '@sveltejs/kit';
 import JSZip from 'jszip';
+import type { InternalCaller } from '$lib/server/api-client';
 
 function resolve(url: URL): string {
   const weekOf = url.searchParams.get('week_of');
@@ -18,9 +19,17 @@ function slugify(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
+  if (!locals.user) throw error(401, 'Unauthorised');
+
+  const caller: InternalCaller = {
+    userId: locals.user.id,
+    role: locals.user.role === 'client' ? 'client' : 'admin',
+    companyId: locals.user.companyId ?? null,
+  };
+
   const dateParam = resolve(url);
-  const slips = await generatePackingSlips(pool, new Date(dateParam));
+  const slips = await generatePackingSlips(pool, new Date(dateParam), caller);
 
   if (slips.length === 0) throw error(404, 'No orders found for that week.');
 

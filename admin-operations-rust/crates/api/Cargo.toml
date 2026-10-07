@@ -20,6 +20,7 @@ domain = { path = "../domain" }
 db     = { path = "../db" }
 flags  = { path = "../flags" }
 excel  = { path = "../excel" }
+pdf    = { path = "../pdf" }
 
 # HTTP + async
 tokio.workspace = true
@@ -52,6 +53,11 @@ dashmap.workspace = true
 # Errors
 thiserror.workspace = true
 anyhow.workspace = true
+
+# Exports: packing-slip handler base64-encodes PDF bytes for the JSON
+# response envelope so the SvelteKit route can zip the pre-rendered
+# PDFs server-side without touching binary over the wire.
+base64 = "0.22"
 
 [dev-dependencies]
 # Integration tests boot the live router against a bound TcpListener and

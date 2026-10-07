@@ -7,6 +7,25 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Workspace-internal
 domain = { path = "../domain" }
-printpdf.workspace = true
+db     = { path = "../db" }
+
+# PDF — enable the `svg` feature so the brand logo embeds via
+# printpdf::Svg (svg2pdf + usvg). Without it, Svg/SvgTransform are
+# gated out of the crate root and only ImageTransform is in scope.
+printpdf = { workspace = true, features = ["svg"] }
+
+# DB — the generator fetches orders + full detail via existing
+# `db::queries::orders` functions. Pool type and chrono dates are
+# in the signature; uuid is bound inside the per-order detail fetch.
+sqlx.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+
+# Serde is pulled in only to satisfy the embedded row types that
+# derive `Serialize`/`Deserialize`; this crate itself doesn't
+# serialise them, but the derives still need the trait in scope.
+serde.workspace = true
+
 thiserror.workspace = true

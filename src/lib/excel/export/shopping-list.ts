@@ -2,13 +2,27 @@ import ExcelJS from 'exceljs';
 import { getOrders } from '$lib/server/queries/orders';
 import { getRecipesWithIngredientsByIds } from '$lib/server/queries/recipes';
 import { pinXlsxDates } from '$lib/excel/determinism';
+import {
+  useRustBackend,
+  internalFetch,
+  type InternalCaller,
+} from '$lib/server/queries/_rust-dispatch';
 import type { Pool } from 'pg';
 
 export async function generateShoppingList(
   db: Pool,
   from: string,
-  to: string
+  to: string,
+  caller?: InternalCaller
 ): Promise<Buffer> {
+
+  // Flag-gated Rust forward — see production-order.ts for the shape rationale.
+  if (caller && (await useRustBackend('exports', caller))) {
+    const qs = new URLSearchParams({ from, to }).toString();
+    const res = await internalFetch(`/api/exports/shopping-list?${qs}`, caller);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return Buffer.from(bytes);
+  }
 
   const orders = await getOrders(db, {
     serving_date_from: from,

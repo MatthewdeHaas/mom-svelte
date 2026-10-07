@@ -36,6 +36,11 @@ regex = "1"
 # tokens) built once at startup.
 once_cell = "1"
 
+# Insertion-order-preserving map for the shopping-list ingredient
+# aggregator. HashMap iteration order is nondeterministic — matters
+# for byte-identical export; see export/shopping_list.rs module docs.
+indexmap = "2"
+
 # Logging
 tracing.workspace = true
 thiserror.workspace = true

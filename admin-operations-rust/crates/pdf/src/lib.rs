@@ -1,9 +1,25 @@
 //! PDF generation (packing slips).
 //!
-//! Scaffold only. Next-but-one sub-session ports
-//! `src/lib/pdf/packing-slip.ts` here using `printpdf`. The byte-identical
-//! contract is tested from the SvelteKit side today
-//! (`scripts/verify-determinism.ts`); mirror that assertion on the Rust
-//! side once this module exists.
+//! Port of `src/lib/pdf/packing-slip.ts` → [`packing_slip::generate`].
+//! The TS byte-identical contract is tested from the SvelteKit side today
+//! (`scripts/verify-determinism.ts`); the sub-session after this one
+//! rewrites the oracle to semantic extraction and reasserts the contract
+//! against this generator.
 
-pub fn placeholder() {}
+pub mod packing_slip;
+
+pub use packing_slip::PackingSlipPdf;
+
+/// Error surface for packing-slip generation. DB and printpdf build
+/// failures funnel through one enum so the HTTP handler can map both
+/// to a single 500 response.
+///
+/// `printpdf::Error` doesn't implement `std::error::Error` in 0.7, so
+/// stringify at the boundary rather than wrap it as `#[from]`.
+#[derive(Debug, thiserror::Error)]
+pub enum PdfError {
+    #[error("database error: {0}")]
+    Db(#[from] sqlx::Error),
+    #[error("pdf build error: {0}")]
+    Build(String),
+}

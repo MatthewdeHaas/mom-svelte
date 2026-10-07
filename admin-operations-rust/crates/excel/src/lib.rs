@@ -16,6 +16,7 @@
 //! client fixture test covers the integration path end-to-end.
 
 pub mod boilerplate;
+pub mod export;
 pub mod fuzzy;
 pub mod headers;
 pub mod import;

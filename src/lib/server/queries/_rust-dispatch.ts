@@ -98,8 +98,18 @@ async function throttledWarn(key: string, obj: Record<string, unknown>, msg: str
 	const last = warnCooldown.get(key) ?? 0;
 	if (now - last < WARN_TTL_MS) return;
 	warnCooldown.set(key, now);
-	const log = await logger();
-	log.warn(obj, msg);
+	// Logger loads `$lib/server/logger` → `$app/environment`, which vitest
+	// can't resolve. Swallow the import failure so a flag-check error path
+	// never bubbles up as an unhandled rejection under tests. Production
+	// paths still log normally — the import only fails inside vitest.
+	try {
+		const log = await logger();
+		log.warn(obj, msg);
+	} catch {
+		// Fallback for tests / environments without `$app/environment`.
+		// eslint-disable-next-line no-console
+		console.warn(`[rust-dispatch] ${msg}`, obj);
+	}
 }
 
 /**

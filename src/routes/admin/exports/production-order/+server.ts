@@ -3,6 +3,7 @@ import { pool } from '$lib/server/db';
 import { generateProductionOrderSheet } from '$lib/excel/export/production-order';
 import { weekBoundsEST } from '$lib/utils/dates';
 import { error } from '@sveltejs/kit';
+import type { InternalCaller } from '$lib/server/api-client';
 
 function resolve(url: URL): { from: string; to: string; label: string } {
   const weekOf = url.searchParams.get('week_of');
@@ -19,9 +20,20 @@ function resolve(url: URL): { from: string; to: string; label: string } {
   throw error(400, 'Provide either week_of or shipment_date (YYYY-MM-DD)');
 }
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
+  if (!locals.user) throw error(401, 'Unauthorised');
+
+  // Build the caller once per request; the dispatcher inside the
+  // generator function uses it to flag-check `use_rust_backend_exports`
+  // and, if on, forward to the Rust service.
+  const caller: InternalCaller = {
+    userId: locals.user.id,
+    role: locals.user.role === 'client' ? 'client' : 'admin',
+    companyId: locals.user.companyId ?? null,
+  };
+
   const { from, to, label } = resolve(url);
-  const buffer = await generateProductionOrderSheet(pool, from, to);
+  const buffer = await generateProductionOrderSheet(pool, from, to, caller);
 
   return new Response(buffer as unknown as BodyInit, {
     headers: {

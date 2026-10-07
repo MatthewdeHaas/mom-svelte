@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { parseExcelBufferAsyncWithMeta } from '$lib/excel/parse';
@@ -10,6 +9,18 @@ import { generateProductionOrderSheet } from '$lib/excel/export/production-order
 import { generateShoppingList } from '$lib/excel/export/shopping-list';
 import { generatePackingSlips } from '$lib/pdf/packing-slip';
 import { createTestContext } from '../core/helpers';
+import { semanticHashXlsx, semanticHashPdf } from './_semantic';
+import type { InternalCaller } from '$lib/server/api-client';
+
+// Test-only caller — threaded through the three export fns so the Rust-dispatch
+// branch is actually entered when `use_rust_backend_exports` is on. The user id
+// matches the one seeded in beforeAll; role=admin so Rust /api/exports/* accepts.
+// companyId=null is the admin global scope.
+const TEST_CALLER: InternalCaller = {
+  userId: `excel-ds-user-${Date.now()}`,
+  role: 'admin',
+  companyId: null,
+};
 
 const FIXTURE_DIR = 'tests/integration/excel/fixtures';
 const MESSY = path.join(FIXTURE_DIR, 'real-client-week-3.xlsx');
@@ -53,10 +64,6 @@ afterAll(async () => {
 // that covers them all. We derive the actual min/max from the imported
 // rows so the test survives future fixture refreshes.
 // ---------------------------------------------------------------------------
-
-function sha256(buf: Buffer): string {
-  return crypto.createHash('sha256').update(buf).digest('hex');
-}
 
 async function loadNamespaced(file: string, ns: string) {
   const buf = fs.readFileSync(file);
@@ -143,18 +150,24 @@ async function generateHashes(): Promise<ExportHashes> {
   const { from, to } = await fetchDateBounds();
 
   const [prod, shop, slips] = await Promise.all([
-    generateProductionOrderSheet(ctx.pool, from, to),
-    generateShoppingList(ctx.pool, from, to),
+    generateProductionOrderSheet(ctx.pool, from, to, TEST_CALLER),
+    generateShoppingList(ctx.pool, from, to, TEST_CALLER),
     // packing slips use week-of(referenceDate) bounds in EST — pass the
     // 'from' date which is guaranteed to be inside the data week.
-    generatePackingSlips(ctx.pool, new Date(`${from}T12:00:00Z`)),
+    generatePackingSlips(ctx.pool, new Date(`${from}T12:00:00Z`), TEST_CALLER),
   ]);
 
+  const packingSlips = await Promise.all(
+    slips.map(async (s) => ({
+      company: s.companyName,
+      sha256: semanticHashPdf(s.buffer),
+    })),
+  );
+
   return {
-    productionOrder: sha256(prod),
-    shoppingList: sha256(shop),
-    packingSlips: slips
-      .map((s) => ({ company: s.companyName, sha256: sha256(s.buffer) }))
+    productionOrder: await semanticHashXlsx(prod),
+    shoppingList: await semanticHashXlsx(shop),
+    packingSlips: packingSlips
       // Sort for stable comparison — Map iteration order would otherwise
       // vary with insertion order (same input, same companies, but any
       // reordering would make the test flaky).
