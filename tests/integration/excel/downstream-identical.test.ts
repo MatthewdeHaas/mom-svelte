@@ -10,6 +10,7 @@ import { generateShoppingList } from '$lib/excel/export/shopping-list';
 import { generatePackingSlips } from '$lib/pdf/packing-slip';
 import { createTestContext } from '../core/helpers';
 import { semanticHashXlsx, semanticHashPdf } from './_semantic';
+import { registerCrashCleanup } from './_crash-cleanup';
 import type { InternalCaller } from '$lib/server/api-client';
 
 // Test-only caller — threaded through the three export fns so the Rust-dispatch
@@ -34,6 +35,17 @@ const USER_ID = `excel-ds-user-${Date.now()}`;
 
 beforeAll(async () => {
   await ctx.setup();
+  // Pre-cleanup: a prior run's crash can leave TDS% rows behind, and this
+  // suite seeds under a fresh TDS%${Date.now()}_ prefix so the orphans
+  // wouldn't collide with us — but they'd still poison orders.test.ts's
+  // "empty" assertions. Scrub proactively.
+  await ctx.pool.query(
+    `DELETE FROM "order" WHERE company_id IN (SELECT id FROM company WHERE name LIKE 'TDS%')`,
+  );
+  await ctx.pool.query(`DELETE FROM recipe  WHERE name LIKE 'TDS%'`);
+  await ctx.pool.query(`DELETE FROM company WHERE name LIKE 'TDS%'`);
+  // Backstop for SIGINT/SIGTERM — vitest's afterAll doesn't run on signal.
+  registerCrashCleanup(ctx.pool, 'TDS');
   await ctx.pool.query(
     `INSERT INTO "user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
      VALUES ($1, 'Excel DS Test', $2, true, 'user', now(), now())`,
@@ -41,8 +53,13 @@ beforeAll(async () => {
   );
 });
 afterAll(async () => {
-  await ctx.pool.query(`DELETE FROM "user" WHERE id = $1`, [USER_ID]);
-  await ctx.teardown();
+  // Guard each cleanup so a partial beforeAll (ctx.setup threw, or a seed
+  // step died) still gets us as close to clean as possible before teardown.
+  try { await deleteAll(); } catch { /* best effort */ }
+  try {
+    await ctx.pool.query(`DELETE FROM "user" WHERE id = $1`, [USER_ID]);
+  } catch { /* best effort */ }
+  try { await ctx.teardown(); } catch { /* best effort */ }
 });
 
 // ---------------------------------------------------------------------------
@@ -240,7 +257,8 @@ beforeAll(async () => {
   cleanHashesRun2 = await generateHashes();
 }, 120_000);
 
-afterAll(async () => deleteAll());
+// Note: suite-level afterAll above handles cleanup — no need for a second
+// delete pass here (the top-level afterAll calls deleteAll() first).
 
 // ---------------------------------------------------------------------------
 // Cross-format equivalence — messy and clean produce byte-identical exports

@@ -26,13 +26,42 @@ afterEach(ctx.rollback);
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Namespace prefix for every company/recipe this file seeds. The companion
+// `downstream-identical` / excel-import suites commit rows to the shared
+// `meals_test` DB via `ctx.pool` (bypassing per-test rollback), and if a
+// prior run crashed before `afterAll` cleanup, those `TDS%` rows survive and
+// bleed into our "empty" assertions below. Scoping our seeds under `OT%` and
+// filtering reads client-side by `company_name.startsWith(NS)` fences us off
+// without touching the production query surface. See HANDOFF_LEAKAGE.md.
+const NS = `OT${Date.now()}_`;
+
 let counter = 0;
 function uniqueName(prefix = 'Co') {
-  return `${prefix}_${++counter}_${Date.now()}`;
+  return `${NS}${prefix}_${++counter}_${Date.now()}`;
 }
 
 const BASE_SERVING = new Date('2025-06-15');
 const BASE_SHIPMENT = new Date('2025-06-10');
+
+/** `getOrders` with orphan rows from other suites filtered out by NS prefix. */
+async function getOrdersNS(filters: Parameters<typeof getOrders>[1] = {}) {
+  const rows = await getOrders(ctx.client, filters);
+  return rows.filter((r) => r.company_name.startsWith(NS));
+}
+
+/**
+ * Reconstruct status counts from `getOrdersNS` so orphan rows seeded by other
+ * suites don't inflate the counts. The production `getOrderCountsByStatus`
+ * has no company filter, so we can't fence it server-side.
+ */
+async function countsByStatusNS(
+  filters: { serving_date_from?: Date; serving_date_to?: Date } = {},
+) {
+  const rows = await getOrdersNS(filters);
+  const counts = { pending: 0, confirmed: 0, fulfilled: 0, cancelled: 0 };
+  for (const r of rows) counts[r.status]++;
+  return counts;
+}
 
 async function seedCompany() {
   return createCompany(ctx.client, { name: uniqueName('Company') });
@@ -60,7 +89,9 @@ async function seedOrder(overrides: Partial<InsertOrder> = {}) {
 
 describe('getOrders', () => {
   it('returns an empty array when no orders exist', async () => {
-    expect(await getOrders(ctx.client)).toEqual([]);
+    // NS-scoped — orphan rows from a crashed `downstream-identical` run
+    // would otherwise bleed in via the shared `meals_test` DB.
+    expect(await getOrdersNS()).toEqual([]);
   });
 
   it('returns all orders when no filters applied', async () => {
@@ -195,8 +226,12 @@ describe('getOrders', () => {
   });
 
   it('returns results ordered by serving_date DESC then company name ASC', async () => {
-    const c1 = await createCompany(ctx.client, { name: 'AAA Company' });
-    const c2 = await createCompany(ctx.client, { name: 'ZZZ Company' });
+    // NS-prefix the names so they remain inside our fence AND still sort
+    // AAA-before-ZZZ (the prefix is identical for both so it drops out).
+    const aaaName = `${NS}AAA Company`;
+    const zzzName = `${NS}ZZZ Company`;
+    const c1 = await createCompany(ctx.client, { name: aaaName });
+    const c2 = await createCompany(ctx.client, { name: zzzName });
 
     await createOrder(ctx.client, {
       company_id: c2.id,
@@ -213,10 +248,10 @@ describe('getOrders', () => {
       shipment_date: new Date('2025-06-10'),
     });
 
-    const rows = await getOrders(ctx.client);
+    const rows = await getOrdersNS();
     const names = rows.map((r) => r.company_name);
-    const aaaIdx = names.indexOf('AAA Company');
-    const zzzIdx = names.indexOf('ZZZ Company');
+    const aaaIdx = names.indexOf(aaaName);
+    const zzzIdx = names.indexOf(zzzName);
 
     expect(aaaIdx).toBeLessThan(zzzIdx);
   });
@@ -293,7 +328,10 @@ describe('getOrderById', () => {
 
 describe('getOrderCountsByStatus', () => {
   it('returns zero counts for all statuses when no orders exist', async () => {
-    const counts = await getOrderCountsByStatus(ctx.client);
+    // NS-scoped reconstruction — the production API has no company filter,
+    // so orphan rows from the companion excel suites would otherwise inflate
+    // these counts.
+    const counts = await countsByStatusNS();
 
     expect(counts.pending).toBe(0);
     expect(counts.confirmed).toBe(0);
@@ -310,7 +348,7 @@ describe('getOrderCountsByStatus', () => {
     await confirmOrder(ctx.client, o3.id);
     await fulfillOrder(ctx.client, o3.id);
 
-    const counts = await getOrderCountsByStatus(ctx.client);
+    const counts = await countsByStatusNS();
 
     expect(counts.pending).toBe(1);
     expect(counts.confirmed).toBe(1);
@@ -336,7 +374,7 @@ describe('getOrderCountsByStatus', () => {
       shipment_date: new Date('2025-06-10'),
     });
 
-    const counts = await getOrderCountsByStatus(ctx.client, {
+    const counts = await countsByStatusNS({
       serving_date_from: new Date('2025-06-01'),
       serving_date_to: new Date('2025-06-30'),
     });

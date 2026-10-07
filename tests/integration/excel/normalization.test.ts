@@ -6,6 +6,7 @@ import { importOrdersFromRows } from '$lib/server/queries/imports';
 import { createCompany } from '$lib/server/queries/companies';
 import { createRecipe } from '$lib/server/queries/recipes';
 import { createTestContext } from '../core/helpers';
+import { registerCrashCleanup } from './_crash-cleanup';
 import type { ImportResult, ImportWarningCode } from '$lib/types';
 
 const FIXTURE_DIR = 'tests/integration/excel/fixtures';
@@ -16,8 +17,22 @@ const ctx = createTestContext();
 // seed one user per suite and pass its id instead of a bare string.
 const USER_ID = `excel-norm-user-${Date.now()}`;
 
+// Suite-level namespace prefix. Every per-describe `freshNamespace()` extends
+// this, so one crash-cleanup registration covers the whole file. `TN` is
+// distinct from `TDS` (downstream-identical) and `TRC` (real-client) so the
+// pre-cleanup here never touches other suites' live rows.
+const SUITE_PREFIX = `TN${Date.now()}_`;
+
 beforeAll(async () => {
   await ctx.setup();
+  // Pre-cleanup: previous crashed runs may have left `TN%` orphans behind,
+  // which would otherwise poison `core/orders.test.ts`'s empty assertions.
+  await ctx.pool.query(
+    `DELETE FROM "order" WHERE company_id IN (SELECT id FROM company WHERE name LIKE 'TN%')`,
+  );
+  await ctx.pool.query(`DELETE FROM recipe  WHERE name LIKE 'TN%'`);
+  await ctx.pool.query(`DELETE FROM company WHERE name LIKE 'TN%'`);
+  registerCrashCleanup(ctx.pool, 'TN');
   await ctx.pool.query(
     `INSERT INTO "user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
      VALUES ($1, 'Excel Norm Test', $2, true, 'user', now(), now())`,
@@ -25,8 +40,11 @@ beforeAll(async () => {
   );
 });
 afterAll(async () => {
-  await ctx.pool.query(`DELETE FROM "user" WHERE id = $1`, [USER_ID]);
-  await ctx.teardown();
+  // Guard each step — a partial beforeAll shouldn't block teardown.
+  try {
+    await ctx.pool.query(`DELETE FROM "user" WHERE id = $1`, [USER_ID]);
+  } catch { /* best effort */ }
+  try { await ctx.teardown(); } catch { /* best effort */ }
 });
 
 // ---------------------------------------------------------------------------
@@ -41,7 +59,10 @@ afterAll(async () => {
 
 let nsCounter = 0;
 function freshNamespace(): string {
-  return `T${Date.now()}${++nsCounter}_`;
+  // Extends SUITE_PREFIX so the crash-cleanup backstop covers every row
+  // this file ever seeds, including when `ctx.pool` ops bypass per-test
+  // rollback.
+  return `${SUITE_PREFIX}${++nsCounter}_`;
 }
 
 async function cleanupNamespace(ns: string): Promise<void> {

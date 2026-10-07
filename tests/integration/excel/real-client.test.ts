@@ -6,6 +6,7 @@ import { importOrdersFromRows } from '$lib/server/queries/imports';
 import { createCompany } from '$lib/server/queries/companies';
 import { createRecipe } from '$lib/server/queries/recipes';
 import { createTestContext } from '../core/helpers';
+import { registerCrashCleanup } from './_crash-cleanup';
 import type { ImportWarning, ImportWarningCode } from '$lib/types';
 
 const FIXTURE_DIR = 'tests/integration/excel/fixtures';
@@ -19,8 +20,19 @@ const ctx = createTestContext();
 // hits orders_created_by_fkey. One row covers both describe blocks.
 const USER_ID = `excel-rc-user-${Date.now()}`;
 
+// Suite-level namespace prefix — see normalization.test.ts for rationale.
+// `TRC` is distinct from `TDS` and `TN` so pre-cleanup never crosses suites.
+const SUITE_PREFIX = `TRC${Date.now()}_`;
+
 beforeAll(async () => {
   await ctx.setup();
+  // Pre-cleanup: scrub any `TRC%` orphans a prior crashed run left behind.
+  await ctx.pool.query(
+    `DELETE FROM "order" WHERE company_id IN (SELECT id FROM company WHERE name LIKE 'TRC%')`,
+  );
+  await ctx.pool.query(`DELETE FROM recipe  WHERE name LIKE 'TRC%'`);
+  await ctx.pool.query(`DELETE FROM company WHERE name LIKE 'TRC%'`);
+  registerCrashCleanup(ctx.pool, 'TRC');
   await ctx.pool.query(
     `INSERT INTO "user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
      VALUES ($1, 'Excel RC Test', $2, true, 'user', now(), now())`,
@@ -28,8 +40,10 @@ beforeAll(async () => {
   );
 });
 afterAll(async () => {
-  await ctx.pool.query(`DELETE FROM "user" WHERE id = $1`, [USER_ID]);
-  await ctx.teardown();
+  try {
+    await ctx.pool.query(`DELETE FROM "user" WHERE id = $1`, [USER_ID]);
+  } catch { /* best effort */ }
+  try { await ctx.teardown(); } catch { /* best effort */ }
 });
 
 // ---------------------------------------------------------------------------
@@ -45,8 +59,9 @@ afterAll(async () => {
 
 let nsCounter = 0;
 function freshNamespace(): string {
-  // Keep it short and prefix-matchable — rowCountNamespace() below sanity-checks it.
-  return `T${Date.now()}${++nsCounter}_`;
+  // Extends SUITE_PREFIX so the crash-cleanup backstop covers every row
+  // this file ever seeds.
+  return `${SUITE_PREFIX}${++nsCounter}_`;
 }
 
 async function cleanupNamespace(ns: string): Promise<void> {
