@@ -39,7 +39,18 @@ export function createTestContext(): TestContext {
 
   ctx.begin = async () => {
     ctx.client = await ctx.pool.connect();
-    await ctx.client.query('BEGIN');
+    // REPEATABLE READ, not the Postgres default READ COMMITTED. Vitest's
+    // default `pool: 'forks'` runs test files in parallel across workers,
+    // and the pollution-prone excel suites (downstream-identical,
+    // real-client, normalization) commit through `ctx.pool` *outside*
+    // any transaction. Under READ COMMITTED, every statement in this
+    // transaction gets a fresh snapshot, so a sibling worker's commit
+    // becomes visible mid-test — e.g. financials' `activeRecipeCount()`
+    // baseline and the paginated-margins `COUNT(*)` disagree by one.
+    // REPEATABLE READ pins the snapshot to `BEGIN`, so cross-worker
+    // commits are invisible for the test's lifetime. The rolled-back
+    // writes stay invisible to everyone else either way.
+    await ctx.client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
   };
 
   ctx.rollback = async () => {

@@ -51,8 +51,14 @@ async function seedOrderForDate(
     order_source: 'admin_manual',
     status,
     amount,
-    serving_date: new Date(servingDate),
-    shipment_date: new Date(servingDate),
+    // Pass the ISO string straight through. `new Date('2025-06-10')` parses
+    // as UTC midnight, but the pg driver serializes a `Date` using the
+    // client's local TZ (e.g. `2025-06-09 17:00-07`), and the subsequent
+    // `::date` cast keeps that local-TZ interpretation — so the row lands
+    // on the previous day. The DB column is `date`, so a plain ISO string
+    // round-trips as expected regardless of client TZ.
+    serving_date: servingDate,
+    shipment_date: servingDate,
   });
 }
 
