@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                serving_date::date  AS \"date!: NaiveDate\",\n                SUM(amount)::float8 AS \"total!: f64\"\n            FROM \"order\"\n            WHERE serving_date >= $1 AND serving_date <= $2\n              AND status != 'cancelled'\n            GROUP BY serving_date::date\n            ORDER BY 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 1,
+        "name": "total!: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "fef2f57f4bad980f68e497b94e0880475e2f4edda05c8949111f7a26ae855a36"
+}

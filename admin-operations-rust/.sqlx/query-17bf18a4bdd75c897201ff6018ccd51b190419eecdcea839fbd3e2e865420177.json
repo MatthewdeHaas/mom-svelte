@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            r.name                   AS \"name!\",\n            COUNT(o.id)              AS \"order_count!: i64\",\n            SUM(o.amount)::float8    AS \"total_amount!: f64\",\n            CASE\n              WHEN SUM(SUM(o.amount)) OVER () > 0\n              THEN ROUND((SUM(o.amount) / SUM(SUM(o.amount)) OVER ()) * 1000)::float8 / 10\n              ELSE 0::float8\n            END                      AS \"percent_of_total!: f64\"\n        FROM \"order\" o\n        JOIN recipe r ON r.id = o.recipe_id\n        WHERE o.serving_date >= $1 AND o.serving_date <= $2\n          AND o.status != 'cancelled'\n        GROUP BY r.id, r.name\n        ORDER BY 3 DESC\n        LIMIT $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "order_count!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_amount!: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 3,
+        "name": "percent_of_total!: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "17bf18a4bdd75c897201ff6018ccd51b190419eecdcea839fbd3e2e865420177"
+}

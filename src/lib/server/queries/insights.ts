@@ -1,5 +1,38 @@
 import type { Db } from '$lib/server/db';
 import type { OrderStatus, OrderSource } from '$lib/types';
+import {
+  useRustBackend,
+  internalJson,
+  filtersToQueryString,
+  type InternalCaller,
+} from './_rust-dispatch';
+
+// -------------------------------------------------------------
+// RUST DISPATCH
+//
+// Every exported function below takes an optional `caller`. When
+// passed AND `use_rust_backend_insights` is on for that caller, the
+// call forwards to the Rust service; otherwise the existing SQL
+// runs unchanged. Routes stay untouched in this commit — threading
+// `caller` into `/admin/insights/*` is a follow-up pass per the
+// menus / financials precedent.
+//
+// Insights is admin-only across the board. The 6 `/admin/insights/*`
+// routes and the admin landing-page KPI tile are already admin-gated
+// at the SvelteKit layer; the Rust handlers enforce it defensively
+// (`require_admin` → 403). No per-company override pathway.
+//
+// Wire-shape notes:
+//  - Every row contains only strings / numbers / date-strings; no
+//    `Date` fields to rehydrate. Rust emits `YYYY-MM-DD` strings for
+//    `VolumeSeries.date` and `AttendanceDayRate.date` via chrono-serde,
+//    matching the TS surface's existing `date: string` shape.
+//  - Rust's `KpiMetrics` struct serializes with `#[serde(rename_all =
+//    "camelCase")]` so wire keys (`totalMeals`, `activeCompanies`, …)
+//    land on the TS `KPIMetrics` interface shape directly. Status
+//    counts land as a nested object with lowercase status keys —
+//    identical to the TS `Record<OrderStatus, number>`.
+// -------------------------------------------------------------
 
 // -------------------------------------------------------------
 // TYPES
@@ -67,8 +100,19 @@ export async function getKPIMetrics(
   from: string,
   to: string,
   priorFrom: string,
-  priorTo: string
+  priorTo: string,
+  caller?: InternalCaller
 ): Promise<KPIMetrics> {
+  if (caller && (await useRustBackend('insights', caller))) {
+    const qs = filtersToQueryString({
+      from,
+      to,
+      prior_from: priorFrom,
+      prior_to: priorTo,
+    });
+    return internalJson<KPIMetrics>(`/api/insights/kpi${qs}`, caller);
+  }
+
   const [mealsResult, priorMealsResult, statusResult, companiesResult] = await Promise.all([
     db.query<{ total: string }>(
       `SELECT COALESCE(SUM(amount), 0) AS total
@@ -137,8 +181,14 @@ export async function getOrderVolumeSeries(
   db: Db,
   from: string,
   to: string,
-  granularity: 'daily' | 'weekly' = 'daily'
+  granularity: 'daily' | 'weekly' = 'daily',
+  caller?: InternalCaller
 ): Promise<VolumeSeries[]> {
+  if (caller && (await useRustBackend('insights', caller))) {
+    const qs = filtersToQueryString({ from, to, granularity });
+    return internalJson<VolumeSeries[]>(`/api/insights/volume${qs}`, caller);
+  }
+
   if (granularity === 'weekly') {
     const result = await db.query<{ date: string; total: string }>(
       `SELECT DATE_TRUNC('week', serving_date)::date::text AS date,
@@ -174,8 +224,14 @@ export async function getTopRecipes(
   db: Db,
   from: string,
   to: string,
-  limit: number = 10
+  limit: number = 10,
+  caller?: InternalCaller
 ): Promise<TopRecipe[]> {
+  if (caller && (await useRustBackend('insights', caller))) {
+    const qs = filtersToQueryString({ from, to, limit });
+    return internalJson<TopRecipe[]>(`/api/insights/top-recipes${qs}`, caller);
+  }
+
   const result = await db.query<{ name: string; order_count: string; total_amount: string }>(
     `SELECT r.name,
             COUNT(o.id) AS order_count,
@@ -214,8 +270,14 @@ export async function getTopRecipes(
 export async function getCompanyBreakdown(
   db: Db,
   from: string,
-  to: string
+  to: string,
+  caller?: InternalCaller
 ): Promise<CompanyBreakdown[]> {
+  if (caller && (await useRustBackend('insights', caller))) {
+    const qs = filtersToQueryString({ from, to });
+    return internalJson<CompanyBreakdown[]>(`/api/insights/companies${qs}`, caller);
+  }
+
   const result = await db.query<{ name: string; total_amount: string; order_count: string }>(
     `SELECT c.name,
             SUM(o.amount) AS total_amount,
@@ -243,8 +305,14 @@ export async function getCompanyBreakdown(
 export async function getSourceMix(
   db: Db,
   from: string,
-  to: string
+  to: string,
+  caller?: InternalCaller
 ): Promise<SourceMix[]> {
+  if (caller && (await useRustBackend('insights', caller))) {
+    const qs = filtersToQueryString({ from, to });
+    return internalJson<SourceMix[]>(`/api/insights/source-mix${qs}`, caller);
+  }
+
   const result = await db.query<{ order_source: OrderSource; total_amount: string; order_count: string }>(
     `SELECT order_source,
             SUM(amount) AS total_amount,
@@ -270,8 +338,14 @@ export async function getSourceMix(
 export async function getIngredientDemand(
   db: Db,
   from: string,
-  to: string
+  to: string,
+  caller?: InternalCaller
 ): Promise<IngredientDemand[]> {
+  if (caller && (await useRustBackend('insights', caller))) {
+    const qs = filtersToQueryString({ from, to });
+    return internalJson<IngredientDemand[]>(`/api/insights/ingredients${qs}`, caller);
+  }
+
   const result = await db.query<{
     name: string;
     total_amount: string;
@@ -311,8 +385,14 @@ export async function getIngredientDemand(
 export async function getAttendanceRate(
   db: Db,
   from: string,
-  to: string
+  to: string,
+  caller?: InternalCaller
 ): Promise<AttendanceDayRate[]> {
+  if (caller && (await useRustBackend('insights', caller))) {
+    const qs = filtersToQueryString({ from, to });
+    return internalJson<AttendanceDayRate[]>(`/api/insights/attendance${qs}`, caller);
+  }
+
   const result = await db.query<{
     date: string;
     attending: string;
@@ -350,8 +430,17 @@ export async function getAttendanceRate(
 export async function getAttendanceByCompany(
   db: Db,
   from: string,
-  to: string
+  to: string,
+  caller?: InternalCaller
 ): Promise<AttendanceByCompany[]> {
+  if (caller && (await useRustBackend('insights', caller))) {
+    const qs = filtersToQueryString({ from, to });
+    return internalJson<AttendanceByCompany[]>(
+      `/api/insights/attendance-by-company${qs}`,
+      caller
+    );
+  }
+
   const result = await db.query<{
     company_name: string;
     attending: string;

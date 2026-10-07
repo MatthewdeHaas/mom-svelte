@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                DATE_TRUNC('week', serving_date)::date AS \"date!: NaiveDate\",\n                SUM(amount)::float8                    AS \"total!: f64\"\n            FROM \"order\"\n            WHERE serving_date >= $1 AND serving_date <= $2\n              AND status != 'cancelled'\n            GROUP BY DATE_TRUNC('week', serving_date)\n            ORDER BY 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 1,
+        "name": "total!: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "7851a6ac0c21ecc051ebb57b6f2c56993dd67c7c8ef3e9ba6dbed723cc7a97cb"
+}

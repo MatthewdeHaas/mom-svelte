@@ -1,0 +1,61 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH current_window AS (\n            SELECT\n                COALESCE(SUM(amount) FILTER (WHERE status != 'cancelled'), 0)::float8\n                    AS total_meals,\n                COUNT(*) FILTER (WHERE status = 'pending')   AS pending,\n                COUNT(*) FILTER (WHERE status = 'confirmed') AS confirmed,\n                COUNT(*) FILTER (WHERE status = 'fulfilled') AS fulfilled,\n                COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,\n                COUNT(DISTINCT company_id) FILTER (WHERE status != 'cancelled')\n                    AS active_companies\n            FROM \"order\"\n            WHERE serving_date >= $1 AND serving_date <= $2\n        ),\n        prior_window AS (\n            SELECT\n                COALESCE(SUM(amount) FILTER (WHERE status != 'cancelled'), 0)::float8\n                    AS total_meals_prior\n            FROM \"order\"\n            WHERE serving_date >= $3 AND serving_date <= $4\n        )\n        SELECT\n            c.total_meals        AS \"total_meals!: f64\",\n            p.total_meals_prior  AS \"total_meals_prior!: f64\",\n            c.pending            AS \"pending!: i64\",\n            c.confirmed          AS \"confirmed!: i64\",\n            c.fulfilled          AS \"fulfilled!: i64\",\n            c.cancelled          AS \"cancelled!: i64\",\n            c.active_companies   AS \"active_companies!: i64\"\n        FROM current_window c, prior_window p\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_meals!: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 1,
+        "name": "total_meals_prior!: f64",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 2,
+        "name": "pending!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "confirmed!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "fulfilled!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "cancelled!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "active_companies!: i64",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "980cd1ce1b5d8e6d82d4ae101d4c68237e58688358547d9c3b21c6fa2850737e"
+}

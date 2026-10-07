@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            a.serving_date::date                            AS \"date!: NaiveDate\",\n            COUNT(*) FILTER (WHERE a.attending = true)      AS \"attending!: i64\",\n            COUNT(*)                                        AS \"total!: i64\",\n            ROUND(\n              COUNT(*) FILTER (WHERE a.attending = true)::numeric\n              / NULLIF(COUNT(*), 0) * 100, 1\n            )::float8                                        AS \"rate!: f64\"\n        FROM attendance a\n        JOIN person p ON p.id = a.person_id\n        WHERE a.serving_date >= $1 AND a.serving_date <= $2\n          AND p.active = true\n        GROUP BY a.serving_date::date\n        ORDER BY 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 1,
+        "name": "attending!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "total!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "rate!: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "7e4ec9d053cea5dfe7cfb2986cb1fd440b94a4c21ba858b3785c5e66026b7177"
+}

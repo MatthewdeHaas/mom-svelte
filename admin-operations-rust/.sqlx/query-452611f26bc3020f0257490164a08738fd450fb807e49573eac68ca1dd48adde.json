@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            c.name                                          AS \"company_name!\",\n            COUNT(*) FILTER (WHERE a.attending = true)      AS \"attending!: i64\",\n            COUNT(*)                                        AS \"total!: i64\",\n            ROUND(\n              COUNT(*) FILTER (WHERE a.attending = true)::numeric\n              / NULLIF(COUNT(*), 0) * 100, 1\n            )::float8                                        AS \"rate!: f64\"\n        FROM attendance a\n        JOIN person p  ON p.id = a.person_id\n        JOIN company c ON c.id = p.company_id\n        WHERE a.serving_date >= $1 AND a.serving_date <= $2\n          AND p.active = true\n        GROUP BY c.id, c.name\n        ORDER BY 4 DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "company_name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "attending!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "total!: i64",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "rate!: f64",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "452611f26bc3020f0257490164a08738fd450fb807e49573eac68ca1dd48adde"
+}

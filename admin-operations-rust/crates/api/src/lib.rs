@@ -19,6 +19,7 @@ pub mod flags_handler;
 pub mod health;
 pub mod import;
 pub mod ingredients;
+pub mod insights;
 pub mod invites;
 pub mod menus;
 pub mod orders;
@@ -256,6 +257,21 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/menus/:id/slots/by-coord",
             get(menus::get_slot),
+        )
+        // Insights surface — mirrors `src/lib/server/queries/insights.ts`.
+        // Admin-only across the board; all 8 endpoints enforce
+        // `require_admin` defensively (the /admin/insights SvelteKit
+        // routes are already admin-gated upstream).
+        .route("/insights/kpi", get(insights::kpi))
+        .route("/insights/volume", get(insights::volume))
+        .route("/insights/top-recipes", get(insights::top_recipes))
+        .route("/insights/companies", get(insights::companies))
+        .route("/insights/source-mix", get(insights::source_mix))
+        .route("/insights/ingredients", get(insights::ingredients))
+        .route("/insights/attendance", get(insights::attendance))
+        .route(
+            "/insights/attendance-by-company",
+            get(insights::attendance_by_company),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),
