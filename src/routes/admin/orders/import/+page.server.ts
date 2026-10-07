@@ -3,7 +3,8 @@ import type { Actions, PageServerLoad } from './$types';
 import { pool } from '$lib/server/db';
 import { parseExcelBufferAsyncWithMeta } from '$lib/excel/parse';
 import { importOrdersFromRows } from '$lib/server/queries/imports';
-import { internalFetch, internalJson, type InternalCaller } from '$lib/server/api-client';
+import { internalFetch, type InternalCaller } from '$lib/server/api-client';
+import { useRustBackend } from '$lib/server/queries/_rust-dispatch';
 import type { ImportResult } from '$lib/types';
 import logger from '$lib/server/logger';
 
@@ -56,6 +57,13 @@ export const actions: Actions = {
     // `ImportResult` into the same shape the TS path returns.
     // The TS path stays live underneath so a flag flip reverts
     // instantly to the known-good importer.
+    //
+    // Unlike the dispatcher-plumbed domains, imports forwards at
+    // the ROUTE level — `importOrdersFromRows` consumes already-
+    // parsed rows, so by the time control reaches the query layer
+    // the multipart bytes are gone. The `useRustBackend` helper
+    // still owns the 30s per-caller cache + fail-closed semantics
+    // so one dead-Rust session doesn't HMAC-check N times.
     // ----------------------------------------------------------
     const caller: InternalCaller = {
       userId: locals.user.id,
@@ -63,19 +71,7 @@ export const actions: Actions = {
       companyId: locals.user.companyId ?? null,
     };
 
-    let useRust = false;
-    try {
-      const r = await internalJson<{ enabled: boolean }>('/api/flags/check', caller, {
-        method: 'POST',
-        body: JSON.stringify({ name: 'use_rust_backend_imports' }),
-      });
-      useRust = r.enabled;
-    } catch (err) {
-      // Flag check failures must NOT block imports — fall back to
-      // the TS path and log for ops. Rust unreachable → TS still works.
-      logger.warn({ err }, 'flag check failed; falling back to TS importer');
-    }
-
+    const useRust = await useRustBackend('imports', caller);
     if (useRust) {
       try {
         const forward = new FormData();
