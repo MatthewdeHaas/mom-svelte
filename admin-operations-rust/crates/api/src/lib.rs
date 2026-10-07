@@ -20,6 +20,7 @@ pub mod health;
 pub mod import;
 pub mod ingredients;
 pub mod invites;
+pub mod menus;
 pub mod orders;
 pub mod persons;
 pub mod recipe_imports;
@@ -228,6 +229,34 @@ pub fn router(state: AppState) -> Router {
             get(financials::recipe_margins_paginated),
         )
         .route("/financials/invoice", get(financials::invoice))
+        // Menus surface — mirrors `src/lib/server/queries/menus.ts`.
+        // Order matters: literal paths (`/with-recipes`, `/active-for-date`)
+        // register before `/:id` or axum tries to parse "with-recipes" as a
+        // UUID. The `/:id/slots/clear` sub-route is distinct from
+        // `/:id/slots` by HTTP shape (POST with body vs PUT); axum
+        // dispatches on method, so order among these doesn't matter.
+        .route("/menus", get(menus::list).post(menus::create))
+        .route("/menus/with-recipes", get(menus::list_with_recipes))
+        .route("/menus/active-for-date", get(menus::active_for_date))
+        .route(
+            "/menus/:id",
+            get(menus::get_by_id).patch(menus::update),
+        )
+        .route(
+            "/menus/:id/with-recipes",
+            get(menus::get_with_recipes),
+        )
+        .route("/menus/:id/recipes", get(menus::get_menu_recipes))
+        .route("/menus/:id/deactivate", post(menus::deactivate))
+        .route(
+            "/menus/:id/slots",
+            post(menus::set_slot).put(menus::set_all_slots),
+        )
+        .route("/menus/:id/slots/clear", post(menus::clear_slot))
+        .route(
+            "/menus/:id/slots/by-coord",
+            get(menus::get_slot),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::verify_internal_auth,

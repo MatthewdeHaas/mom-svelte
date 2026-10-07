@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id         AS \"id!: Uuid\",\n                name       AS \"name!\",\n                is_active  AS \"is_active!\",\n                start_date AS \"start_date!: NaiveDate\",\n                end_date   AS \"end_date!: NaiveDate\",\n                created_at AS \"created_at!: DateTime<Utc>\"\n            FROM menu\n            WHERE is_active = TRUE\n            ORDER BY start_date DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "is_active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "start_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dce8e4e1b48f002e0ef1a89cea4478bba55587206bcc556279a9fbc816ae423a"
+}

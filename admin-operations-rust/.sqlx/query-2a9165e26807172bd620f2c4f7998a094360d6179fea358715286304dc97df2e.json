@@ -1,0 +1,55 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO menu (name, is_active, start_date, end_date)\n        VALUES ($1, $2, $3, $4)\n        RETURNING\n            id         AS \"id!: Uuid\",\n            name       AS \"name!\",\n            is_active  AS \"is_active!\",\n            start_date AS \"start_date!: NaiveDate\",\n            end_date   AS \"end_date!: NaiveDate\",\n            created_at AS \"created_at!: DateTime<Utc>\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "is_active!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "start_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_date!: NaiveDate",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bool",
+        "Date",
+        "Date"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2a9165e26807172bd620f2c4f7998a094360d6179fea358715286304dc97df2e"
+}

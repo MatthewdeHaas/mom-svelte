@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM menu_recipe\n        WHERE menu_id       = $1\n          AND cycle_week    = $2\n          AND day_of_week   = $3\n          AND meal_category = $4\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int2",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "80544860675a59d91f44e23b61ad20c7de59f79439397c431710ab733df811c2"
+}

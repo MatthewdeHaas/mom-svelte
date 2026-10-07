@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO menu_recipe (menu_id, recipe_id, cycle_week, day_of_week, meal_category)\n        VALUES ($1, $2, $3, $4, $5)\n        ON CONFLICT (menu_id, cycle_week, day_of_week, meal_category)\n        DO UPDATE SET recipe_id = EXCLUDED.recipe_id\n        RETURNING\n            id            AS \"id!: Uuid\",\n            menu_id       AS \"menu_id!: Uuid\",\n            recipe_id     AS \"recipe_id!: Uuid\",\n            cycle_week    AS \"cycle_week!: i16\",\n            day_of_week   AS \"day_of_week!\",\n            meal_category AS \"meal_category!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "menu_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "recipe_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "cycle_week!: i16",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 4,
+        "name": "day_of_week!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "meal_category!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int2",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7df27d073d6d051acca9ebf0cef74e7f62fc92dad57030797a9f0f66d11329c7"
+}

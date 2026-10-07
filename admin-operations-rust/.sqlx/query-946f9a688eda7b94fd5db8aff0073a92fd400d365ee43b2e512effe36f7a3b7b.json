@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            mr.id            AS \"id!: Uuid\",\n            mr.menu_id       AS \"menu_id!: Uuid\",\n            mr.recipe_id     AS \"recipe_id!: Uuid\",\n            mr.cycle_week    AS \"cycle_week!: i16\",\n            mr.day_of_week   AS \"day_of_week!\",\n            mr.meal_category AS \"meal_category!\",\n            r.name           AS \"recipe_name!\",\n            r.active         AS \"recipe_active!\"\n        FROM menu_recipe mr\n        JOIN recipe r ON r.id = mr.recipe_id\n        WHERE mr.menu_id = $1\n        ORDER BY mr.cycle_week ASC, mr.day_of_week ASC, mr.meal_category ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "menu_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "recipe_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "cycle_week!: i16",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 4,
+        "name": "day_of_week!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "meal_category!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "recipe_name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "recipe_active!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "946f9a688eda7b94fd5db8aff0073a92fd400d365ee43b2e512effe36f7a3b7b"
+}

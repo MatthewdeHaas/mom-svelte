@@ -10,6 +10,93 @@ import type {
   DayOfWeek,
 } from '$lib/types';
 import type { Db } from '$lib/server/db';
+import {
+  useRustBackend,
+  internalJson,
+  isInternalApiError,
+  filtersToQueryString,
+  normalizeBody,
+  type InternalCaller,
+} from './_rust-dispatch';
+
+// -------------------------------------------------------------
+// RUST DISPATCH
+//
+// Every exported function below takes an optional `caller`. When
+// passed AND `use_rust_backend_menus` is on for that caller, the
+// call forwards to the Rust service; otherwise the existing SQL
+// runs unchanged. Routes stay untouched in this commit — threading
+// `caller` into `src/routes/admin/menus/*` and the client menu view
+// is a follow-up pass per the recipes precedent.
+//
+// Menus are GLOBAL master data (no company scoping). Reads are
+// unrestricted (clients consume them for the menu view and new-order
+// picker); every mutation returns 403 for client callers. The Rust
+// handlers enforce this; the dispatcher only needs to forward.
+//
+// Wire-shape normalisation:
+//  - `Menu` carries `start_date` / `end_date` / `created_at` which the
+//    pg driver maps to `Date`. Rust emits them as ISO strings
+//    (`YYYY-MM-DD` for the two dates, full ISO-8601 for the timestamp).
+//    `tests/integration/core/menus.test.ts` asserts
+//    `instanceof Date` on all three — so we rehydrate every row coming
+//    off the wire before returning it.
+//  - `MenuWithRecipes` nests slot rows under `recipe`, but those rows
+//    are pure strings / numbers / UUIDs — no Date fields to hydrate.
+//    Only the menu-level dates need rehydration.
+//  - Date filters / body dates on create/update are sent as ISO
+//    date-only via `normalizeBody` to keep the Rust `NaiveDate` parser
+//    happy. The `getActiveMenuForDate` query param goes through
+//    `filtersToQueryString` which produces the same ISO format.
+// -------------------------------------------------------------
+
+/**
+ * 404-aware wrapper. The TS SQL path returns `null` on miss for
+ * single-row reads/mutations; the Rust path returns 404. Translate so
+ * the dispatcher is behaviourally transparent.
+ */
+async function internalJsonOrNull<T>(
+  path: string,
+  caller: InternalCaller,
+  opts?: Parameters<typeof internalJson>[2]
+): Promise<T | null> {
+  try {
+    return await internalJson<T>(path, caller, opts);
+  } catch (err) {
+    if (isInternalApiError(err) && err.status === 404) return null;
+    throw err;
+  }
+}
+
+/** Narrow a wire string to a `Date`. Idempotent for `Date` inputs. */
+function isoToDate(iso: unknown): Date {
+  if (iso instanceof Date) return iso;
+  return new Date(iso as string);
+}
+
+/**
+ * Rehydrate the three Date fields on a menu row. Matches the pg
+ * driver's shape so callers can't tell SQL and Rust paths apart.
+ */
+function hydrateMenu<T extends { start_date: unknown; end_date: unknown; created_at: unknown }>(
+  row: T
+): T {
+  return {
+    ...row,
+    start_date: isoToDate(row.start_date),
+    end_date: isoToDate(row.end_date),
+    created_at: isoToDate(row.created_at),
+  };
+}
+
+/**
+ * Rehydrate a nested `MenuWithRecipes`. Only the parent-level dates
+ * need touching — slot rows under `recipe` are pure data (UUIDs,
+ * strings, numbers) and pass through as-is.
+ */
+function hydrateMenuWithRecipes(row: MenuWithRecipes): MenuWithRecipes {
+  return hydrateMenu(row);
+}
 
 // -------------------------------------------------------------
 // READ
@@ -17,8 +104,15 @@ import type { Db } from '$lib/server/db';
 
 export async function getMenus(
   db: Db,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<Menu[]> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    const rows = await internalJson<Menu[]>(`/api/menus${qs}`, caller);
+    return rows.map(hydrateMenu);
+  }
+
   const result = await db.query<Menu>(
     `SELECT id, name, is_active, start_date, end_date, created_at
      FROM menu
@@ -31,8 +125,15 @@ export async function getMenus(
 export async function getMenuById(
   db: Db,
   id: string,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<Menu | null> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    const row = await internalJsonOrNull<Menu>(`/api/menus/${id}${qs}`, caller);
+    return row ? hydrateMenu(row) : null;
+  }
+
   const result = await db.query<Menu>(
     `SELECT id, name, is_active, start_date, end_date, created_at
      FROM menu
@@ -46,8 +147,18 @@ export async function getMenuById(
 export async function getMenuWithRecipes(
   db: Db,
   id: string,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<MenuWithRecipes | null> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    const row = await internalJsonOrNull<MenuWithRecipes>(
+      `/api/menus/${id}/with-recipes${qs}`,
+      caller
+    );
+    return row ? hydrateMenuWithRecipes(row) : null;
+  }
+
   const menu = await getMenuById(db, id, opts);
   if (!menu) return null;
 
@@ -59,8 +170,18 @@ export async function getMenuWithRecipes(
 // page where you want to show slot counts or recipe names at a glance.
 export async function getMenusWithRecipes(
   db: Db,
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean } = {},
+  caller?: InternalCaller
 ): Promise<MenuWithRecipes[]> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const qs = filtersToQueryString({ include_inactive: opts.includeInactive });
+    const rows = await internalJson<MenuWithRecipes[]>(
+      `/api/menus/with-recipes${qs}`,
+      caller
+    );
+    return rows.map(hydrateMenuWithRecipes);
+  }
+
   const menu = await getMenus(db, opts);
   if (menu.length === 0) return [];
 
@@ -107,7 +228,15 @@ export async function getMenusWithRecipes(
 }
 
 // Returns all recipe slots for a given menu, ordered for display.
-export async function getMenuRecipes(db: Db, menuId: string): Promise<MenuRecipeWithName[]> {
+export async function getMenuRecipes(
+  db: Db,
+  menuId: string,
+  caller?: InternalCaller
+): Promise<MenuRecipeWithName[]> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    return internalJson<MenuRecipeWithName[]>(`/api/menus/${menuId}/recipes`, caller);
+  }
+
   const result = await db.query<MenuRecipeWithName>(
     `SELECT
        mr.id,
@@ -129,7 +258,17 @@ export async function getMenuRecipes(db: Db, menuId: string): Promise<MenuRecipe
 
 // Returns the active menu covering a given date, if one exists.
 // Used by the order creation flow to suggest the relevant menu.
-export async function getActiveMenuForDate(db: Db, date: Date): Promise<Menu | null> {
+export async function getActiveMenuForDate(
+  db: Db,
+  date: Date,
+  caller?: InternalCaller
+): Promise<Menu | null> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const qs = filtersToQueryString({ date });
+    const row = await internalJsonOrNull<Menu>(`/api/menus/active-for-date${qs}`, caller);
+    return row ? hydrateMenu(row) : null;
+  }
+
   const result = await db.query<Menu>(
     `SELECT id, name, is_active, start_date, end_date, created_at
      FROM menu
@@ -150,8 +289,21 @@ export async function getMenuSlot(
   menuId: string,
   cycleWeek: number,
   dayOfWeek: DayOfWeek,
-  mealCategory: string
+  mealCategory: string,
+  caller?: InternalCaller
 ): Promise<MenuRecipeWithName | null> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const qs = filtersToQueryString({
+      cycle_week: cycleWeek,
+      day_of_week: dayOfWeek,
+      meal_category: mealCategory,
+    });
+    return internalJsonOrNull<MenuRecipeWithName>(
+      `/api/menus/${menuId}/slots/by-coord${qs}`,
+      caller
+    );
+  }
+
   const result = await db.query<MenuRecipeWithName>(
     `SELECT
        mr.id,
@@ -177,7 +329,19 @@ export async function getMenuSlot(
 // WRITE
 // -------------------------------------------------------------
 
-export async function createMenu(db: Db, data: InsertMenu): Promise<Menu> {
+export async function createMenu(
+  db: Db,
+  data: InsertMenu,
+  caller?: InternalCaller
+): Promise<Menu> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const row = await internalJson<Menu>('/api/menus', caller, {
+      method: 'POST',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+    return hydrateMenu(row);
+  }
+
   const result = await db.query<Menu>(
     `INSERT INTO menu (name, is_active, start_date, end_date)
      VALUES ($1, $2, $3, $4)
@@ -190,8 +354,17 @@ export async function createMenu(db: Db, data: InsertMenu): Promise<Menu> {
 export async function updateMenu(
   db: Db,
   id: string,
-  data: UpdateMenu
+  data: UpdateMenu,
+  caller?: InternalCaller
 ): Promise<Menu | null> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const row = await internalJsonOrNull<Menu>(`/api/menus/${id}`, caller, {
+      method: 'PATCH',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+    return row ? hydrateMenu(row) : null;
+  }
+
   const result = await db.query<Menu>(
     `UPDATE menu
      SET
@@ -212,7 +385,18 @@ export async function updateMenu(
   return result.rows[0] ?? null;
 }
 
-export async function deactivateMenu(db: Db, id: string): Promise<Menu | null> {
+export async function deactivateMenu(
+  db: Db,
+  id: string,
+  caller?: InternalCaller
+): Promise<Menu | null> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const row = await internalJsonOrNull<Menu>(`/api/menus/${id}/deactivate`, caller, {
+      method: 'POST',
+    });
+    return row ? hydrateMenu(row) : null;
+  }
+
   return updateMenu(db, id, { is_active: false });
 }
 
@@ -225,8 +409,16 @@ export async function deactivateMenu(db: Db, id: string): Promise<Menu | null> {
 // so assigning a new recipe to an occupied slot replaces it cleanly.
 export async function setMenuSlot(
   client: Pool | PoolClient,
-  data: InsertMenuRecipe
+  data: InsertMenuRecipe,
+  caller?: InternalCaller
 ): Promise<MenuRecipe> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    return internalJson<MenuRecipe>(`/api/menus/${data.menu_id}/slots`, caller, {
+      method: 'POST',
+      body: JSON.stringify(normalizeBody(data as unknown as Record<string, unknown>)),
+    });
+  }
+
   const result = await client.query<MenuRecipe>(
     `INSERT INTO menu_recipe (menu_id, recipe_id, cycle_week, day_of_week, meal_category)
      VALUES ($1, $2, $3, $4, $5)
@@ -243,8 +435,25 @@ export async function clearMenuSlot(
   menuId: string,
   cycleWeek: number,
   dayOfWeek: DayOfWeek,
-  mealCategory: string
+  mealCategory: string,
+  caller?: InternalCaller
 ): Promise<boolean> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    const resp = await internalJson<{ cleared: boolean }>(
+      `/api/menus/${menuId}/slots/clear`,
+      caller,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          cycle_week: cycleWeek,
+          day_of_week: dayOfWeek,
+          meal_category: mealCategory,
+        }),
+      }
+    );
+    return resp.cleared;
+  }
+
   const result = await client.query(
     `DELETE FROM menu_recipe
      WHERE menu_id       = $1
@@ -261,8 +470,19 @@ export async function clearMenuSlot(
 export async function setAllMenuSlots(
   client: Pool | PoolClient,
   menuId: string,
-  slots: InsertMenuRecipe[]
+  slots: InsertMenuRecipe[],
+  caller?: InternalCaller
 ): Promise<void> {
+  if (caller && (await useRustBackend('menus', caller))) {
+    await internalJson<void>(`/api/menus/${menuId}/slots`, caller, {
+      method: 'PUT',
+      body: JSON.stringify({
+        slots: slots.map((s) => normalizeBody(s as unknown as Record<string, unknown>)),
+      }),
+    });
+    return;
+  }
+
   await client.query(
     `DELETE FROM menu_recipe WHERE menu_id = $1`,
     [menuId]

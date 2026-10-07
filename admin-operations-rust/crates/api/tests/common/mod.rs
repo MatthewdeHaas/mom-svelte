@@ -51,6 +51,9 @@ pub mod allergens;
 // Person-domain seed helpers (persons, allergen attachments, attendance seeds).
 pub mod persons;
 
+// Menu-domain seed helpers (menus + slot seeds; recipe seeding reused inline).
+pub mod menus;
+
 // Recipe-import xlsx fixture builder (in-memory .xlsx via rust_xlsxwriter).
 pub mod fixtures_recipes;
 
