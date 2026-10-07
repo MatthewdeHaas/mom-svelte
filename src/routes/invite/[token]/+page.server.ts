@@ -1,6 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { pool } from '$lib/server/db';
 import { getInviteByToken, markInviteUsed } from '$lib/server/queries/invites';
+import { internalJson, type InternalCaller } from '$lib/server/queries/_rust-dispatch';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -31,10 +32,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     redirect(302, '/client');
   }
 
-  // Stamp the company_id directly on the user row
-  await pool.query(
-    `UPDATE "user" SET company_id = $1 WHERE id = $2`,
-    [invite.company_id, locals.user.id]
+  // Stamp company_id via the Rust service. The handler enforces
+  // "client self-assign only when companyId is None" — which is
+  // exactly the invariant the above conflict/already-set checks
+  // establish. Belt and braces: route check + handler check.
+  const caller: InternalCaller = {
+    userId: locals.user.id,
+    role: locals.user.role as 'admin' | 'client',
+    companyId: locals.user.companyId ?? null,
+  };
+  await internalJson(
+    `/api/users/${locals.user.id}/assign-company`,
+    caller,
+    { method: 'POST', body: JSON.stringify({ company_id: invite.company_id }) },
   );
   await markInviteUsed(pool, invite.id);
 

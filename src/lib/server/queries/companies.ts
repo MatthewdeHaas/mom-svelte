@@ -205,7 +205,7 @@ export async function getUsersByCompany(
     company_created_at: Date;
   }>(
     `SELECT
-       u.id, u.company_id, u.email, u.role, u."createdAt" AS created_at,
+       u.id, u.company_id, u.email, u.name, u.role, u."createdAt" AS created_at,
        c.name              AS company_name,
        c.contact_email     AS company_contact_email,
        c.phone             AS company_phone,
@@ -223,6 +223,7 @@ export async function getUsersByCompany(
     id: row.id,
     company_id: row.company_id,
     email: row.email,
+    name: row.name,
     role: row.role,
     created_at: row.created_at,
     company: {

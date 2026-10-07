@@ -540,7 +540,21 @@ pub async fn get_attendance_by_date(
     company_id: Uuid,
     serving_date: NaiveDate,
 ) -> Result<Vec<AttendanceWithPersonRow>, sqlx::Error> {
-    let rows = sqlx::query!(
+    // Named row struct so the macro's row type isn't anonymous —
+    // rustc 1.99.0's never-type fallback (issue #156047) otherwise
+    // collapses the inferred type to `!` across the downstream chain.
+    struct AttendanceAggRow {
+        id: Uuid,
+        person_id: Uuid,
+        serving_date: NaiveDate,
+        attending: bool,
+        person_name: String,
+        person_active: bool,
+        allergen_ids: Option<Vec<Uuid>>,
+        allergen_names: Option<Vec<String>>,
+    }
+    let rows: Vec<AttendanceAggRow> = sqlx::query_as!(
+        AttendanceAggRow,
         r#"
         SELECT
             att.id            AS "id!: Uuid",
@@ -571,7 +585,7 @@ pub async fn get_attendance_by_date(
         .map(|r| {
             let ids = r.allergen_ids.unwrap_or_default();
             let names = r.allergen_names.unwrap_or_default();
-            let allergen = ids
+            let allergen: Vec<AllergenEmbed> = ids
                 .into_iter()
                 .zip(names.into_iter())
                 .map(|(id, name)| AllergenEmbed { id, name })

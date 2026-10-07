@@ -59,6 +59,7 @@ export interface User {
   id: string;           // Better Auth string UUID
   company_id: string | null;
   email: string;
+  name: string;
   role: UserRole;
   created_at: Date;
 }

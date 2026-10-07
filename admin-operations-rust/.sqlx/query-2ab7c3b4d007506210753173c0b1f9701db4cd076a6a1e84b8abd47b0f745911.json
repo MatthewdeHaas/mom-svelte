@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            u.id                 AS \"id!\",\n            u.company_id         AS \"company_id?: Uuid\",\n            u.email              AS \"email!\",\n            u.role               AS \"role?\",\n            u.\"createdAt\"        AS \"created_at!: DateTime<Utc>\",\n            c.id                 AS \"company_pk!: Uuid\",\n            c.name               AS \"company_name!\",\n            c.contact_email      AS \"company_contact_email?\",\n            c.phone              AS \"company_phone?\",\n            c.shipping_address   AS \"company_shipping_address?\",\n            c.active             AS \"company_active!\",\n            c.created_at         AS \"company_created_at!: DateTime<Utc>\"\n        FROM \"user\" u\n        JOIN company c ON c.id = u.company_id\n        WHERE u.company_id = $1\n        ORDER BY u.email ASC\n        ",
+  "query": "\n        SELECT\n            u.id                 AS \"id!\",\n            u.company_id         AS \"company_id?: Uuid\",\n            u.email              AS \"email!\",\n            u.name               AS \"name!\",\n            u.role               AS \"role?\",\n            u.\"createdAt\"        AS \"created_at!: DateTime<Utc>\",\n            c.id                 AS \"company_pk!: Uuid\",\n            c.name               AS \"company_name!\",\n            c.contact_email      AS \"company_contact_email?\",\n            c.phone              AS \"company_phone?\",\n            c.shipping_address   AS \"company_shipping_address?\",\n            c.active             AS \"company_active!\",\n            c.created_at         AS \"company_created_at!: DateTime<Utc>\"\n        FROM \"user\" u\n        JOIN company c ON c.id = u.company_id\n        WHERE u.company_id = $1\n        ORDER BY u.email ASC\n        ",
   "describe": {
     "columns": [
       {
@@ -20,46 +20,51 @@
       },
       {
         "ordinal": 3,
-        "name": "role?",
+        "name": "name!",
         "type_info": "Text"
       },
       {
         "ordinal": 4,
+        "name": "role?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "company_pk!: Uuid",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "company_name!",
         "type_info": "Text"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "company_contact_email?",
         "type_info": "Text"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "company_phone?",
         "type_info": "Text"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "company_shipping_address?",
         "type_info": "Text"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "company_active!",
         "type_info": "Bool"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "company_created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
@@ -73,6 +78,7 @@
       false,
       true,
       false,
+      false,
       true,
       false,
       false,
@@ -84,5 +90,5 @@
       false
     ]
   },
-  "hash": "ba4ea7a5053bd74966a2c6ac00b08dd81da894a58243782baa97e5c06ede8919"
+  "hash": "2ab7c3b4d007506210753173c0b1f9701db4cd076a6a1e84b8abd47b0f745911"
 }

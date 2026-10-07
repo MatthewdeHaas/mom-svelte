@@ -1,9 +1,19 @@
+/**
+ * Users table reads/writes forward to the Rust service — see
+ * `admin-operations-rust/crates/db/src/queries/users.rs`. Better
+ * Auth internal-adapter calls (`createUser`, `linkAccount`,
+ * `createAccount`, `updatePassword`, `findAccounts`) stay in TS
+ * because `auth.$context` is a server-side Node API, not an HTTP
+ * surface. Scope line: this route owns the auth stack; the Rust
+ * service owns the data layer.
+ */
 import { fail, error, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import type { Actions, PageServerLoad } from './$types';
 import {
   getCompanyById,
+  getUsersByCompany,
   updateCompany,
   deactivateCompany,
 } from '$lib/server/queries/companies';
@@ -14,6 +24,12 @@ import {
   getInvitesByCompany,
   revokeInvite,
 } from '$lib/server/queries/invites';
+import {
+  internalJson,
+  isInternalApiError,
+  filtersToQueryString,
+  type InternalCaller,
+} from '$lib/server/queries/_rust-dispatch';
 import { auth, sendInviteEmail } from '$lib/server/auth';
 import { pool } from '$lib/server/db';
 import { ConflictError } from '$lib/server/errors';
@@ -38,26 +54,26 @@ const ResetPasswordSchema = z.object({
   user_id: z.string().min(1, 'User id is required'),
 });
 
-type CompanyUser = { id: string; email: string; name: string; created_at: Date };
-
-async function getUsersByCompany(companyId: string): Promise<CompanyUser[]> {
-  const result = await pool.query<CompanyUser>(
-    `SELECT id, email, name, "createdAt" AS created_at
-     FROM "user"
-     WHERE company_id = $1
-     ORDER BY "createdAt" ASC`,
-    [companyId]
-  );
-  return result.rows;
+// Build an InternalCaller from the request's authenticated user. Shared
+// across load + every action that forwards to the Rust service. The
+// `role` cast is safe: Better Auth only ever stores 'admin' or 'user'
+// (client); narrowing here matches the Rust `Role` enum.
+function callerFromLocals(locals: App.Locals): InternalCaller {
+  return {
+    userId: locals.user!.id,
+    role: locals.user!.role as 'admin' | 'client',
+    companyId: locals.user!.companyId ?? null,
+  };
 }
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+  const caller = callerFromLocals(locals);
   const [company, persons, orders, invites, users] = await Promise.all([
-    getCompanyById(pool, params.id),
-    getPersonsByCompany(pool, params.id, { includeInactive: false }),
-    getOrders(pool, { company_id: params.id }),
-    getInvitesByCompany(pool, params.id),
-    getUsersByCompany(params.id),
+    getCompanyById(pool, params.id, caller),
+    getPersonsByCompany(pool, params.id, { includeInactive: false }, caller),
+    getOrders(pool, { company_id: params.id }, caller),
+    getInvitesByCompany(pool, params.id, caller),
+    getUsersByCompany(pool, params.id, caller),
   ]);
 
   if (!company) error(404, 'Company not found');
@@ -154,7 +170,7 @@ export const actions: Actions = {
   // returns the plaintext ONCE so the admin can share it out-of-band. The
   // password is never persisted in cleartext and never shown again — a
   // subsequent reset generates a new one.
-  createUserWithPassword: async ({ request, params }) => {
+  createUserWithPassword: async ({ request, params, locals }) => {
     const form = await request.formData();
     const parsed = parseFormData(CreateUserSchema, form);
     if (!parsed.success) {
@@ -166,12 +182,20 @@ export const actions: Actions = {
     }
 
     const { email, name } = parsed.data;
+    const caller = callerFromLocals(locals);
 
-    const existing = await pool.query<{ id: string }>(
-      `SELECT id FROM "user" WHERE email = $1`,
-      [email]
-    );
-    if (existing.rows.length) {
+    // Pre-insert duplicate-email probe. Rust returns 404 on miss; we
+    // treat anything else as a hard failure.
+    let existing: { id: string } | null = null;
+    try {
+      existing = await internalJson<{ id: string }>(
+        `/api/users/by-email${filtersToQueryString({ email })}`,
+        caller,
+      );
+    } catch (err) {
+      if (!(isInternalApiError(err) && err.status === 404)) throw err;
+    }
+    if (existing) {
       return fail(422, {
         action: 'createUserWithPassword',
         errors: { email: 'A user with this email already exists' },
@@ -204,9 +228,12 @@ export const actions: Actions = {
       password: hashed,
       userId: created.id,
     });
-    await pool.query(
-      `UPDATE "user" SET company_id = $1 WHERE id = $2`,
-      [params.id, created.id]
+
+    // Stamp company_id on the freshly-created user row via the Rust service.
+    await internalJson<{ id: string; company_id: string | null }>(
+      `/api/users/${created.id}/assign-company`,
+      caller,
+      { method: 'POST', body: JSON.stringify({ company_id: params.id }) },
     );
 
     return {
@@ -222,18 +249,29 @@ export const actions: Actions = {
   // Reset an existing user's password. Scoped to users belonging to THIS
   // company so an admin viewing /companies/X can't reset a user attached
   // to company Y via a crafted form POST.
-  resetUserPassword: async ({ request, params }) => {
+  resetUserPassword: async ({ request, params, locals }) => {
     const form = await request.formData();
     const parsed = parseFormData(ResetPasswordSchema, form);
     if (!parsed.success) {
       return fail(422, { action: 'resetUserPassword', errors: parsed.errors });
     }
 
-    const owned = await pool.query<{ id: string; email: string }>(
-      `SELECT id, email FROM "user" WHERE id = $1 AND company_id = $2`,
-      [parsed.data.user_id, params.id]
-    );
-    if (!owned.rows[0]) {
+    const caller = callerFromLocals(locals);
+
+    // Ownership-scoped lookup: Rust returns 404 both when the user
+    // doesn't exist and when they belong to a different company —
+    // deliberately indistinguishable to stop a /companies/X admin
+    // from probing for ids owned by /companies/Y.
+    let owned: { id: string; email: string } | null = null;
+    try {
+      owned = await internalJson<{ id: string; email: string }>(
+        `/api/users/${parsed.data.user_id}${filtersToQueryString({ company_id: params.id })}`,
+        caller,
+      );
+    } catch (err) {
+      if (!(isInternalApiError(err) && err.status === 404)) throw err;
+    }
+    if (!owned) {
       return fail(404, {
         action: 'resetUserPassword',
         errors: { user_id: 'User not found for this company' },
@@ -244,24 +282,24 @@ export const actions: Actions = {
     const password = generatePassword();
     const hashed = await ctx.password.hash(password);
 
-    const accounts = await ctx.internalAdapter.findAccounts(owned.rows[0].id);
+    const accounts = await ctx.internalAdapter.findAccounts(owned.id);
     const credential = accounts.find((a) => a.providerId === 'credential');
     if (!credential) {
       await ctx.internalAdapter.createAccount({
-        userId: owned.rows[0].id,
+        userId: owned.id,
         providerId: 'credential',
-        accountId: owned.rows[0].id,
+        accountId: owned.id,
         password: hashed,
       });
     } else {
-      await ctx.internalAdapter.updatePassword(owned.rows[0].id, hashed);
+      await ctx.internalAdapter.updatePassword(owned.id, hashed);
     }
 
     return {
       action: 'resetUserPassword',
       success: true,
-      email: owned.rows[0].email,
-      user_id: owned.rows[0].id,
+      email: owned.email,
+      user_id: owned.id,
       password,
     };
   },

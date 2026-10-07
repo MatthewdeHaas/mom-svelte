@@ -326,7 +326,22 @@ pub async fn get_ingredients(
     pool: &PgPool,
     recipe_id: Uuid,
 ) -> Result<Vec<RecipeIngredientRow>, sqlx::Error> {
-    let rows = sqlx::query!(
+    // The query! macro produces an anonymous row type. rustc 1.99.0's
+    // never-type fallback (issue #156047) collapses that anonymous type
+    // to `!` here because no explicit annotation on `rows` or `mapped`
+    // can name it. Workaround: use `query_as!` with a named row struct
+    // so the row type is `IngredientAggRow`, not anonymous.
+    #[derive(FromRow)]
+    struct IngredientAggRow {
+        ingredient_id: Uuid,
+        name: String,
+        amount: f64,
+        unit: String,
+        allergen_ids: Option<Vec<Uuid>>,
+        allergen_names: Option<Vec<String>>,
+    }
+    let rows: Vec<IngredientAggRow> = sqlx::query_as!(
+        IngredientAggRow,
         r#"
         SELECT
             i.id             AS "ingredient_id!: Uuid",
@@ -348,30 +363,23 @@ pub async fn get_ingredients(
     .fetch_all(pool)
     .await?;
 
-    // Explicit `Vec<RecipeIngredientRow>` annotation pins the macro's
-    // anonymous row type via back-propagation through `.collect()` →
-    // `.map()` → `.into_iter()` → `rows`, keeping rustc 1.99.0's
-    // never-type fallback (issue #156047) from collapsing the inferred
-    // row type to `!`.
-    let mapped: Vec<RecipeIngredientRow> = rows
-        .into_iter()
-        .map(|r| {
-            let ids = r.allergen_ids.unwrap_or_default();
-            let names = r.allergen_names.unwrap_or_default();
-            let allergen = ids
-                .into_iter()
-                .zip(names.into_iter())
-                .map(|(id, name)| AllergenEmbed { id, name })
-                .collect();
-            RecipeIngredientRow {
-                ingredient_id: r.ingredient_id,
-                name: r.name,
-                amount: r.amount,
-                unit: r.unit,
-                allergen,
-            }
-        })
-        .collect();
+    let mut mapped: Vec<RecipeIngredientRow> = Vec::new();
+    for r in rows {
+        let ids = r.allergen_ids.unwrap_or_default();
+        let names = r.allergen_names.unwrap_or_default();
+        let allergen: Vec<AllergenEmbed> = ids
+            .into_iter()
+            .zip(names.into_iter())
+            .map(|(id, name)| AllergenEmbed { id, name })
+            .collect();
+        mapped.push(RecipeIngredientRow {
+            ingredient_id: r.ingredient_id,
+            name: r.name,
+            amount: r.amount,
+            unit: r.unit,
+            allergen,
+        });
+    }
     Ok(mapped)
 }
 

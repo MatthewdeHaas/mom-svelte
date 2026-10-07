@@ -28,6 +28,7 @@ pub mod persons;
 pub mod recipe_imports;
 pub mod recipes;
 pub mod state;
+pub mod users;
 
 use axum::{
     middleware,
@@ -285,6 +286,20 @@ pub fn router(state: AppState) -> Router {
             "/insights/attendance-by-company",
             get(insights::attendance_by_company),
         )
+        // Users surface — no TS `queries/users.ts` counterpart; the
+        // pre-port state had inline SQL in SvelteKit route handlers
+        // (`admin/companies/[id]` and `invite/[token]`). Admin-gated
+        // reads; `assign-company` allows a client to self-stamp when
+        // unaffiliated (invite-acceptance flow — the handler enforces
+        // this, not the router).
+        //
+        // Order matters: literal `/by-email` registers before `/:id`
+        // or axum tries to parse "by-email" as the path param. The
+        // `/:id/assign-company` sub-route is unambiguous (distinct
+        // method + literal suffix).
+        .route("/users/by-email", get(users::get_by_email))
+        .route("/users/:id", get(users::get_by_id_in_company))
+        .route("/users/:id/assign-company", post(users::assign_company))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::verify_internal_auth,

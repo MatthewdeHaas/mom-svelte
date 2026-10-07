@@ -89,6 +89,11 @@ pub struct UserWithCompanyRow {
     pub id: String,
     pub company_id: Option<Uuid>,
     pub email: String,
+    /// Human-readable display name — Better Auth stores it on the
+    /// `"user"` table as NOT NULL TEXT. The admin companies/[id]
+    /// template surfaces it ("Full Name" column), so the pre-port
+    /// `getUsersByCompany` SELECTed it; carry it through here too.
+    pub name: String,
     /// `"user".role` is nullable TEXT (added by migration 003, no NOT
     /// NULL). TS surface types it as `UserRole` but doesn't enforce
     /// non-null at the pg layer — mirror that leniency here.
@@ -328,6 +333,7 @@ pub async fn get_users_by_company(
             u.id                 AS "id!",
             u.company_id         AS "company_id?: Uuid",
             u.email              AS "email!",
+            u.name               AS "name!",
             u.role               AS "role?",
             u."createdAt"        AS "created_at!: DateTime<Utc>",
             c.id                 AS "company_pk!: Uuid",
@@ -353,6 +359,7 @@ pub async fn get_users_by_company(
             id: r.id,
             company_id: r.company_id,
             email: r.email,
+            name: r.name,
             role: r.role,
             created_at: r.created_at,
             company: Some(CompanyEmbed {
