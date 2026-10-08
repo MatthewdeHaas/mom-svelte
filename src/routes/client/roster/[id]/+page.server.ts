@@ -1,13 +1,13 @@
 import { fail, error, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
-import { pool } from '$lib/server/db';
 import {
   getPersonWithAllergens,
   updatePerson,
   deactivatePerson,
   setPersonAllergens,
-} from '$lib/server/queries/persons';
-import { getAllergens } from '$lib/server/queries/allergens';
+  getAllergens,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { parseFormData } from '$lib/server/form';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -21,10 +21,11 @@ const UpdatePersonSchema = z.object({
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const companyId = locals.user!.companyId!;
+  const caller = callerFromLocals(locals);
 
   const [person, allAllergens] = await Promise.all([
-    getPersonWithAllergens(pool, params.id, { includeInactive: true }),
-    getAllergens(pool),
+    getPersonWithAllergens(params.id, { includeInactive: true }, caller),
+    getAllergens(caller),
   ]);
 
   if (!person) error(404, 'Person not found');
@@ -37,10 +38,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 export const actions: Actions = {
   update: async ({ request, params, locals }) => {
     const companyId = locals.user!.companyId!;
+    const caller = callerFromLocals(locals);
     const form = await request.formData();
 
     // Verify ownership before any write
-    const person = await getPersonWithAllergens(pool, params.id, { includeInactive: true });
+    const person = await getPersonWithAllergens(params.id, { includeInactive: true }, caller);
     if (!person || person.company_id !== companyId) error(403, 'Forbidden');
 
     const parsed = parseFormData(UpdatePersonSchema, form);
@@ -52,8 +54,8 @@ export const actions: Actions = {
     const allergenIds = form.getAll('allergen_ids').map(String).filter(Boolean);
 
     await Promise.all([
-      updatePerson(pool, params.id, { name: parsed.data.name }),
-      setPersonAllergens(pool, params.id, allergenIds),
+      updatePerson(params.id, { name: parsed.data.name }, caller),
+      setPersonAllergens(params.id, allergenIds, caller),
     ]);
 
     return { action: 'update', success: true, name: parsed.data.name };
@@ -61,21 +63,23 @@ export const actions: Actions = {
 
   deactivate: async ({ params, locals }) => {
     const companyId = locals.user!.companyId!;
-    const person = await getPersonWithAllergens(pool, params.id, { includeInactive: true });
+    const caller = callerFromLocals(locals);
+    const person = await getPersonWithAllergens(params.id, { includeInactive: true }, caller);
     if (!person || person.company_id !== companyId) error(403, 'Forbidden');
     if (!person.active) return fail(422, { action: 'deactivate', error: 'Already inactive' });
 
-    await deactivatePerson(pool, params.id);
+    await deactivatePerson(params.id, caller);
     redirect(303, '/client/roster');
   },
 
   reactivate: async ({ params, locals }) => {
     const companyId = locals.user!.companyId!;
-    const person = await getPersonWithAllergens(pool, params.id, { includeInactive: true });
+    const caller = callerFromLocals(locals);
+    const person = await getPersonWithAllergens(params.id, { includeInactive: true }, caller);
     if (!person || person.company_id !== companyId) error(403, 'Forbidden');
     if (person.active) return fail(422, { action: 'reactivate', error: 'Already active' });
 
-    await updatePerson(pool, params.id, { active: true });
+    await updatePerson(params.id, { active: true }, caller);
     return { action: 'reactivate', success: true };
   },
 };

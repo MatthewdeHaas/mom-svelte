@@ -1,9 +1,9 @@
 import type { RequestHandler } from './$types';
-import { pool } from '$lib/server/db';
-import { getTopRecipes } from '$lib/server/queries/insights';
+import { getTopRecipes } from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { json, error } from '@sveltejs/kit';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
   const limit = parseInt(url.searchParams.get('limit') ?? '10', 10);
@@ -13,6 +13,7 @@ export const GET: RequestHandler = async ({ url }) => {
     throw error(400, 'Provide from and to as YYYY-MM-DD');
   }
 
-  const data = await getTopRecipes(pool, from, to, limit);
+  const caller = callerFromLocals(locals);
+  const data = await getTopRecipes(from, to, limit, caller);
   return json(data);
 };

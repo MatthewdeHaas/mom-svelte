@@ -589,3 +589,260 @@ async fn client_cannot_revoke_invite(pool: PgPool) {
 
     server.stop().await;
 }
+
+// ---------------------------------------------------------------------------
+// GET /api/invites/by-token/public — HMAC-gated but no admin check.
+//
+// Powers the invite-landing flow (`routes/invite/[token]/+page.server.ts`),
+// which runs for anonymous visitors and already-authenticated client users
+// alike. The token's 128-bit entropy is the authorization boundary —
+// knowing the token proves the request is legitimate.
+// ---------------------------------------------------------------------------
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn public_get_by_token_returns_the_row_for_admin(pool: PgPool) {
+    // Admin caller works — same shape as the admin-only endpoint.
+    let c = seed_company(&pool, "PubAdminCo").await;
+    let id = seed_invite(&pool, c, "pub@x.com", "tok-pub-admin", future_expiry()).await;
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let row: InviteRow = decode_ok(
+        get_admin(
+            &server,
+            &user.id,
+            "/api/invites/by-token/public?token=tok-pub-admin",
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(row.id, id);
+    assert_eq!(row.token, "tok-pub-admin");
+
+    server.stop().await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn public_get_by_token_returns_the_row_for_client(pool: PgPool) {
+    // Client caller works too — this is the coverage gap left by the
+    // admin-only `/by-token` endpoint. The invite-landing flow needs
+    // to look up invites on behalf of users who have no admin role.
+    let c = seed_company(&pool, "PubClientCo").await;
+    let id = seed_invite(&pool, c, "pub@x.com", "tok-pub-client", future_expiry()).await;
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let row: InviteRow = decode_ok(
+        get_client(
+            &server,
+            &user.id,
+            c,
+            "/api/invites/by-token/public?token=tok-pub-client",
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(row.id, id);
+    assert_eq!(row.company_id, c);
+
+    server.stop().await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn public_get_by_token_404_for_unknown(pool: PgPool) {
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let res = get_admin(
+        &server,
+        &user.id,
+        "/api/invites/by-token/public?token=nope",
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    server.stop().await;
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/invites/consume-by-token — atomic token-scoped consume.
+//
+// Body: `{"token": "…"}`. Returns 200 + `{id, company_id}` on success,
+// 404 when the token is unknown / already used / expired (the three
+// cases are deliberately indistinguishable — not an existence oracle).
+// ---------------------------------------------------------------------------
+
+/// Response shape for `/api/invites/consume-by-token`. Mirrors
+/// `api::invites::ConsumeResponse` — redeclared here so the test file
+/// stays self-contained (ingredients/allergens precedent — tests don't
+/// import handler-internal types).
+#[derive(serde::Deserialize)]
+struct ConsumeResp {
+    id: Uuid,
+    company_id: Uuid,
+}
+
+fn past_expiry() -> DateTime<Utc> {
+    Utc::now() - Duration::hours(1)
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn consume_by_token_returns_id_and_company_on_first_call(pool: PgPool) {
+    let c = seed_company(&pool, "ConsumeCo").await;
+    let id = seed_invite(&pool, c, "consume@x.com", "tok-consume", future_expiry()).await;
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let res = post_admin(
+        &server,
+        &user.id,
+        "/api/invites/consume-by-token",
+        &json!({ "token": "tok-consume" }),
+    )
+    .await;
+    let out: ConsumeResp = decode_ok(res).await;
+    assert_eq!(out.id, id);
+    assert_eq!(out.company_id, c);
+
+    server.stop().await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn consume_by_token_stamps_used_at(pool: PgPool) {
+    // After consume, the invite's used_at is non-null — observable via
+    // the public by-token read.
+    let c = seed_company(&pool, "ConsumeStampCo").await;
+    seed_invite(&pool, c, "s@x.com", "tok-stamp", future_expiry()).await;
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let res = post_admin(
+        &server,
+        &user.id,
+        "/api/invites/consume-by-token",
+        &json!({ "token": "tok-stamp" }),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let row: InviteRow = decode_ok(
+        get_admin(
+            &server,
+            &user.id,
+            "/api/invites/by-token/public?token=tok-stamp",
+        )
+        .await,
+    )
+    .await;
+    assert!(row.used_at.is_some());
+
+    server.stop().await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn consume_by_token_404_on_second_call(pool: PgPool) {
+    // First consume succeeds; second must 404 (invite already used).
+    let c = seed_company(&pool, "ConsumeTwiceCo").await;
+    seed_invite(&pool, c, "twice@x.com", "tok-twice", future_expiry()).await;
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let first = post_admin(
+        &server,
+        &user.id,
+        "/api/invites/consume-by-token",
+        &json!({ "token": "tok-twice" }),
+    )
+    .await;
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = post_admin(
+        &server,
+        &user.id,
+        "/api/invites/consume-by-token",
+        &json!({ "token": "tok-twice" }),
+    )
+    .await;
+    assert_eq!(second.status(), StatusCode::NOT_FOUND);
+
+    server.stop().await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn consume_by_token_404_for_unknown_token(pool: PgPool) {
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let res = post_admin(
+        &server,
+        &user.id,
+        "/api/invites/consume-by-token",
+        &json!({ "token": "no-such-token" }),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    server.stop().await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn consume_by_token_404_for_expired_token(pool: PgPool) {
+    // Expired invites are indistinguishable from unknown/used — the
+    // SQL `WHERE expires_at > now()` filter means the UPDATE touches
+    // zero rows and the handler returns 404.
+    let c = seed_company(&pool, "ConsumeExpCo").await;
+    seed_invite(&pool, c, "exp@x.com", "tok-expired", past_expiry()).await;
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let res = post_admin(
+        &server,
+        &user.id,
+        "/api/invites/consume-by-token",
+        &json!({ "token": "tok-expired" }),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    // And the invite's used_at remains null — expired consume MUST NOT
+    // stamp it (that would be a security hole: a stale link that
+    // "worked" from the client's perspective).
+    let row: InviteRow = decode_ok(
+        get_admin(
+            &server,
+            &user.id,
+            "/api/invites/by-token/public?token=tok-expired",
+        )
+        .await,
+    )
+    .await;
+    assert!(row.used_at.is_none());
+
+    server.stop().await;
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn consume_by_token_works_for_client_caller(pool: PgPool) {
+    // Client role is accepted — the public endpoints don't enforce
+    // admin. The invite-landing flow needs this: the user hitting
+    // `/invite/[token]` is either anonymous or a newly-authenticated
+    // client, never an admin.
+    let c = seed_company(&pool, "ConsumeClientCo").await;
+    let id = seed_invite(&pool, c, "cl@x.com", "tok-client-consume", future_expiry()).await;
+    let user = seed_user(&pool).await;
+    let server = spawn_server(pool).await;
+
+    let res = post_client(
+        &server,
+        &user.id,
+        c,
+        "/api/invites/consume-by-token",
+        &json!({ "token": "tok-client-consume" }),
+    )
+    .await;
+    let out: ConsumeResp = decode_ok(res).await;
+    assert_eq!(out.id, id);
+    assert_eq!(out.company_id, c);
+
+    server.stop().await;
+}

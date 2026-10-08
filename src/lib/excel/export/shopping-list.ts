@@ -1,38 +1,39 @@
 import ExcelJS from 'exceljs';
-import { getOrders } from '$lib/server/queries/orders';
-import { getRecipesWithIngredientsByIds } from '$lib/server/queries/recipes';
-import { pinXlsxDates } from '$lib/excel/determinism';
 import {
+  getOrders,
+  getRecipesWithIngredientsByIds,
   useRustBackend,
   internalFetch,
   type InternalCaller,
 } from '$lib/server/queries/_rust-dispatch';
-import type { Pool } from 'pg';
+import { pinXlsxDates } from '$lib/excel/determinism';
 
 export async function generateShoppingList(
-  db: Pool,
   from: string,
   to: string,
-  caller?: InternalCaller
+  caller: InternalCaller
 ): Promise<Buffer> {
 
   // Flag-gated Rust forward — see production-order.ts for the shape rationale.
-  if (caller && (await useRustBackend('exports', caller))) {
+  if (await useRustBackend('exports', caller)) {
     const qs = new URLSearchParams({ from, to }).toString();
     const res = await internalFetch(`/api/exports/shopping-list?${qs}`, caller);
     const bytes = new Uint8Array(await res.arrayBuffer());
     return Buffer.from(bytes);
   }
 
-  const orders = await getOrders(db, {
-    serving_date_from: from,
-    serving_date_to: to,
-  });
+  const orders = await getOrders(
+    {
+      serving_date_from: from,
+      serving_date_to: to,
+    },
+    caller,
+  );
 
 
   const recipeIds = [...new Set(orders.map((o) => o.recipe_id).filter((id): id is string => !!id))];
 
-  const recipeMap = await getRecipesWithIngredientsByIds(db, recipeIds);
+  const recipeMap = await getRecipesWithIngredientsByIds(recipeIds, caller);
 
   // 3. Aggregate ingredients
   //    Key: `${ingredient_name}::${unit}` — same name, different unit = separate row

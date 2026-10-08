@@ -1,4 +1,8 @@
 node_modules
+.pnpm-store/
+
+# Claude session state (skills, memory, worktrees)
+.claude/
 
 # Output
 .output

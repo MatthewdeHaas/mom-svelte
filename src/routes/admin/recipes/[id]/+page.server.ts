@@ -6,17 +6,18 @@ import {
   deactivateRecipe,
   addRecipeIngredient,
   removeRecipeIngredient,
-} from '$lib/server/queries/recipes';
-import { getIngredients } from '$lib/server/queries/ingredients';
-import { pool } from '$lib/server/db';
+  getIngredients,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { ConflictError } from '$lib/server/errors';
 import { parseFormData } from '$lib/server/form';
 import { RecipeNameSchema, RecipeIngredientSchema } from '$lib/server/schemas/recipe';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+  const caller = callerFromLocals(locals);
   const [recipe, ingredients] = await Promise.all([
-    getRecipeWithIngredients(pool, params.id, { includeInactive: true }),
-    getIngredients(pool, { includeInactive: false }),
+    getRecipeWithIngredients(params.id, { includeInactive: true }, caller),
+    getIngredients({ includeInactive: false }, caller),
   ]);
 
   if (!recipe) error(404, 'Recipe not found');
@@ -29,7 +30,7 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-  updateName: async ({ request, params }) => {
+  updateName: async ({ request, params, locals }) => {
     const form = await request.formData();
     const parsed = parseFormData(RecipeNameSchema, form);
 
@@ -43,9 +44,10 @@ export const actions: Actions = {
 
     const { name } = parsed.data;
 
+    const caller = callerFromLocals(locals);
     try {
-      await updateRecipe(pool, params.id, { name });
-    } catch (err: any) {
+      await updateRecipe(params.id, { name }, caller);
+    } catch (err) {
       if (err instanceof ConflictError) {
         return fail(422, {
           action: 'updateName' as const,
@@ -59,7 +61,7 @@ export const actions: Actions = {
     return { action: 'updateName' as const, success: true };
   },
 
-  updatePrice: async ({ request, params }) => {
+  updatePrice: async ({ request, params, locals }) => {
     const form = await request.formData();
     const rawPrice = form.get('price_per_meal')?.toString()?.trim() ?? '';
     const price_per_meal = rawPrice === '' ? null : parseFloat(rawPrice);
@@ -72,12 +74,13 @@ export const actions: Actions = {
       });
     }
 
-    await updateRecipe(pool, params.id, { price_per_meal });
+    const caller = callerFromLocals(locals);
+    await updateRecipe(params.id, { price_per_meal }, caller);
 
     return { action: 'updatePrice' as const, success: true };
   },
 
-  addIngredient: async ({ request, params }) => {
+  addIngredient: async ({ request, params, locals }) => {
     const form = await request.formData();
     const parsed = parseFormData(RecipeIngredientSchema, form);
 
@@ -91,38 +94,42 @@ export const actions: Actions = {
 
     const { ingredient_id, amount, unit } = parsed.data;
 
-    await addRecipeIngredient(pool, params.id, ingredient_id, amount, unit);
+    const caller = callerFromLocals(locals);
+    await addRecipeIngredient(params.id, ingredient_id, amount, unit, caller);
 
     return { action: 'addIngredient', success: true };
   },
 
-  removeIngredient: async ({ request, params }) => {
+  removeIngredient: async ({ request, params, locals }) => {
     const form = await request.formData();
     const ingredient_id = form.get('ingredient_id')?.toString() ?? '';
 
     if (!ingredient_id) return fail(422, { action: 'removeIngredient', error: 'Missing ingredient_id' });
 
-    await removeRecipeIngredient(pool, params.id, ingredient_id);
+    const caller = callerFromLocals(locals);
+    await removeRecipeIngredient(params.id, ingredient_id, caller);
 
     return { action: 'removeIngredient', success: true };
   },
 
-  deactivate: async ({ params }) => {
-    const recipe = await getRecipeWithIngredients(pool, params.id, { includeInactive: true });
+  deactivate: async ({ params, locals }) => {
+    const caller = callerFromLocals(locals);
+    const recipe = await getRecipeWithIngredients(params.id, { includeInactive: true }, caller);
     if (!recipe) error(404, 'Recipe not found');
     if (!recipe.active) return fail(422, { action: 'deactivate', error: 'Already inactive' });
 
-    await deactivateRecipe(pool, params.id);
+    await deactivateRecipe(params.id, caller);
 
     return { action: 'deactivate', success: true };
   },
 
-  reactivate: async ({ params }) => {
-    const recipe = await getRecipeWithIngredients(pool, params.id, { includeInactive: true });
+  reactivate: async ({ params, locals }) => {
+    const caller = callerFromLocals(locals);
+    const recipe = await getRecipeWithIngredients(params.id, { includeInactive: true }, caller);
     if (!recipe) error(404, 'Recipe not found');
     if (recipe.active) return fail(422, { action: 'reactivate', error: 'Already active' });
 
-    await updateRecipe(pool, params.id, { active: true });
+    await updateRecipe(params.id, { active: true }, caller);
 
     return { action: 'reactivate', success: true };
   },

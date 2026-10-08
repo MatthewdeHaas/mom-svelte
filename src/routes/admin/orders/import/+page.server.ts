@@ -1,10 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { pool } from '$lib/server/db';
-import { parseExcelBufferAsyncWithMeta } from '$lib/excel/parse';
-import { importOrdersFromRows } from '$lib/server/queries/imports';
-import { internalFetch, type InternalCaller } from '$lib/server/api-client';
-import { useRustBackend } from '$lib/server/queries/_rust-dispatch';
+import { internalFetch, callerFromLocals } from '$lib/server/api-client';
 import type { ImportResult } from '$lib/types';
 import logger from '$lib/server/logger';
 
@@ -16,9 +12,9 @@ export const load: PageServerLoad = async () => {
 
 export const actions: Actions = {
   default: async ({ request, locals }) => {
-		if (!locals.user) {
-			return fail(401, { error: 'Unauthorised' });
-		}
+    if (!locals.user) {
+      return fail(401, { error: 'Unauthorised' });
+    }
 
     // ----------------------------------------------------------
     // STEP 1 — Extract file from form data
@@ -50,122 +46,45 @@ export const actions: Actions = {
     }
 
     // ----------------------------------------------------------
-    // STEP 1b — Flag-gated Rust forward
+    // STEP 2 — Forward multipart body to Rust importer.
     //
-    // When `use_rust_backend_imports` is on, pipe the multipart
-    // body straight to the Rust service and translate its
-    // `ImportResult` into the same shape the TS path returns.
-    // The TS path stays live underneath so a flag flip reverts
-    // instantly to the known-good importer.
-    //
-    // Unlike the dispatcher-plumbed domains, imports forwards at
-    // the ROUTE level — `importOrdersFromRows` consumes already-
-    // parsed rows, so by the time control reaches the query layer
-    // the multipart bytes are gone. The `useRustBackend` helper
-    // still owns the 30s per-caller cache + fail-closed semantics
-    // so one dead-Rust session doesn't HMAC-check N times.
+    // Rust owns the whole pipeline (parse + validate + commit) and
+    // returns the same `ImportResult` shape the page expects. There
+    // is no TS fall-through — Track 3 Step 6 flipped the flag on
+    // permanently; rollback is `git revert`, not a flag flip.
     // ----------------------------------------------------------
-    const caller: InternalCaller = {
-      userId: locals.user.id,
-      role: locals.user.role === 'client' ? 'client' : 'admin',
-      companyId: locals.user.companyId ?? null,
-    };
+    const caller = callerFromLocals(locals);
 
-    const useRust = await useRustBackend('imports', caller);
-    if (useRust) {
-      try {
-        const forward = new FormData();
-        forward.append(
-          'file',
-          new Blob([await file.arrayBuffer()], {
-            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          }),
-          file.name,
-        );
+    try {
+      const forward = new FormData();
+      forward.append(
+        'file',
+        new Blob([await file.arrayBuffer()], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        file.name,
+      );
 
-        const res = await internalFetch('/api/import/commit', caller, {
-          method: 'POST',
-          body: forward,
-        });
+      const res = await internalFetch('/api/import/commit', caller, {
+        method: 'POST',
+        body: forward,
+      });
 
-        if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          logger.error({ status: res.status, body: text }, 'rust import failed');
-          return fail(500, {
-            error: 'An unexpected error occurred during import. Please try again or contact support.',
-          });
-        }
-
-        const result = (await res.json()) as ImportResult;
-
-        if (result.errors.length > 0) {
-          return fail(422, {
-            importErrors: result.errors,
-            importWarnings: result.warnings,
-            rowCount: result.inserted + result.errors.length,
-          });
-        }
-
-        return {
-          success: true,
-          inserted: result.inserted,
-          skipped: result.skipped,
-          warnings: result.warnings,
-        };
-      } catch (err) {
-        logger.error({ err }, 'rust import forward error');
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        logger.error({ status: res.status, body: text }, 'rust import failed');
         return fail(500, {
           error: 'An unexpected error occurred during import. Please try again or contact support.',
         });
       }
-    }
 
-    // ----------------------------------------------------------
-    // STEP 2 — Parse
-    // ----------------------------------------------------------
-    let rawRows: Record<string, unknown>[];
-    let extraSheetCount = 0;
-    let headers: string[] = [];
-
-    try {
-			const buffer = Buffer.from(await file.arrayBuffer());
-			const parsed = await parseExcelBufferAsyncWithMeta(buffer);
-			rawRows = parsed.rows;
-			extraSheetCount = parsed.extraSheetCount;
-			headers = parsed.headers;
-    } catch (err) {
-      logger.error({ err }, 'import parse error');
-      return fail(400, {
-        error: 'Could not read the uploaded file. Make sure it is a valid .xlsx file.',
-      });
-    }
-
-    if (rawRows.length === 0) {
-      return fail(400, {
-        error: 'The spreadsheet contains no data rows. Please check the file and try again.',
-      });
-    }
-
-    // ----------------------------------------------------------
-    // STEP 3 — Validate + resolve + insert
-    // ----------------------------------------------------------
-    try {
-			const result = await importOrdersFromRows(
-				pool,
-				rawRows,
-				locals.user.id,
-				headers,
-				extraSheetCount,
-			);
+      const result = (await res.json()) as ImportResult;
 
       if (result.errors.length > 0) {
-        // Validation or resolution errors — return them to the page
-        // for display. HTTP 422 so the form knows it was a data problem.
-        // Warnings travel alongside errors so the operator sees both.
         return fail(422, {
           importErrors: result.errors,
           importWarnings: result.warnings,
-          rowCount: rawRows.length,
+          rowCount: result.inserted + result.errors.length,
         });
       }
 
@@ -176,7 +95,7 @@ export const actions: Actions = {
         warnings: result.warnings,
       };
     } catch (err) {
-      logger.error({ err }, 'import pipeline error');
+      logger.error({ err }, 'rust import forward error');
       return fail(500, {
         error: 'An unexpected error occurred during import. Please try again or contact support.',
       });

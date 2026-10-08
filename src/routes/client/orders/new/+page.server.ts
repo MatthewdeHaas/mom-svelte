@@ -1,8 +1,10 @@
-import { error, fail, redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
-import { pool } from '$lib/server/db';
-import { getMenusWithRecipes } from '$lib/server/queries/menus';
-import { createOrder } from '$lib/server/queries/orders';
+import {
+  createOrder,
+  getMenusWithRecipes,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { parseFormData } from '$lib/server/form';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -30,7 +32,7 @@ const ClientOrderSchema = z.object({
     .default('ambient'),
 });
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
   const menuRecipeId = url.searchParams.get('menu_recipe_id');
   const servingDate = url.searchParams.get('serving_date');
   const recipeName = url.searchParams.get('recipe_name') ?? '';
@@ -47,7 +49,8 @@ export const load: PageServerLoad = async ({ url }) => {
   }
 
   // Resolve the actual recipe_id from the menu_recipe row
-  const menus = await getMenusWithRecipes(pool);
+  const caller = callerFromLocals(locals);
+  const menus = await getMenusWithRecipes({}, caller);
   let recipeId: string | null = null;
   for (const menu of menus) {
     const slot = menu.recipe.find((r) => r.id === menuRecipeId);
@@ -73,20 +76,24 @@ export const actions: Actions = {
 
     const { recipe_id, serving_date, meal_category, amount, client_note, storage } = parsed.data;
 
-    await createOrder(pool, {
-      company_id: companyId,
-      recipe_id,
-      created_by: locals.user!.id,
-      order_source: 'client_portal',
-      status: 'pending',
-      meal_category,
-      amount,
-      serving_date,
-      shipment_date: serving_date, // admin adjusts shipment date later
-      frozen: storage === 'frozen',
-      chilled: storage === 'chilled',
-      client: client_note,
-    });
+    const caller = callerFromLocals(locals);
+    await createOrder(
+      {
+        company_id: companyId,
+        recipe_id,
+        created_by: locals.user!.id,
+        order_source: 'client_portal',
+        status: 'pending',
+        meal_category,
+        amount,
+        serving_date,
+        shipment_date: serving_date, // admin adjusts shipment date later
+        frozen: storage === 'frozen',
+        chilled: storage === 'chilled',
+        client: client_note,
+      },
+      caller,
+    );
 
     redirect(303, '/client/orders');
   },

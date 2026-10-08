@@ -12,24 +12,20 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import type { Actions, PageServerLoad } from './$types';
 import {
+  createInvite,
+  getInvitesByCompany,
+  revokeInvite,
   getCompanyById,
   getUsersByCompany,
   updateCompany,
   deactivateCompany,
-} from '$lib/server/queries/companies';
-import { getPersonsByCompany } from '$lib/server/queries/persons';
-import { getOrders } from '$lib/server/queries/orders';
-import {
-  createInvite,
-  getInvitesByCompany,
-  revokeInvite,
-} from '$lib/server/queries/invites';
-import {
+  getPersonsByCompany,
+  getOrders,
   internalJson,
   isInternalApiError,
   filtersToQueryString,
-  type InternalCaller,
 } from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { auth, sendInviteEmail } from '$lib/server/auth';
 import { pool } from '$lib/server/db';
 import { ConflictError } from '$lib/server/errors';
@@ -54,26 +50,14 @@ const ResetPasswordSchema = z.object({
   user_id: z.string().min(1, 'User id is required'),
 });
 
-// Build an InternalCaller from the request's authenticated user. Shared
-// across load + every action that forwards to the Rust service. The
-// `role` cast is safe: Better Auth only ever stores 'admin' or 'user'
-// (client); narrowing here matches the Rust `Role` enum.
-function callerFromLocals(locals: App.Locals): InternalCaller {
-  return {
-    userId: locals.user!.id,
-    role: locals.user!.role as 'admin' | 'client',
-    companyId: locals.user!.companyId ?? null,
-  };
-}
-
 export const load: PageServerLoad = async ({ params, locals }) => {
   const caller = callerFromLocals(locals);
   const [company, persons, orders, invites, users] = await Promise.all([
-    getCompanyById(pool, params.id, caller),
-    getPersonsByCompany(pool, params.id, { includeInactive: false }, caller),
-    getOrders(pool, { company_id: params.id }, caller),
-    getInvitesByCompany(pool, params.id, caller),
-    getUsersByCompany(pool, params.id, caller),
+    getCompanyById(params.id, caller),
+    getPersonsByCompany(params.id, { includeInactive: false }, caller),
+    getOrders({ company_id: params.id }, caller),
+    getInvitesByCompany(params.id, caller),
+    getUsersByCompany(params.id, caller),
   ]);
 
   if (!company) error(404, 'Company not found');
@@ -82,7 +66,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-  update: async ({ request, params }) => {
+  update: async ({ request, params, locals }) => {
+    const caller = callerFromLocals(locals);
     const form = await request.formData();
     const parsed = parseFormData(CompanySchema, form);
 
@@ -93,7 +78,7 @@ export const actions: Actions = {
     const { name, contact_email, phone, shipping_address } = parsed.data;
 
     try {
-      await updateCompany(pool, params.id, { name, contact_email, phone, shipping_address });
+      await updateCompany(params.id, { name, contact_email, phone, shipping_address }, caller);
     } catch (err) {
       if (err instanceof ConflictError) {
         return fail(422, {
@@ -108,27 +93,29 @@ export const actions: Actions = {
     return { action: 'update', success: true };
   },
 
-  deactivate: async ({ params }) => {
-    const company = await getCompanyById(pool, params.id);
+  deactivate: async ({ params, locals }) => {
+    const caller = callerFromLocals(locals);
+    const company = await getCompanyById(params.id, caller);
     if (!company) error(404, 'Company not found');
     if (!company.active) return fail(422, { action: 'deactivate', error: 'Company is already inactive' });
 
-    await deactivateCompany(pool, params.id);
+    await deactivateCompany(params.id, caller);
 
     redirect(303, '/admin/companies');
   },
 
-  reactivate: async ({ params }) => {
-    const company = await getCompanyById(pool, params.id);
+  reactivate: async ({ params, locals }) => {
+    const caller = callerFromLocals(locals);
+    const company = await getCompanyById(params.id, caller);
     if (!company) error(404, 'Company not found');
     if (company.active) return fail(422, { action: 'reactivate', error: 'Company is already active' });
 
-    await updateCompany(pool, params.id, { active: true });
+    await updateCompany(params.id, { active: true }, caller);
 
     return { action: 'reactivate', success: true };
   },
 
-  invite: async ({ request, params }) => {
+  invite: async ({ request, params, locals }) => {
     const form = await request.formData();
     const parsed = parseFormData(InviteSchema, form);
 
@@ -138,13 +125,17 @@ export const actions: Actions = {
 
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    const caller = callerFromLocals(locals);
 
-    await createInvite(pool, {
-      company_id: params.id,
-      email: parsed.data.email,
-      token,
-      expires_at: expiresAt,
-    });
+    await createInvite(
+      {
+        company_id: params.id,
+        email: parsed.data.email,
+        token,
+        expires_at: expiresAt,
+      },
+      caller,
+    );
 
     const baseUrl = process.env.BETTER_AUTH_URL ?? '';
     await sendInviteEmail(parsed.data.email, `${baseUrl}/invite/${token}`);
@@ -152,7 +143,7 @@ export const actions: Actions = {
     return { action: 'invite', success: true };
   },
 
-  revokeInvite: async ({ request }) => {
+  revokeInvite: async ({ request, locals }) => {
     const form = await request.formData();
     const parsed = parseFormData(RevokeInviteSchema, form);
 
@@ -160,7 +151,8 @@ export const actions: Actions = {
       return fail(422, { action: 'revokeInvite', errors: parsed.errors });
     }
 
-    await revokeInvite(pool, parsed.data.invite_id);
+    const caller = callerFromLocals(locals);
+    await revokeInvite(parsed.data.invite_id, caller);
 
     return { action: 'revokeInvite', success: true };
   },

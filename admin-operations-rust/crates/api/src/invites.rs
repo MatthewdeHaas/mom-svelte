@@ -135,6 +135,63 @@ pub async fn revoke(
 }
 
 // ---------------------------------------------------------------
+// Public handlers — HMAC-gated like every other `/api/*` endpoint,
+// but with no `require_admin` check. These exist for the invite-
+// landing flow (`/invite/[token]`) where SvelteKit calls on behalf
+// of an unauthenticated-or-newly-authenticated client user. The
+// token's entropy (randomUUID → 128 bits) is the authorization
+// boundary — a lookup requires the exact token string, and the
+// consume path is atomic + token-scoped so a leaked UUID can't
+// grief admins' invites.
+// ---------------------------------------------------------------
+
+/// `GET /api/invites/by-token/public?token=…` — same shape as the
+/// admin-only read, but accessible to any authenticated internal caller
+/// (including the `SYSTEM_INVITE_CALLER` the SvelteKit landing route
+/// synthesizes when `locals.user` is null). 404 on miss.
+pub async fn get_by_token_public(
+    State(state): State<AppState>,
+    Query(q): Query<ByTokenQuery>,
+) -> Result<Json<InviteRow>, ApiError> {
+    let row = invites::get_by_token(&state.pool, &q.token)
+        .await?
+        .ok_or(ApiError::Domain(DomainError::NotFound))?;
+    Ok(Json(row))
+}
+
+/// `POST /api/invites/consume-by-token` — atomic token-scoped consume.
+/// Body: `{ "token": "…" }`. Returns 204 on success, 404 when the
+/// token is unknown / already used / expired (the three cases are
+/// deliberately indistinguishable to prevent an existence oracle).
+///
+/// Replaces `/mark-used` for the public flow — `/mark-used` takes a
+/// UUID id, which anyone who learned the id could POST at will to
+/// grief an outstanding invite. Token-scoped consume uses the
+/// 128-bit token itself as both the lookup key and the authorization
+/// signal, same security model as a password-reset link.
+#[derive(Debug, Deserialize)]
+pub struct ConsumeBody {
+    pub token: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct ConsumeResponse {
+    pub id: Uuid,
+    pub company_id: Uuid,
+}
+
+pub async fn consume_by_token(
+    State(state): State<AppState>,
+    Json(body): Json<ConsumeBody>,
+) -> Result<Json<ConsumeResponse>, ApiError> {
+    let outcome = invites::consume_by_token(&state.pool, &body.token).await?;
+    match outcome {
+        Some((id, company_id)) => Ok(Json(ConsumeResponse { id, company_id })),
+        None => Err(ApiError::Domain(DomainError::NotFound)),
+    }
+}
+
+// ---------------------------------------------------------------
 // Error mapping — translate Postgres codes to HTTP semantics.
 //
 // 23505 = unique_violation         → 409 Conflict (duplicate token)

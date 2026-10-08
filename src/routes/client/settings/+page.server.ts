@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { z } from 'zod';
-import { pool } from '$lib/server/db';
-import { getCompanyById } from '$lib/server/queries/companies';
+import { getCompanyById } from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { parseFormData } from '$lib/server/form';
 import { auth } from '$lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
@@ -15,8 +15,9 @@ const UpdateProfileSchema = z.object({
 });
 
 export const load: PageServerLoad = async ({ locals }) => {
+  const caller = callerFromLocals(locals);
   const companyId = locals.user!.companyId!;
-  const company = await getCompanyById(pool, companyId);
+  const company = await getCompanyById(companyId, caller);
   return { user: locals.user!, company };
 };
 

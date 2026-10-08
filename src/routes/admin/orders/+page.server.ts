@@ -1,12 +1,16 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { getOrdersPaginated, setOrdersStatusBatch } from '$lib/server/queries/orders';
-import { getCompanies } from '$lib/server/queries/companies';
+import {
+  getCompanies,
+  getOrdersPaginated,
+  setOrdersStatusBatch,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { parsePaginationParams } from '$lib/server/queries/pagination';
-import { pool } from '$lib/server/db';
 import type { OrderStatus } from '$lib/types';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+  const caller = callerFromLocals(locals);
   const p = url.searchParams;
 
   const filters: Record<string, any> = {};
@@ -43,8 +47,8 @@ export const load: PageServerLoad = async ({ url }) => {
   const pagination = parsePaginationParams(url);
 
   const [ordersResult, companies] = await Promise.all([
-    getOrdersPaginated(pool, filters, pagination),
-    getCompanies(pool, { includeInactive: false }),
+    getOrdersPaginated(filters, pagination, caller),
+    getCompanies({ includeInactive: false }, caller),
   ]);
 
   return {
@@ -71,7 +75,7 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-  bulkStatus: async ({ request }) => {
+  bulkStatus: async ({ request, locals }) => {
     const form = await request.formData();
     const ids = form.getAll('order_id') as string[];
     const target = form.get('target_status') as string;
@@ -85,7 +89,8 @@ export const actions: Actions = {
       return fail(400, { action: 'bulkStatus', error: 'Invalid target status' });
     }
 
-    const updated = await setOrdersStatusBatch(pool, ids, target as OrderStatus);
+    const caller = callerFromLocals(locals);
+    const updated = await setOrdersStatusBatch(ids, target as OrderStatus, caller);
     return { action: 'bulkStatus', success: true, count: updated.length, target };
   },
 };

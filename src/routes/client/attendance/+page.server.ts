@@ -1,7 +1,10 @@
-import { pool } from '$lib/server/db';
-import { getPersonsByCompany } from '$lib/server/queries/persons';
-import { getOrders } from '$lib/server/queries/orders';
-import { upsertAttendanceBatch } from '$lib/server/queries/persons';
+import {
+  getAttendanceByDate,
+  getOrders,
+  getPersonsByCompany,
+  upsertAttendanceBatch,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import type { UpsertAttendance } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -20,18 +23,22 @@ export interface AttendanceCell {
 
 export const load: PageServerLoad = async ({ locals }) => {
   const companyId = locals.user!.companyId!;
+  const caller = callerFromLocals(locals);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const horizon = new Date(today.getTime() + 21 * 86400000); // 3 weeks
 
   const [persons, upcomingOrders] = await Promise.all([
-    getPersonsByCompany(pool, companyId),
-    getOrders(pool, {
-      company_id: companyId,
-      serving_date_from: today,
-      serving_date_to: horizon,
-    }),
+    getPersonsByCompany(companyId, {}, caller),
+    getOrders(
+      {
+        company_id: companyId,
+        serving_date_from: today,
+        serving_date_to: horizon,
+      },
+      caller,
+    ),
   ]);
 
   // Distinct serving dates from non-cancelled upcoming orders, sorted ascending
@@ -45,20 +52,23 @@ export const load: PageServerLoad = async ({ locals }) => {
     return { persons, dates, attendance: {} as Record<string, boolean> };
   }
 
-  // Fetch existing attendance for all person × date combos in one query
-  const personIds = persons.map((p) => p.id);
-  const rows = await pool.query<{ person_id: string; serving_date: Date; attending: boolean }>(
-    `SELECT person_id, serving_date, attending
-     FROM attendance
-     WHERE person_id = ANY($1)
-       AND serving_date = ANY($2::date[])`,
-    [personIds, dates]
+  // Fan out across the (small, ≤21) date set — the dispatcher only
+  // exposes single-date reads, and `AttendanceWithPerson` includes
+  // the person FK so we can key off it directly. Company scoping is
+  // enforced server-side; filter here to the persons we rendered.
+  const personIdSet = new Set(persons.map((p) => p.id));
+  const perDay = await Promise.all(
+    dates.map((d) => getAttendanceByDate(companyId, new Date(d), caller)),
   );
 
   // key: "personId|YYYY-MM-DD" → attending boolean
   const attendance: Record<string, boolean> = {};
-  for (const row of rows.rows) {
-    attendance[`${row.person_id}|${toDateStr(row.serving_date)}`] = row.attending;
+  for (let i = 0; i < dates.length; i++) {
+    const date = dates[i];
+    for (const row of perDay[i]) {
+      if (!personIdSet.has(row.person_id)) continue;
+      attendance[`${row.person_id}|${date}`] = row.attending;
+    }
   }
 
   return { persons, dates, attendance };
@@ -67,12 +77,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   save: async ({ request, locals }) => {
     const companyId = locals.user!.companyId!;
+    const caller = callerFromLocals(locals);
     const form = await request.formData();
 
     // Reconstruct the full persons × dates matrix that was submitted.
     // Hidden inputs encode every cell as "personId|date" → '1'/'0'.
     // We only trust person IDs that actually belong to this company.
-    const persons = await getPersonsByCompany(pool, companyId);
+    const persons = await getPersonsByCompany(companyId, {}, caller);
     const personIdSet = new Set(persons.map((p) => p.id));
 
     const records: UpsertAttendance[] = [];
@@ -93,7 +104,7 @@ export const actions: Actions = {
       return { action: 'save', success: true };
     }
 
-    await upsertAttendanceBatch(pool, records);
+    await upsertAttendanceBatch(records, caller);
     return { action: 'save', success: true };
   },
 };

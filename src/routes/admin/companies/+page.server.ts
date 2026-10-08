@@ -1,17 +1,18 @@
 import type { PageServerLoad } from './$types';
-import { getCompaniesPaginated } from '$lib/server/queries/companies';
+import { getCompaniesPaginated } from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { parsePaginationParams } from '$lib/server/queries/pagination';
-import { pool } from '$lib/server/db';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+  const caller = callerFromLocals(locals);
   const showInactive = url.searchParams.get('inactive') === 'true';
   const search = url.searchParams.get('q') ?? '';
   const pagination = parsePaginationParams(url, { perPage: 25 });
 
   const result = await getCompaniesPaginated(
-    pool,
     { includeInactive: showInactive, search: search || undefined },
-    pagination
+    pagination,
+    caller,
   );
 
   return {

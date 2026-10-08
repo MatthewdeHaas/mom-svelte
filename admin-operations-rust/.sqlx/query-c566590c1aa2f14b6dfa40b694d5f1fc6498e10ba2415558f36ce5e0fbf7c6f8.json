@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE invite\n           SET used_at = now()\n         WHERE token = $1\n           AND used_at IS NULL\n           AND expires_at > now()\n        RETURNING id, company_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "company_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c566590c1aa2f14b6dfa40b694d5f1fc6498e10ba2415558f36ce5e0fbf7c6f8"
+}

@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { pool } from '$lib/server/db';
 import { generatePackingSlips } from '$lib/pdf/packing-slip';
 import { weekBoundsEST } from '$lib/utils/dates';
 import { error } from '@sveltejs/kit';
@@ -29,7 +28,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   };
 
   const dateParam = resolve(url);
-  const slips = await generatePackingSlips(pool, new Date(dateParam), caller);
+  const slips = await generatePackingSlips(new Date(dateParam), caller);
 
   if (slips.length === 0) throw error(404, 'No orders found for that week.');
 

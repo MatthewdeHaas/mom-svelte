@@ -1,0 +1,7 @@
+# Default sqlx to offline mode so `cargo build`/`cargo test` work on
+# any machine with no live DB connection — the committed `.sqlx/`
+# query cache is the source of truth. Override by setting
+# `SQLX_OFFLINE=false` in your shell when regenerating the cache
+# (`cargo sqlx prepare --workspace`).
+[env]
+SQLX_OFFLINE = "true"

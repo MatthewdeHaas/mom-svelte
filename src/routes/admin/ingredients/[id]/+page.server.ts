@@ -5,17 +5,18 @@ import {
   updateIngredient,
   deactivateIngredient,
   setIngredientAllergens,
-} from '$lib/server/queries/ingredients';
-import { getAllergens } from '$lib/server/queries/allergens';
-import { pool } from '$lib/server/db';
+  getAllergens,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { ConflictError } from '$lib/server/errors';
 import { parseFormData } from '$lib/server/form';
 import { IngredientSchema } from '$lib/server/schemas/ingredient';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+  const caller = callerFromLocals(locals);
   const [ingredient, allergens] = await Promise.all([
-    getIngredientWithAllergens(pool, params.id, { includeInactive: true }),
-    getAllergens(pool),
+    getIngredientWithAllergens(params.id, { includeInactive: true }, caller),
+    getAllergens(caller),
   ]);
 
   if (!ingredient) error(404, 'Ingredient not found');
@@ -24,7 +25,7 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-  update: async ({ request, params }) => {
+  update: async ({ request, params, locals }) => {
     const form = await request.formData();
     const allergenIds = form.getAll('allergen_ids').map(v => v.toString());
     const parsed = parseFormData(IngredientSchema, form);
@@ -50,9 +51,10 @@ export const actions: Actions = {
       });
     }
 
+    const caller = callerFromLocals(locals);
     try {
-      await updateIngredient(pool, params.id, { name, cost_per_unit });
-    } catch (err: any) {
+      await updateIngredient(params.id, { name, cost_per_unit }, caller);
+    } catch (err) {
       if (err instanceof ConflictError) {
         return fail(422, {
           action: 'update' as const,
@@ -63,27 +65,29 @@ export const actions: Actions = {
       throw err;
     }
 
-    await setIngredientAllergens(pool, params.id, allergenIds);
+    await setIngredientAllergens(params.id, allergenIds, caller);
 
     return { action: 'update' as const, success: true };
   },
 
-  deactivate: async ({ params }) => {
-    const ingredient = await getIngredientWithAllergens(pool, params.id, { includeInactive: true });
+  deactivate: async ({ params, locals }) => {
+    const caller = callerFromLocals(locals);
+    const ingredient = await getIngredientWithAllergens(params.id, { includeInactive: true }, caller);
     if (!ingredient) error(404, 'Ingredient not found');
     if (!ingredient.active) return fail(422, { action: 'deactivate', error: 'Already inactive' });
 
-    await deactivateIngredient(pool, params.id);
+    await deactivateIngredient(params.id, caller);
 
     return { action: 'deactivate', success: true };
   },
 
-  reactivate: async ({ params }) => {
-    const ingredient = await getIngredientWithAllergens(pool, params.id, { includeInactive: true });
+  reactivate: async ({ params, locals }) => {
+    const caller = callerFromLocals(locals);
+    const ingredient = await getIngredientWithAllergens(params.id, { includeInactive: true }, caller);
     if (!ingredient) error(404, 'Ingredient not found');
     if (ingredient.active) return fail(422, { action: 'reactivate', error: 'Already active' });
 
-    await updateIngredient(pool, params.id, { active: true });
+    await updateIngredient(params.id, { active: true }, caller);
 
     return { action: 'reactivate', success: true };
   },

@@ -1,18 +1,16 @@
 import ExcelJS from 'exceljs';
-import { getOrders } from '$lib/server/queries/orders';
-import { pinXlsxDates } from '$lib/excel/determinism';
 import {
+  getOrders,
   useRustBackend,
   internalFetch,
   type InternalCaller,
 } from '$lib/server/queries/_rust-dispatch';
-import type { Pool } from 'pg';
+import { pinXlsxDates } from '$lib/excel/determinism';
 
 export async function generateProductionOrderSheet(
-  db: Pool,
   from: string,
   to: string,
-  caller?: InternalCaller
+  caller: InternalCaller,
 ): Promise<Buffer> {
 
   // Flag-gated Rust forward. When `use_rust_backend_exports` is on
@@ -21,17 +19,20 @@ export async function generateProductionOrderSheet(
   // existing ExcelJS path untouched. The dispatcher helper swallows
   // transport-level flag errors, so reaching the inner branch means
   // the flag was truly on and Rust is expected to answer.
-  if (caller && (await useRustBackend('exports', caller))) {
+  if (await useRustBackend('exports', caller)) {
     const qs = new URLSearchParams({ from, to }).toString();
     const res = await internalFetch(`/api/exports/production-order?${qs}`, caller);
     const bytes = new Uint8Array(await res.arrayBuffer());
     return Buffer.from(bytes);
   }
 
-  const orders = await getOrders(db, {
-    serving_date_from: from,
-    serving_date_to: to,
-  });
+  const orders = await getOrders(
+    {
+      serving_date_from: from,
+      serving_date_to: to,
+    },
+    caller,
+  );
 
   // Sort by content-based keys so two runs over the same semantic data
   // produce byte-identical output. We can't tie-break on `o.id` because

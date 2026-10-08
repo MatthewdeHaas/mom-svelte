@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { pool } from '$lib/server/db';
 import { generateShoppingList } from '$lib/excel/export/shopping-list';
 import { weekBoundsEST } from '$lib/utils/dates';
 import { error } from '@sveltejs/kit';
@@ -30,7 +29,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   };
 
   const { from, to, label } = resolve(url);
-  const buffer = await generateShoppingList(pool, from, to, caller);
+  const buffer = await generateShoppingList(from, to, caller);
 
   return new Response(buffer as unknown as BodyInit, {
     headers: {

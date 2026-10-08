@@ -1,9 +1,9 @@
 import type { RequestHandler } from './$types';
-import { pool } from '$lib/server/db';
-import { getSourceMix } from '$lib/server/queries/insights';
+import { getSourceMix } from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { json, error } from '@sveltejs/kit';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
@@ -12,6 +12,7 @@ export const GET: RequestHandler = async ({ url }) => {
     throw error(400, 'Provide from and to as YYYY-MM-DD');
   }
 
-  const data = await getSourceMix(pool, from, to);
+  const caller = callerFromLocals(locals);
+  const data = await getSourceMix(from, to, caller);
   return json(data);
 };

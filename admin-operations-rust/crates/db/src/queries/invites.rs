@@ -161,3 +161,40 @@ pub async fn mark_used(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
     .await?;
     Ok(result.rows_affected() > 0)
 }
+
+/// Atomic token-scoped consume. Verifies the invite is unused and
+/// unexpired, stamps `used_at = now()`, and reports what happened — all
+/// in one SQL statement so a client can't race its own request. Powers
+/// the public invite-landing endpoint (`POST /api/invites/consume-by-token`)
+/// where the token's entropy is the only authorization boundary.
+///
+/// Returns the invite's `id` and `company_id` on success. Returns
+/// `None` when the token is unknown, already used, or expired — the
+/// three cases are deliberately indistinguishable to the caller
+/// (prevents using the endpoint as an existence oracle).
+pub async fn consume_by_token(
+    pool: &PgPool,
+    token: &str,
+) -> Result<Option<(Uuid, Uuid)>, sqlx::Error> {
+    // `query!` returns an opaque anonymous record type; threading it
+    // through `.map()` trips a diverging-inference-var warning that
+    // became a hard error in recent rustc. Destructure explicitly so
+    // the closure's return type is pinned to a concrete tuple.
+    let row = sqlx::query!(
+        r#"
+        UPDATE invite
+           SET used_at = now()
+         WHERE token = $1
+           AND used_at IS NULL
+           AND expires_at > now()
+        RETURNING id, company_id
+        "#,
+        token,
+    )
+    .fetch_optional(pool)
+    .await?;
+    match row {
+        Some(r) => Ok(Some((r.id, r.company_id))),
+        None => Ok(None),
+    }
+}

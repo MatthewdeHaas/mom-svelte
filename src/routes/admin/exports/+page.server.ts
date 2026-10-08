@@ -1,11 +1,11 @@
 import type { Actions } from './$types';
 import { fail } from '@sveltejs/kit';
-import { pool } from '$lib/server/db';
 import { generateProductionOrderSheet } from '$lib/excel/export/production-order';
 import { generateShoppingList } from '$lib/excel/export/shopping-list';
 import { generatePackingSlips } from '$lib/pdf/packing-slip';
 import { parseFormData } from '$lib/server/form';
 import { ExportDateSchema } from '$lib/server/schemas/order';
+import { callerFromLocals } from '$lib/server/api-client';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,33 +31,36 @@ function pdfResponse(buffer: Buffer, filename: string): Response {
 
 export const actions: Actions = {
 
-  productionOrder: async ({ request }) => {
+  productionOrder: async ({ request, locals }) => {
     const data = await request.formData();
     const parsed = parseFormData(ExportDateSchema, data);
     if (!parsed.success) return fail(400, { error: parsed.errors.shipment_date ?? 'Invalid or missing shipment date.' });
 
     const { shipment_date } = parsed.data;
-    const buffer = await generateProductionOrderSheet(pool, shipment_date, shipment_date);
+    const caller = callerFromLocals(locals);
+    const buffer = await generateProductionOrderSheet(shipment_date, shipment_date, caller);
     return excelResponse(buffer, `production-${shipment_date}.xlsx`);
   },
 
-  shoppingList: async ({ request }) => {
+  shoppingList: async ({ request, locals }) => {
     const data = await request.formData();
     const parsed = parseFormData(ExportDateSchema, data);
     if (!parsed.success) return fail(400, { error: parsed.errors.shipment_date ?? 'Invalid or missing shipment date.' });
 
     const { shipment_date } = parsed.data;
-    const buffer = await generateShoppingList(pool, shipment_date, shipment_date);
+    const caller = callerFromLocals(locals);
+    const buffer = await generateShoppingList(shipment_date, shipment_date, caller);
     return excelResponse(buffer, `shopping-${shipment_date}.xlsx`);
   },
 
-  packingSlips: async ({ request }) => {
+  packingSlips: async ({ request, locals }) => {
     const data = await request.formData();
     const parsed = parseFormData(ExportDateSchema, data);
     if (!parsed.success) return fail(400, { error: parsed.errors.shipment_date ?? 'Invalid or missing shipment date.' });
 
     const { shipment_date } = parsed.data;
-    const slips = await generatePackingSlips(pool, new Date(shipment_date));
+    const caller = callerFromLocals(locals);
+    const slips = await generatePackingSlips(new Date(shipment_date), caller);
 
     if (slips.length === 0) {
       return fail(404, { error: 'No orders found for that week.' });

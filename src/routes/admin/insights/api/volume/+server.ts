@@ -1,9 +1,9 @@
 import type { RequestHandler } from './$types';
-import { pool } from '$lib/server/db';
-import { getOrderVolumeSeries } from '$lib/server/queries/insights';
+import { getOrderVolumeSeries } from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { json, error } from '@sveltejs/kit';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
   const granularity = url.searchParams.get('granularity') === 'weekly' ? 'weekly' : 'daily';
@@ -13,6 +13,7 @@ export const GET: RequestHandler = async ({ url }) => {
     throw error(400, 'Provide from and to as YYYY-MM-DD');
   }
 
-  const data = await getOrderVolumeSeries(pool, from, to, granularity);
+  const caller = callerFromLocals(locals);
+  const data = await getOrderVolumeSeries(from, to, granularity, caller);
   return json(data);
 };

@@ -1,9 +1,13 @@
 import type { PageServerLoad } from './$types';
-import { getOrderCountsByStatus, getOrders } from '$lib/server/queries/orders';
-import { getCompanies } from '$lib/server/queries/companies';
-import { pool } from '$lib/server/db';
+import {
+  getCompanies,
+  getOrderCountsByStatus,
+  getOrders,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
+  const caller = callerFromLocals(locals);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -11,13 +15,16 @@ export const load: PageServerLoad = async () => {
   tomorrow.setDate(tomorrow.getDate() + 1);
 
   const [statusCounts, companies, recentOrders, todaysOrders] = await Promise.all([
-    getOrderCountsByStatus(pool),
-    getCompanies(pool),
-    getOrders(pool, { limit: 8 } as any),
-    getOrders(pool, {
-      serving_date_from: today,
-      serving_date_to: tomorrow,
-    }),
+    getOrderCountsByStatus({}, caller),
+    getCompanies({}, caller),
+    getOrders({}, caller),
+    getOrders(
+      {
+        serving_date_from: today,
+        serving_date_to: tomorrow,
+      },
+      caller,
+    ),
   ]);
 
   return {

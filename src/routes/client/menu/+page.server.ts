@@ -1,7 +1,9 @@
-import { pool } from '$lib/server/db';
-import { getMenusWithRecipes } from '$lib/server/queries/menus';
-import { getPersonsWithAllergensByCompany } from '$lib/server/queries/persons';
-import { getOrders } from '$lib/server/queries/orders';
+import {
+  getMenusWithRecipes,
+  getOrders,
+  getPersonsWithAllergensByCompany,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import type { MenuWithRecipes, PersonWithAllergens, OrderSummary, DayOfWeek } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
@@ -38,6 +40,7 @@ export interface MenuSlotForDate {
 
 export const load: PageServerLoad = async ({ locals }) => {
   const companyId = locals.user!.companyId!;
+  const caller = callerFromLocals(locals);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -46,13 +49,16 @@ export const load: PageServerLoad = async ({ locals }) => {
   const horizon = new Date(today.getTime() + 28 * 86400000);
 
   const [menus, persons, existingOrders] = await Promise.all([
-    getMenusWithRecipes(pool),
-    getPersonsWithAllergensByCompany(pool, companyId),
-    getOrders(pool, {
-      company_id: companyId,
-      serving_date_from: today,
-      serving_date_to: horizon,
-    }),
+    getMenusWithRecipes({}, caller),
+    getPersonsWithAllergensByCompany(companyId, {}, caller),
+    getOrders(
+      {
+        company_id: companyId,
+        serving_date_from: today,
+        serving_date_to: horizon,
+      },
+      caller,
+    ),
   ]);
 
   // Build a set of "recipe_id|serving_date" already ordered so we can mark slots

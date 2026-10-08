@@ -37,6 +37,30 @@ export class InternalApiError extends Error {
 }
 
 /**
+ * Build an `InternalCaller` from a SvelteKit request's `locals`. The
+ * `role` cast is safe: Better Auth stores either `'admin'` or `'user'`
+ * (client), matching the Rust `Role` enum once narrowed.
+ *
+ * Post-cutover (Track 3 Step 6), every domain wrapper in
+ * `src/lib/server/queries/_rust-dispatch.ts` takes a non-optional
+ * `InternalCaller` — there is no SQL fallback. Callers that have no
+ * `locals.user` should not be invoking domain functions at all; this
+ * helper throws loudly so such a slip is caught in dev.
+ */
+export function callerFromLocals(locals: App.Locals): InternalCaller {
+	if (!locals.user) {
+		throw new Error(
+			'callerFromLocals: locals.user is null — route is not behind an auth hook'
+		);
+	}
+	return {
+		userId: locals.user.id,
+		role: locals.user.role as 'admin' | 'client',
+		companyId: locals.user.companyId ?? null
+	};
+}
+
+/**
  * `fetch` wrapper that adds the six `X-Internal-*` headers.
  *
  * - `path` is appended to `RUST_API_URL` (no trailing slash required).

@@ -1,16 +1,20 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { getRecipesWithMarginsPaginated, getInvoiceData } from '$lib/server/queries/financials';
-import { getCompanies } from '$lib/server/queries/companies';
+import {
+  getRecipesWithMarginsPaginated,
+  getInvoiceData,
+  getCompanies,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { parsePaginationParams } from '$lib/server/queries/pagination';
-import { pool } from '$lib/server/db';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+  const caller = callerFromLocals(locals);
   const pagination = parsePaginationParams(url, { perPage: 25 });
 
   const [marginsResult, companies] = await Promise.all([
-    getRecipesWithMarginsPaginated(pool, pagination),
-    getCompanies(pool, { includeInactive: false }),
+    getRecipesWithMarginsPaginated(pagination, caller),
+    getCompanies({ includeInactive: false }, caller),
   ]);
 
   return {
@@ -26,7 +30,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-  invoice: async ({ request }) => {
+  invoice: async ({ request, locals }) => {
+    const caller = callerFromLocals(locals);
     const form = await request.formData();
     const company_id = form.get('company_id') as string;
     const from = form.get('from') as string;
@@ -36,7 +41,7 @@ export const actions: Actions = {
       return fail(400, { action: 'invoice', error: 'Company and date range are required' });
     }
 
-    const invoice = await getInvoiceData(pool, company_id, from, to);
+    const invoice = await getInvoiceData(company_id, from, to, caller);
     if (!invoice) {
       return fail(404, { action: 'invoice', error: 'Company not found' });
     }

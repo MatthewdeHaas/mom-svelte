@@ -209,12 +209,26 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/allergens/:id/ref-count", get(allergens::get_ref_count))
         // Invites surface — mirrors `src/lib/server/queries/invites.ts`.
-        // Admin-only across the board (the unauthenticated
-        // `/invite/[token]` SvelteKit route keeps the SQL path).
-        // Order matters: `/by-token` registers before `/:id/*` so axum
-        // doesn't try to parse "by-token" as a UUID.
+        // Admin-gated reads/writes PLUS two public (HMAC-still-signed,
+        // but no admin check) endpoints that back the invite-landing
+        // flow (`src/routes/invite/[token]/+page.server.ts`). The
+        // `/public` and `/consume-by-token` endpoints use the invite
+        // token's 128-bit entropy as the authorization boundary —
+        // same security model as a password-reset link.
+        //
+        // Order matters: literal paths (`/by-token`, `/by-token/public`,
+        // `/consume-by-token`) register before `/:id/*` so axum doesn't
+        // try to parse those segments as UUIDs.
         .route("/invites", get(invites::list).post(invites::create))
         .route("/invites/by-token", get(invites::get_by_token))
+        .route(
+            "/invites/by-token/public",
+            get(invites::get_by_token_public),
+        )
+        .route(
+            "/invites/consume-by-token",
+            post(invites::consume_by_token),
+        )
         .route("/invites/:id/mark-used", post(invites::mark_used))
         .route("/invites/:id/revoke", post(invites::revoke))
         // Financials surface — mirrors `src/lib/server/queries/financials.ts`.

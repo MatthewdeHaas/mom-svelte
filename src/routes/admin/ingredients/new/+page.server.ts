@@ -1,19 +1,23 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { createIngredient, setIngredientAllergens } from '$lib/server/queries/ingredients';
-import { getAllergens } from '$lib/server/queries/allergens';
-import { pool } from '$lib/server/db';
+import {
+  createIngredient,
+  setIngredientAllergens,
+  getAllergens,
+} from '$lib/server/queries/_rust-dispatch';
+import { callerFromLocals } from '$lib/server/api-client';
 import { ConflictError } from '$lib/server/errors';
 import { parseFormData } from '$lib/server/form';
 import { IngredientSchema } from '$lib/server/schemas/ingredient';
 
-export const load: PageServerLoad = async () => {
-  const allergens = await getAllergens(pool);
+export const load: PageServerLoad = async ({ locals }) => {
+  const caller = callerFromLocals(locals);
+  const allergens = await getAllergens(caller);
   return { allergens };
 };
 
 export const actions: Actions = {
-  default: async ({ request }) => {
+  default: async ({ request, locals }) => {
     const form = await request.formData();
     const allergenIds = form.getAll('allergen_ids').map(v => v.toString());
     const parsed = parseFormData(IngredientSchema, form);
@@ -27,10 +31,11 @@ export const actions: Actions = {
 
     const { name } = parsed.data;
 
+    const caller = callerFromLocals(locals);
     let ingredient;
     try {
-      ingredient = await createIngredient(pool, { name, active: true });
-    } catch (err: any) {
+      ingredient = await createIngredient({ name, active: true }, caller);
+    } catch (err) {
       if (err instanceof ConflictError) {
         return fail(422, {
           errors: { name: 'An ingredient with this name already exists' },
@@ -41,7 +46,7 @@ export const actions: Actions = {
     }
 
     if (allergenIds.length) {
-      await setIngredientAllergens(pool, ingredient.id, allergenIds);
+      await setIngredientAllergens(ingredient.id, allergenIds, caller);
     }
 
     redirect(303, `/admin/ingredients/${ingredient.id}`);

@@ -27,9 +27,17 @@ done < .env.test
 
 DB_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432"
 
+# Prefer host psql; fall back to the running `db` container so a
+# machine without libpq installed can still reset the test DB.
+if command -v psql >/dev/null 2>&1; then
+  run_psql() { psql "$@"; }
+else
+  run_psql() { docker compose exec -T db psql "$@"; }
+fi
+
 echo "[db:reset-test] Dropping and recreating ${POSTGRES_DB}..."
-psql "${DB_URL}/postgres" -c "DROP DATABASE IF EXISTS ${POSTGRES_DB};"
-psql "${DB_URL}/postgres" -c "CREATE DATABASE ${POSTGRES_DB};"
+run_psql "${DB_URL}/postgres" -c "DROP DATABASE IF EXISTS ${POSTGRES_DB};"
+run_psql "${DB_URL}/postgres" -c "CREATE DATABASE ${POSTGRES_DB};"
 
 echo "[db:reset-test] Running migrations..."
 pnpm run migrate
