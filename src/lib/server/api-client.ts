@@ -105,9 +105,23 @@ export async function internalFetch(
 	};
 
 	// Only set content-type for bodied requests when the caller hasn't
-	// already provided one — avoids clobbering `multipart/form-data`
-	// boundary strings on uploads.
-	if (opts.body && !headers['content-type'] && !headers['Content-Type']) {
+	// already provided one AND the body isn't a shape that owns its own
+	// content-type. FormData generates a boundary that only `fetch` can
+	// stamp onto the header; forcing `application/json` here breaks the
+	// multipart parse on the Rust side (EPIPE as the server rejects
+	// mid-stream). Same reasoning applies to Blob/ReadableStream/
+	// URLSearchParams — let undici pick the right type.
+	const bodyOwnsContentType =
+		opts.body instanceof FormData ||
+		opts.body instanceof Blob ||
+		opts.body instanceof URLSearchParams ||
+		opts.body instanceof ReadableStream;
+	if (
+		opts.body &&
+		!bodyOwnsContentType &&
+		!headers['content-type'] &&
+		!headers['Content-Type']
+	) {
 		headers['content-type'] = 'application/json';
 	}
 

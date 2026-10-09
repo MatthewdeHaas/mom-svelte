@@ -229,9 +229,16 @@ test.describe('Packing Slips export', () => {
       `/admin/exports/packing-slips?shipment_date=${E2E_EXPORT_DATE}`
     );
     const buf = Buffer.from(await res.body());
-    // PDFKit encodes strings in PDF object streams as UTF-16BE (with BOM þÿ).
-    // Convert company name to UTF-16BE and search the raw binary for it.
-    const utf16 = Buffer.from(E2E_COMPANY_NAME, 'utf16le').swap16();
-    expect(buf.indexOf(utf16)).toBeGreaterThan(-1);
+    // The Rust generator (printpdf + BuiltinFont::Helvetica) writes ASCII
+    // text verbatim: in content streams via `Tj` operators, and in the
+    // Info dictionary's /Title and /Subject as plain literal strings. The
+    // Info-dict path is uncompressed, so the raw ASCII bytes of the
+    // company name appear in the file.
+    //
+    // Fallback to UTF-16BE preserves the test if a future generator swap
+    // (PDFKit-style) brings back the BOM-prefixed form.
+    const asciiHit = buf.indexOf(Buffer.from(E2E_COMPANY_NAME, 'ascii'));
+    const utf16Hit = buf.indexOf(Buffer.from(E2E_COMPANY_NAME, 'utf16le').swap16());
+    expect(Math.max(asciiHit, utf16Hit)).toBeGreaterThan(-1);
   });
 });
