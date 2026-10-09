@@ -161,7 +161,7 @@ test('already-ordered slot shows "Ordered" badge and no Order button', async ({
   clientPage,
   authState,
 }) => {
-  // The global-setup inserts a confirmed order for tomorrowStr.
+  // The global-setup inserts a confirmed order on the next weekday.
   // The menu page should show that slot as already ordered.
   await clientPage.goto('/client/menu');
   // "✓ Ordered" badge should appear somewhere on the page
@@ -283,12 +283,11 @@ test('attendance page loads', async ({ clientPage }) => {
 });
 
 test('attendance shows dates from upcoming confirmed orders', async ({ clientPage, authState }) => {
-  // The global-setup inserts a confirmed order for tomorrowStr
+  // The global-setup inserts a confirmed order for the next weekday.
   await clientPage.goto('/client/attendance');
-  // The page should show the tomorrow date in the grid header
-  // tomorrowStr is YYYY-MM-DD; the table header shows "Mon DD" style
-  const tomorrow = new Date(authState.tomorrowStr);
-  const shortLabel = tomorrow.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+  // The page should show that date in the grid header (format: "Mon DD").
+  const orderedDate = new Date(authState.nextWeekdayStr);
+  const shortLabel = orderedDate.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
   await expect(clientPage.getByText(shortLabel)).toBeVisible();
 });
 

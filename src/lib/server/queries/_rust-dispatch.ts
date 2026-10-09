@@ -460,7 +460,9 @@ export async function consumeInviteByToken(
 }
 
 // -----
-// allergens — admin-only; the Rust side 403s client callers.
+// allergens — reads are open to any authenticated caller (the client
+// roster detail page needs the list for its checkbox grid); writes
+// (create/update/delete) are admin-only and 403 for clients Rust-side.
 // -----
 
 /** GET /api/allergens — ordered `name ASC` on the server. */

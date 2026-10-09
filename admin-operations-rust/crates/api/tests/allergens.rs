@@ -648,39 +648,43 @@ async fn delete_cascades_ingredient_allergen_rows(pool: PgPool) {
 }
 
 // ---------------------------------------------------------------------------
-// Client scoping — Rust-only. Allergens are admin-only everywhere; a
-// client gets 403 uniformly across every endpoint. No "lie about
-// existence" since no `/api/allergens` client route exists today.
+// Client scoping — Rust-only. Reads (list, by-id, by-name, ref-count) are
+// open to any authenticated caller because allergens are global reference
+// data with no company scope. Writes (create/update/delete) stay admin-
+// only; a client calling them gets 403. The client roster detail page
+// (`src/routes/client/roster/[id]/+page.server.ts`) needs the list to
+// render its checkbox grid, which is why reads are not admin-gated.
 // ---------------------------------------------------------------------------
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn client_cannot_list_allergens(pool: PgPool) {
+async fn client_can_list_allergens(pool: PgPool) {
+    seed_allergen(&pool, "ClientReadA").await;
     let own = Uuid::new_v4();
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
     let res = get_client(&server, &user.id, own, "/api/allergens").await;
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(res.status(), StatusCode::OK);
 
     server.stop().await;
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn client_cannot_get_allergen_by_id(pool: PgPool) {
-    let id = seed_allergen(&pool, "AdminOnlyA").await;
+async fn client_can_get_allergen_by_id(pool: PgPool) {
+    let id = seed_allergen(&pool, "ClientReadB").await;
     let own = Uuid::new_v4();
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
     let res = get_client(&server, &user.id, own, &format!("/api/allergens/{id}")).await;
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(res.status(), StatusCode::OK);
 
     server.stop().await;
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn client_cannot_get_allergen_by_name(pool: PgPool) {
-    seed_allergen(&pool, "AdminOnlyB").await;
+async fn client_can_get_allergen_by_name(pool: PgPool) {
+    seed_allergen(&pool, "ClientReadC").await;
     let own = Uuid::new_v4();
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -689,17 +693,17 @@ async fn client_cannot_get_allergen_by_name(pool: PgPool) {
         &server,
         &user.id,
         own,
-        "/api/allergens/by-name?name=AdminOnlyB",
+        "/api/allergens/by-name?name=ClientReadC",
     )
     .await;
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(res.status(), StatusCode::OK);
 
     server.stop().await;
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn client_cannot_get_ref_count(pool: PgPool) {
-    let id = seed_allergen(&pool, "AdminOnlyC").await;
+async fn client_can_get_ref_count(pool: PgPool) {
+    let id = seed_allergen(&pool, "ClientReadD").await;
     let own = Uuid::new_v4();
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -711,7 +715,7 @@ async fn client_cannot_get_ref_count(pool: PgPool) {
         &format!("/api/allergens/{id}/ref-count"),
     )
     .await;
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(res.status(), StatusCode::OK);
 
     server.stop().await;
 }

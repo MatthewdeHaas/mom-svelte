@@ -377,15 +377,24 @@ export default async function globalSetup() {
       );
     }
 
-    // A confirmed order for the client — serving_date = tomorrow.
-    // Used to verify attendance dates are populated from orders.
-    const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    // A confirmed order for the client — serving_date = next weekday
+    // (Mon-Fri) within the menu horizon. The seeded `menu_recipe` only
+    // has slots for weekdays, so the "already-ordered" test needs the
+    // order to land on a day the menu actually renders. Picking the
+    // nearest Mon-Fri from today keeps the test stable regardless of
+    // what day of the week the suite runs.
+    const nextWeekday = new Date();
+    nextWeekday.setUTCHours(0, 0, 0, 0);
+    do {
+      nextWeekday.setUTCDate(nextWeekday.getUTCDate() + 1);
+    } while (nextWeekday.getUTCDay() === 0 || nextWeekday.getUTCDay() === 6);
+    const nextWeekdayStr = nextWeekday.toISOString().slice(0, 10);
     await pool.query(
       `INSERT INTO "order" (id, company_id, recipe_id, created_by, order_source, status,
          meal_category, amount, serving_date, shipment_date, frozen, chilled)
        VALUES ($1, $2, $3, $4, 'client_portal', 'confirmed',
          'Lunch', 10, $5, $5, false, false)`,
-      [randomUUID(), companyId, menuRecipeId, clientId, tomorrowStr]
+      [randomUUID(), companyId, menuRecipeId, clientId, nextWeekdayStr]
     );
 
     // Invite tokens for invite flow tests
@@ -421,7 +430,7 @@ export default async function globalSetup() {
     );
     (await import('fs')).writeFileSync(
       join(process.cwd(), 'tests/e2e/.auth/state.json'),
-      JSON.stringify({ ...state, menuId, menuRecipeId, tomorrowStr }, null, 2)
+      JSON.stringify({ ...state, menuId, menuRecipeId, nextWeekdayStr }, null, 2)
     );
 
     // Pre-warm Vite dev-mode routes so the first browser navigation to each

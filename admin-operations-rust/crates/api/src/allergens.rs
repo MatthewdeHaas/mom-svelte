@@ -5,13 +5,13 @@
 //! ref-count subqueries) lives in the db crate — this module owns the
 //! HTTP contract and the admin-only scoping.
 //!
-//! Scoping rule — allergens are admin-only across the board. The one
-//! client-facing route that reads them today
-//! (`src/routes/client/roster/[id]/+page.server.ts`) stays on the SQL
-//! path this commit — routes are untouched. Future work to thread
-//! `caller` through that route is a follow-up with its own scope
-//! decision. No `/api/allergens` client route exists today, so
-//! "lie about existence" is not required.
+//! Scoping rule — writes (POST/PATCH/DELETE) are admin-only; reads are
+//! open to any authenticated caller. Allergens are global reference
+//! data (nuts, dairy, soy, …) with no company scope, so there is
+//! nothing to leak — and the client roster detail page
+//! (`src/routes/client/roster/[id]/+page.server.ts`) needs the full
+//! allergen list to render its checkboxes. The auth middleware already
+//! guarantees a non-anonymous caller before any handler runs.
 //!
 //! Error mapping:
 //! - UNIQUE-name violation (23505) → 409 Conflict with the exact
@@ -34,10 +34,18 @@ use uuid::Uuid;
 use crate::{auth::AuthCtx, error::ApiError, state::AppState};
 
 // ---------------------------------------------------------------
-// Scope helper — allergens are admin-only, reads and writes alike.
+// Scope helpers.
+//
+// Writes (POST/PATCH/DELETE) are admin-only via `require_admin`.
+// Reads (list, by-id, by-name, ref-count) are open to any
+// authenticated caller — allergens are global reference data with no
+// company scope, so there is nothing to leak, and the client roster
+// detail page needs the list to render its checkbox grid. The auth
+// middleware guarantees a non-anonymous caller before any handler
+// runs, so reads need no further gating.
 // ---------------------------------------------------------------
 
-/// Reject anything but admin with 403.
+/// Reject anything but admin with 403. Used by write handlers only.
 fn require_admin(auth: &AuthCtx) -> Result<(), ApiError> {
     if auth.role == Role::Admin {
         Ok(())
@@ -57,15 +65,19 @@ pub struct ByNameQuery {
 }
 
 // ---------------------------------------------------------------
-// Handlers — reads (admin only)
+// Handlers — reads (any authenticated caller)
+//
+// Allergens are global reference data with no company scope. The auth
+// middleware guarantees a non-anonymous caller, and the client roster
+// detail page needs this list to render its checkbox grid. See the
+// module-level comment for the full rationale.
 // ---------------------------------------------------------------
 
 /// `GET /api/allergens` — flat list ordered by name.
 pub async fn list(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthCtx>,
+    Extension(_auth): Extension<AuthCtx>,
 ) -> Result<Json<Vec<AllergenRow>>, ApiError> {
-    require_admin(&auth)?;
     let rows = allergens::list(&state.pool).await?;
     Ok(Json(rows))
 }
@@ -73,10 +85,9 @@ pub async fn list(
 /// `GET /api/allergens/by-name?name=…` — case-insensitive. 404 on miss.
 pub async fn get_by_name(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthCtx>,
+    Extension(_auth): Extension<AuthCtx>,
     Query(q): Query<ByNameQuery>,
 ) -> Result<Json<AllergenRow>, ApiError> {
-    require_admin(&auth)?;
     let row = allergens::get_by_name(&state.pool, &q.name)
         .await?
         .ok_or(ApiError::Domain(DomainError::NotFound))?;
@@ -86,10 +97,9 @@ pub async fn get_by_name(
 /// `GET /api/allergens/:id` — 404 on miss.
 pub async fn get_by_id(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthCtx>,
+    Extension(_auth): Extension<AuthCtx>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<AllergenRow>, ApiError> {
-    require_admin(&auth)?;
     let row = allergens::get_by_id(&state.pool, id)
         .await?
         .ok_or(ApiError::Domain(DomainError::NotFound))?;
@@ -103,10 +113,9 @@ pub async fn get_by_id(
 /// subqueries ignore the parent row's existence).
 pub async fn get_ref_count(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthCtx>,
+    Extension(_auth): Extension<AuthCtx>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<RefCount>, ApiError> {
-    require_admin(&auth)?;
     let counts = allergens::get_ref_count(&state.pool, id).await?;
     Ok(Json(counts))
 }

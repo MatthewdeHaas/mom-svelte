@@ -135,5 +135,14 @@ export async function internalJson<T>(
 		}
 		throw new InternalApiError(res.status, code, message);
 	}
-	return (await res.json()) as T;
+	// 204 No Content (and any empty body) → undefined. Several Rust
+	// handlers (set_allergens, add_allergen, remove_allergen, batch
+	// attendance upsert, …) answer 204 on success; `res.json()` on an
+	// empty body throws `SyntaxError: Unexpected end of JSON input`.
+	// The TS surface wrappers call these as `internalJson<void>`, so
+	// returning `undefined` for void-shaped endpoints is correct.
+	if (res.status === 204) return undefined as T;
+	const text = await res.text();
+	if (text === '') return undefined as T;
+	return JSON.parse(text) as T;
 }

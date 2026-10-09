@@ -9,7 +9,7 @@ interface AuthState {
   companyId: string;
   menuId: string;
   menuRecipeId: string;
-  tomorrowStr: string;
+  nextWeekdayStr: string;
 }
 
 function loadState(): AuthState {
