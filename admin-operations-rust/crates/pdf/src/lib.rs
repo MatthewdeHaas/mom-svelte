@@ -6,9 +6,10 @@
 //! rewrites the oracle to semantic extraction and reasserts the contract
 //! against this generator.
 
+pub mod determinism;
 pub mod packing_slip;
 
-pub use packing_slip::PackingSlipPdf;
+pub use packing_slip::{week_bounds_est, PackingSlipPdf};
 
 /// Error surface for packing-slip generation. DB and printpdf build
 /// failures funnel through one enum so the HTTP handler can map both

@@ -13,8 +13,11 @@
 //! noise doesn't make two identical semantic inputs render as
 //! `3.0000000004` and `3.0`.
 //!
-//! Byte-identical ZIP determinism is NOT handled here — see
-//! `production_order` module docs for the rationale.
+//! Byte-identical determinism matches `production_order`: workbook
+//! metadata is zeroed + creation_time pinned to the DOS epoch, then
+//! the final bytes run through [`crate::determinism::pin_xlsx_bytes`]
+//! to rewrite every ZIP entry's mtime and scrub the "Unknown"
+//! fallbacks in `docProps/core.xml`.
 
 use std::collections::BTreeSet;
 
@@ -22,11 +25,12 @@ use chrono::NaiveDate;
 use db::queries::orders::{self, OrderFilters};
 use db::queries::recipes;
 use indexmap::IndexMap;
-use rust_xlsxwriter::{Color, Format, FormatAlign, Workbook};
+use rust_xlsxwriter::{Color, DocProperties, ExcelDateTime, Format, FormatAlign, Workbook};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::ExportError;
+use crate::determinism::pin_xlsx_bytes;
 
 /// Aggregated row for a `(ingredient_name, unit)` pair. Local to this
 /// module — the sheet writer is the only consumer.
@@ -127,6 +131,25 @@ const HEADERS: &[(&str, f64)] = &[
 
 fn build_workbook(rows: &[Aggregated]) -> Result<Vec<u8>, ExportError> {
     let mut wb = Workbook::new();
+
+    // Pin all workbook metadata so docProps/core.xml is deterministic.
+    // Mirrors `production_order::build_workbook`; see that module for
+    // the full rationale.
+    let epoch = ExcelDateTime::from_ymd(1980, 1, 1)?;
+    let props = DocProperties::new()
+        .set_author("")
+        .set_title("")
+        .set_subject("")
+        .set_company("")
+        .set_manager("")
+        .set_comment("")
+        .set_keywords("")
+        .set_category("")
+        .set_status("")
+        .set_hyperlink_base("")
+        .set_creation_datetime(&epoch);
+    wb.set_properties(&props);
+
     let ws = wb.add_worksheet();
     ws.set_name("Shopping List")?;
 
@@ -201,5 +224,6 @@ fn build_workbook(rows: &[Aggregated]) -> Result<Vec<u8>, ExportError> {
 
     ws.set_freeze_panes(1, 0)?;
 
-    Ok(wb.save_to_buffer()?)
+    let bytes = wb.save_to_buffer()?;
+    pin_xlsx_bytes(bytes)
 }

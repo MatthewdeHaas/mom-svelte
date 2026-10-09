@@ -1,59 +1,45 @@
-import type { RequestHandler } from './$types';
-import { generatePackingSlips } from '$lib/pdf/packing-slip';
-import { weekBoundsEST } from '$lib/utils/dates';
 import { error } from '@sveltejs/kit';
-import JSZip from 'jszip';
-import type { InternalCaller } from '$lib/server/api-client';
+import type { RequestHandler } from './$types';
+import { callerFromLocals, internalFetch } from '$lib/server/api-client';
 
-function resolve(url: URL): string {
-  const weekOf = url.searchParams.get('week_of');
-  const single = url.searchParams.get('shipment_date');
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-  if (weekOf?.match(dateRe)) return weekOf;
-  if (single?.match(dateRe)) return single;
-  throw error(400, 'Provide either week_of or shipment_date (YYYY-MM-DD)');
-}
+/**
+ * `GET /admin/exports/packing-slips?date=YYYY-MM-DD`
+ *
+ * Pure byte-pump — the Rust handler
+ * (`admin-operations-rust/crates/api/src/exports.rs::packing_slips`)
+ * decides single-PDF vs multi-slip-ZIP based on how many
+ * `(company, shipment_date)` groups the EST week contains, and emits
+ * the right `Content-Type` + attachment `Content-Disposition`.
+ *
+ *   - 0 groups → upstream 404, forwarded with its text body.
+ *   - 1 group  → `application/pdf` with the slip's own filename.
+ *   - N groups → `application/zip` named `packing-slips-week-of-<mon>.zip`
+ *     with per-company subfolders.
+ *
+ * No `JSZip` import, no base64 decode, no single-vs-zip branching here —
+ * the HTTP layer is just a pipe.
+ */
+export const GET: RequestHandler = async ({ locals, url }) => {
+	if (locals.user?.role !== 'admin') throw error(403, 'Forbidden');
 
-function slugify(str: string): string {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-}
+	const date = url.searchParams.get('date');
+	if (!date) throw error(400, 'date is required');
 
-export const GET: RequestHandler = async ({ url, locals }) => {
-  if (!locals.user) throw error(401, 'Unauthorised');
-
-  const caller: InternalCaller = {
-    userId: locals.user.id,
-    role: locals.user.role === 'client' ? 'client' : 'admin',
-    companyId: locals.user.companyId ?? null,
-  };
-
-  const dateParam = resolve(url);
-  const slips = await generatePackingSlips(new Date(dateParam), caller);
-
-  if (slips.length === 0) throw error(404, 'No orders found for that week.');
-
-  if (slips.length === 1) {
-    return new Response(slips[0].buffer as unknown as BodyInit, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${slips[0].filename}"`,
-      },
-    });
-  }
-
-  const zip = new JSZip();
-  for (const slip of slips) {
-    const folder = slugify(slip.companyName);
-    zip.file(`${folder}/${slip.filename}`, slip.buffer);
-  }
-
-  const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-  const { from } = weekBoundsEST(dateParam);
-
-  return new Response(zipBuffer as unknown as BodyInit, {
-    headers: {
-      'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="packing-slips-week-of-${from}.zip"`,
-    },
-  });
+	const caller = callerFromLocals(locals);
+	const upstream = await internalFetch(
+		`/api/exports/packing-slips?date=${encodeURIComponent(date)}`,
+		caller,
+	);
+	if (!upstream.ok) {
+		const body = await upstream.text().catch(() => 'export failed');
+		throw error(upstream.status, body);
+	}
+	return new Response(upstream.body, {
+		status: 200,
+		headers: {
+			'Content-Type':
+				upstream.headers.get('content-type') ?? 'application/octet-stream',
+			'Content-Disposition': upstream.headers.get('content-disposition') ?? '',
+		},
+	});
 };

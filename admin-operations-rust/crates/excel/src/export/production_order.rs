@@ -8,19 +8,22 @@
 //! tie-breaking on `id` flipped output byte-for-byte between runs of
 //! the same semantic data. See the TS source for the full rationale.
 //!
-//! Byte-identical ZIP determinism (epoch stamp + docProps/core.xml
-//! scrub) is NOT implemented here — the TS post-processor runs the
-//! xlsx bytes through JSZip, and `rust_xlsxwriter` emits its own ZIP
-//! structure that'll need a separate pin pass. That lands in the
-//! sub-session that rewrites the oracle to semantic extraction;
-//! today's goal is column parity and sort parity, nothing more.
+//! Byte-identical determinism: workbook-level metadata is zeroed
+//! (empty author/company/manager/… + creation_time pinned to
+//! 1980-01-01 so `rust_xlsxwriter`'s `utc_now()` default never
+//! fires), then the final xlsx bytes are run through
+//! [`crate::determinism::pin_xlsx_bytes`] to rewrite every ZIP
+//! entry with the DOS-epoch mtime and scrub the "Unknown"
+//! fallbacks `rust_xlsxwriter` leaves in `docProps/core.xml`. Two
+//! runs on the same semantic data produce byte-identical bytes.
 
 use chrono::NaiveDate;
 use db::queries::orders::{self, OrderFilters, OrderSummaryRow};
-use rust_xlsxwriter::{Color, Format, FormatAlign, Workbook};
+use rust_xlsxwriter::{Color, DocProperties, ExcelDateTime, Format, FormatAlign, Workbook};
 use sqlx::PgPool;
 
 use super::ExportError;
+use crate::determinism::pin_xlsx_bytes;
 
 /// Build the production-order xlsx. `from` / `to` are inclusive on
 /// `serving_date` (same semantics as `getOrders({ serving_date_from,
@@ -98,6 +101,28 @@ const HEADERS: &[(&str, f64)] = &[
 /// without touching sqlx.
 fn build_workbook(rows: &[OrderSummaryRow]) -> Result<Vec<u8>, ExportError> {
     let mut wb = Workbook::new();
+
+    // Pin all workbook metadata so docProps/core.xml is deterministic.
+    // Every string field defaults to empty; `creation_time` is the one
+    // field `rust_xlsxwriter` auto-fills with `utc_now()`, so pin it to
+    // the DOS epoch (1980-01-01). The subsequent `pin_xlsx_bytes` pass
+    // scrubs the "Unknown" fallbacks the library emits for empty
+    // creator / lastModifiedBy fields.
+    let epoch = ExcelDateTime::from_ymd(1980, 1, 1)?;
+    let props = DocProperties::new()
+        .set_author("")
+        .set_title("")
+        .set_subject("")
+        .set_company("")
+        .set_manager("")
+        .set_comment("")
+        .set_keywords("")
+        .set_category("")
+        .set_status("")
+        .set_hyperlink_base("")
+        .set_creation_datetime(&epoch);
+    wb.set_properties(&props);
+
     let ws = wb.add_worksheet();
     ws.set_name("Production Order")?;
 
@@ -206,7 +231,8 @@ fn build_workbook(rows: &[OrderSummaryRow]) -> Result<Vec<u8>, ExportError> {
 
     ws.set_freeze_panes(1, 0)?;
 
-    Ok(wb.save_to_buffer()?)
+    let bytes = wb.save_to_buffer()?;
+    pin_xlsx_bytes(bytes)
 }
 
 /// Helper — write a string with optional banded-stripe format.

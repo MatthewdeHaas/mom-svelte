@@ -54,10 +54,11 @@ dashmap.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 
-# Exports: packing-slip handler base64-encodes PDF bytes for the JSON
-# response envelope so the SvelteKit route can zip the pre-rendered
-# PDFs server-side without touching binary over the wire.
-base64 = "0.22"
+# Exports: packing-slip handler assembles a multi-slip ZIP archive
+# in-memory when a request spans multiple `(company, shipment_date)`
+# groups. Single-slip responses are the raw PDF bytes with no ZIP
+# involvement.
+zip.workspace = true
 
 [dev-dependencies]
 # Integration tests boot the live router against a bound TcpListener and

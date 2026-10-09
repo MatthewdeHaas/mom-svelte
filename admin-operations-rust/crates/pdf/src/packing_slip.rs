@@ -251,7 +251,11 @@ fn detail_sort_key(d: &OrderDetailRow) -> String {
 
 // ─── Week bounds (EST Mon-Sun) ───────────────────────────────────────
 
-fn week_bounds_est(date: NaiveDate) -> (NaiveDate, NaiveDate) {
+/// Monday / Sunday bounds (inclusive) of the EST week containing
+/// `date`. Exposed on the public surface so the HTTP handler can label
+/// multi-slip archives by the week they cover without duplicating the
+/// weekday math.
+pub fn week_bounds_est(date: NaiveDate) -> (NaiveDate, NaiveDate) {
     // TS shifts the Date by -5h to approximate EST, then computes
     // Mon-Sun bounds on that shifted date. For a plain NaiveDate
     // without a time component the shift is a no-op (the date is
@@ -401,6 +405,8 @@ fn render_group(group: &SlipGroup, total_pages: u32) -> Result<Vec<u8>, PdfError
 
     let bytes = doc
         .save_to_bytes()
+        .map_err(|e| PdfError::Build(e.to_string()))
+        .and_then(crate::determinism::pin_pdf_bytes)
         .map_err(|e| PdfError::Build(e.to_string()))?;
     Ok(bytes)
 }

@@ -1,43 +1,39 @@
-import type { RequestHandler } from './$types';
-import { generateProductionOrderSheet } from '$lib/excel/export/production-order';
-import { weekBoundsEST } from '$lib/utils/dates';
 import { error } from '@sveltejs/kit';
-import type { InternalCaller } from '$lib/server/api-client';
+import type { RequestHandler } from './$types';
+import { callerFromLocals, internalFetch } from '$lib/server/api-client';
 
-function resolve(url: URL): { from: string; to: string; label: string } {
-  const weekOf = url.searchParams.get('week_of');
-  const single = url.searchParams.get('shipment_date');
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * `GET /admin/exports/production-order?from=&to=`
+ *
+ * Pure byte-pump — the Rust handler
+ * (`admin-operations-rust/crates/api/src/exports.rs::production_order`)
+ * owns the generator and determinism contract. This route forwards the
+ * query string, verifies admin, and streams the response body back with
+ * its upstream `Content-Type` + `Content-Disposition` headers intact.
+ */
+export const GET: RequestHandler = async ({ locals, url }) => {
+	if (locals.user?.role !== 'admin') throw error(403, 'Forbidden');
 
-  if (weekOf?.match(dateRe)) {
-    const { from, to } = weekBoundsEST(weekOf);
-    return { from, to, label: `week-of-${from}` };
-  }
-  if (single?.match(dateRe)) {
-    return { from: single, to: single, label: single };
-  }
-  throw error(400, 'Provide either week_of or shipment_date (YYYY-MM-DD)');
-}
+	const from = url.searchParams.get('from');
+	const to = url.searchParams.get('to');
+	if (!from || !to) throw error(400, 'from and to are required');
 
-export const GET: RequestHandler = async ({ url, locals }) => {
-  if (!locals.user) throw error(401, 'Unauthorised');
-
-  // Build the caller once per request; the dispatcher inside the
-  // generator function uses it to flag-check `use_rust_backend_exports`
-  // and, if on, forward to the Rust service.
-  const caller: InternalCaller = {
-    userId: locals.user.id,
-    role: locals.user.role === 'client' ? 'client' : 'admin',
-    companyId: locals.user.companyId ?? null,
-  };
-
-  const { from, to, label } = resolve(url);
-  const buffer = await generateProductionOrderSheet(from, to, caller);
-
-  return new Response(buffer as unknown as BodyInit, {
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="production-${label}.xlsx"`,
-    },
-  });
+	const caller = callerFromLocals(locals);
+	const upstream = await internalFetch(
+		`/api/exports/production-order?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+		caller,
+	);
+	if (!upstream.ok) {
+		const body = await upstream.text().catch(() => 'export failed');
+		throw error(upstream.status, body);
+	}
+	return new Response(upstream.body, {
+		status: 200,
+		headers: {
+			'Content-Type':
+				upstream.headers.get('content-type') ??
+				'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+			'Content-Disposition': upstream.headers.get('content-disposition') ?? '',
+		},
+	});
 };

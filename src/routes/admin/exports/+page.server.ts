@@ -1,90 +1,87 @@
-import type { Actions } from './$types';
-import { fail } from '@sveltejs/kit';
-import { generateProductionOrderSheet } from '$lib/excel/export/production-order';
-import { generateShoppingList } from '$lib/excel/export/shopping-list';
-import { generatePackingSlips } from '$lib/pdf/packing-slip';
-import { parseFormData } from '$lib/server/form';
-import { ExportDateSchema } from '$lib/server/schemas/order';
-import { callerFromLocals } from '$lib/server/api-client';
+import { fail, error } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
+import { callerFromLocals, internalFetch } from '$lib/server/api-client';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+export const load: PageServerLoad = async ({ locals }) => {
+	if (locals.user?.role !== 'admin') throw error(403, 'Forbidden');
+	return {};
+};
 
-function excelResponse(buffer: Buffer, filename: string): Response {
-  return new Response(buffer as unknown as BodyInit, {
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-    },
-  });
+/**
+ * Pure byte-pump form actions. Every export's business logic lives in
+ * the Rust `/api/exports/*` handlers (see
+ * `admin-operations-rust/crates/api/src/exports.rs`); this file only
+ * shapes HTTP inputs (parse form, build URL) and forwards the response
+ * body + content-type headers back to the browser.
+ *
+ * Error path: upstream non-2xx → `fail(status, { message })` using the
+ * upstream error body as the message. We don't rethrow as 5xx because
+ * the browser form flow displays `fail`s inline.
+ */
+
+async function forward(
+	locals: App.Locals,
+	path: string,
+	errorKey: string,
+): Promise<Response | ReturnType<typeof fail>> {
+	const caller = callerFromLocals(locals);
+	const upstream = await internalFetch(path, caller);
+	if (!upstream.ok) {
+		const message = await upstream.text().catch(() => 'export failed');
+		return fail(upstream.status, { [errorKey]: message });
+	}
+	// Byte-pump: forward body + content-type + attachment disposition.
+	const contentType =
+		upstream.headers.get('content-type') ?? 'application/octet-stream';
+	const disposition = upstream.headers.get('content-disposition') ?? '';
+	return new Response(upstream.body, {
+		status: 200,
+		headers: {
+			'Content-Type': contentType,
+			'Content-Disposition': disposition,
+		},
+	});
 }
-
-function pdfResponse(buffer: Buffer, filename: string): Response {
-  return new Response(buffer as unknown as BodyInit, {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-    },
-  });
-}
-
-// ─── Actions ──────────────────────────────────────────────────────────────────
 
 export const actions: Actions = {
+	productionOrder: async ({ request, locals }) => {
+		if (locals.user?.role !== 'admin') throw error(403, 'Forbidden');
+		const form = await request.formData();
+		const from = String(form.get('from') ?? '');
+		const to = String(form.get('to') ?? '');
+		if (!from || !to) return fail(400, { productionOrderError: 'from and to are required' });
+		return forward(
+			locals,
+			`/api/exports/production-order?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+			'productionOrderError',
+		);
+	},
 
-  productionOrder: async ({ request, locals }) => {
-    const data = await request.formData();
-    const parsed = parseFormData(ExportDateSchema, data);
-    if (!parsed.success) return fail(400, { error: parsed.errors.shipment_date ?? 'Invalid or missing shipment date.' });
+	shoppingList: async ({ request, locals }) => {
+		if (locals.user?.role !== 'admin') throw error(403, 'Forbidden');
+		const form = await request.formData();
+		const from = String(form.get('from') ?? '');
+		const to = String(form.get('to') ?? '');
+		if (!from || !to) return fail(400, { shoppingListError: 'from and to are required' });
+		return forward(
+			locals,
+			`/api/exports/shopping-list?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+			'shoppingListError',
+		);
+	},
 
-    const { shipment_date } = parsed.data;
-    const caller = callerFromLocals(locals);
-    const buffer = await generateProductionOrderSheet(shipment_date, shipment_date, caller);
-    return excelResponse(buffer, `production-${shipment_date}.xlsx`);
-  },
-
-  shoppingList: async ({ request, locals }) => {
-    const data = await request.formData();
-    const parsed = parseFormData(ExportDateSchema, data);
-    if (!parsed.success) return fail(400, { error: parsed.errors.shipment_date ?? 'Invalid or missing shipment date.' });
-
-    const { shipment_date } = parsed.data;
-    const caller = callerFromLocals(locals);
-    const buffer = await generateShoppingList(shipment_date, shipment_date, caller);
-    return excelResponse(buffer, `shopping-${shipment_date}.xlsx`);
-  },
-
-  packingSlips: async ({ request, locals }) => {
-    const data = await request.formData();
-    const parsed = parseFormData(ExportDateSchema, data);
-    if (!parsed.success) return fail(400, { error: parsed.errors.shipment_date ?? 'Invalid or missing shipment date.' });
-
-    const { shipment_date } = parsed.data;
-    const caller = callerFromLocals(locals);
-    const slips = await generatePackingSlips(new Date(shipment_date), caller);
-
-    if (slips.length === 0) {
-      return fail(404, { error: 'No orders found for that week.' });
-    }
-
-    if (slips.length === 1) {
-      // Single slip — serve directly
-      return pdfResponse(slips[0].buffer, slips[0].filename);
-    }
-
-    // Multiple slips — zip them
-    const { default: JSZip } = await import('jszip');
-    const zip = new JSZip();
-    for (const slip of slips) {
-      zip.file(slip.filename, slip.buffer);
-    }
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-
-    return new Response(zipBuffer as unknown as BodyInit, {
-      headers: {
-        'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="packing-slips-${shipment_date}.zip"`,
-      },
-    });
-  },
-
+	packingSlips: async ({ request, locals }) => {
+		if (locals.user?.role !== 'admin') throw error(403, 'Forbidden');
+		const form = await request.formData();
+		const weekOf = String(form.get('weekOf') ?? '');
+		if (!weekOf) return fail(400, { packingSlipsError: 'weekOf is required' });
+		// Any date in the EST week works — the Rust handler expands it
+		// to the Mon-Sun window via `week_bounds_est` and names the ZIP
+		// archive by the resulting Monday.
+		return forward(
+			locals,
+			`/api/exports/packing-slips?date=${encodeURIComponent(weekOf)}`,
+			'packingSlipsError',
+		);
+	},
 };

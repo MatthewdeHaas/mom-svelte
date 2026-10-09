@@ -30,10 +30,45 @@
  *     "$HOME/Downloads/WS 26 Master Prod Sheet Week 3 - June 8.xlsx"
  */
 import ExcelJS from 'exceljs';
-import { pinXlsxDates } from './determinism';
+import JSZip from 'jszip';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { homedir } from 'os';
+
+/**
+ * Local copy of the deleted `src/lib/excel/determinism.ts::pinXlsxDates`.
+ * Inlined because this script is stand-alone build-time tooling for
+ * fixture generation — the request-path code uses Rust's
+ * `pin_xlsx_bytes` instead (see `admin-operations-rust/crates/excel/src/determinism.rs`).
+ * Keep this in lock-step with `generate-fixtures.ts`'s copy so both
+ * fixture generators produce byte-identical output for the same input.
+ */
+async function pinXlsxDates(buf: Buffer): Promise<Buffer> {
+  const EPOCH = new Date(0);
+  const zip = await JSZip.loadAsync(buf);
+
+  const coreFile = zip.file('docProps/core.xml');
+  if (coreFile) {
+    const xml = await coreFile.async('string');
+    const scrubbed = xml
+      .replace(/<dc:creator>Unknown<\/dc:creator>/g, '<dc:creator></dc:creator>')
+      .replace(
+        /<cp:lastModifiedBy>Unknown<\/cp:lastModifiedBy>/g,
+        '<cp:lastModifiedBy></cp:lastModifiedBy>',
+      );
+    zip.file('docProps/core.xml', scrubbed);
+  }
+
+  zip.forEach((_path, file) => {
+    file.date = EPOCH;
+  });
+
+  return zip.generateAsync({
+    type: 'nodebuffer',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  });
+}
 
 const OUT_DIR = resolve(process.cwd(), 'tests/integration/excel/fixtures');
 const DEFAULT_INPUT = resolve(

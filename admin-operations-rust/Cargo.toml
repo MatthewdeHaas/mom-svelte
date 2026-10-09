@@ -68,6 +68,13 @@ calamine = { version = "0.26", features = ["dates"] }
 rust_xlsxwriter = "0.79"
 printpdf = "0.7"
 
+# ZIP — xlsx post-processing (pin entry mtimes to the DOS epoch so
+# `rust_xlsxwriter` output is byte-identical across runs) and
+# packing-slip archive assembly (one entry per company subfolder).
+# `default-features = false` drops bzip2/zstd/time; the TS pipeline
+# uses deflate only and byte-identity depends on sticking to it.
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+
 [profile.release]
 # Thin LTO strikes a reasonable balance between compile time and binary
 # size for a web service. Flip to "fat" if cold-start matters more than

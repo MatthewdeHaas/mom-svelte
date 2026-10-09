@@ -247,10 +247,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/financials/invoice", get(financials::invoice))
         // Exports surface — admin-only. Three endpoints that delegate to
-        // the `excel::export` and `pdf::packing_slip` generators. The
-        // xlsx handlers return raw bytes with an attachment disposition
-        // header; the packing-slips handler returns a JSON array of
-        // base64-encoded PDFs so the SvelteKit route can zip them.
+        // the `excel::export` and `pdf::packing_slip` generators. All
+        // three return raw bytes with an attachment `Content-Disposition`
+        // so the SvelteKit routes are pure byte pumps. The packing-slips
+        // handler picks the content-type dynamically: `application/pdf`
+        // when the week has exactly one `(company, shipment_date)` group,
+        // `application/zip` when it has more than one (archive assembled
+        // in-handler with per-company subfolders), `404` when zero.
         .route(
             "/exports/production-order",
             get(exports::production_order),
