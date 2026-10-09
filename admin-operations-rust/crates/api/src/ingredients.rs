@@ -55,7 +55,7 @@ fn require_admin(auth: &AuthCtx) -> Result<(), ApiError> {
 /// `include_inactive` only.
 #[derive(Debug, Default, Deserialize)]
 pub struct ListQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 
@@ -71,7 +71,7 @@ impl From<ListQuery> for ListOpts {
 /// `GET /api/ingredients/paginated` — adds `search` + pagination.
 #[derive(Debug, Deserialize)]
 pub struct ListPaginatedQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
     #[serde(default)]
     pub search: Option<String>,
@@ -84,7 +84,7 @@ pub struct ListPaginatedQuery {
 /// `GET /api/ingredients/:id` — `?include_inactive=true` to see soft-deleted.
 #[derive(Debug, Default, Deserialize)]
 pub struct GetByIdQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 

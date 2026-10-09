@@ -25,6 +25,7 @@ pub mod invites;
 pub mod menus;
 pub mod orders;
 pub mod persons;
+pub mod query;
 pub mod recipe_imports;
 pub mod recipes;
 pub mod state;

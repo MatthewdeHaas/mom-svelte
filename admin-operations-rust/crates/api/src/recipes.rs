@@ -54,7 +54,7 @@ fn scope_write(auth: &AuthCtx) -> Result<(), ApiError> {
 /// `GET /api/recipes` / `/with-ingredients`: `includeInactive` + `search`.
 #[derive(Debug, Default, Deserialize)]
 pub struct ListQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
     #[serde(default)]
     pub search: Option<String>,
@@ -83,7 +83,7 @@ pub struct ListPaginatedQuery {
 /// `GET /api/recipes/:id` — `?include_inactive=true` to see soft-deleted.
 #[derive(Debug, Default, Deserialize)]
 pub struct GetByIdQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 
@@ -91,7 +91,7 @@ pub struct GetByIdQuery {
 #[derive(Debug, Deserialize)]
 pub struct GetByNameQuery {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 

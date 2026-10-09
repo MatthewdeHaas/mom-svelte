@@ -59,7 +59,7 @@ fn scope_write(auth: &AuthCtx) -> Result<(), ApiError> {
 /// `GET /api/menus` / `/with-recipes`: `includeInactive`.
 #[derive(Debug, Default, Deserialize)]
 pub struct ListQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 
@@ -74,7 +74,7 @@ impl From<ListQuery> for ListOpts {
 /// `GET /api/menus/:id` / `/:id/with-recipes` — `?include_inactive=true`.
 #[derive(Debug, Default, Deserialize)]
 pub struct GetByIdQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 

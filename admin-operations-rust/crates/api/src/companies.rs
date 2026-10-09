@@ -80,7 +80,7 @@ fn can_read_company(auth: &AuthCtx, id: Uuid) -> Result<(), ApiError> {
 /// `GET /api/companies`: `include_inactive` only.
 #[derive(Debug, Default, Deserialize)]
 pub struct ListQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 
@@ -96,7 +96,7 @@ impl From<ListQuery> for ListOpts {
 /// `GET /api/companies/paginated` — adds `search` + pagination.
 #[derive(Debug, Deserialize)]
 pub struct ListPaginatedQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
     #[serde(default)]
     pub search: Option<String>,

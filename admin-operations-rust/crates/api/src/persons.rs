@@ -127,7 +127,7 @@ async fn ensure_client_can_touch_person(
 #[derive(Debug, Deserialize)]
 pub struct ListByCompanyQuery {
     pub company_id: Uuid,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 
@@ -135,7 +135,7 @@ pub struct ListByCompanyQuery {
 /// to see soft-deleted rows.
 #[derive(Debug, Default, Deserialize)]
 pub struct GetByIdQuery {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::query::bool_from_str")]
     pub include_inactive: bool,
 }
 
