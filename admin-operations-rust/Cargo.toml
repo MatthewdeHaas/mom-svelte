@@ -75,6 +75,11 @@ printpdf = "0.7"
 # uses deflate only and byte-identity depends on sticking to it.
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
+# Property-based testing. Pulled in by the excel crate's integration
+# tests to sweep the importer over randomly-shaped workbooks (parser
+# never panics, valid rows round-trip, one bad field aborts cleanly).
+proptest = "1"
+
 [profile.release]
 # Thin LTO strikes a reasonable balance between compile time and binary
 # size for a web service. Flip to "fat" if cold-start matters more than

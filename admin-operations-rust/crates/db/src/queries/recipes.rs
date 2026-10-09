@@ -49,6 +49,37 @@ pub async fn get_by_name_active(
     Ok(row.map(|(id,)| RecipeRef { id }))
 }
 
+/// Batched case-insensitive active-only lookup for the importer.
+/// Returns a map keyed by **lowercased** name so a resolver can match
+/// a validator-produced name case-insensitively. Unknown or inactive
+/// names are absent from the map — same semantics as the `Option`
+/// return of `get_by_name_active`.
+pub async fn get_many_by_name_active(
+    pool: &PgPool,
+    names: &[String],
+) -> Result<std::collections::HashMap<String, RecipeRef>, sqlx::Error> {
+    use std::collections::HashMap;
+
+    if names.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let lc: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
+    let rows: Vec<(String, Uuid)> = sqlx::query_as(
+        "SELECT LOWER(name) AS name_lc, id \
+         FROM recipe \
+         WHERE LOWER(name) = ANY($1::text[]) AND active = TRUE",
+    )
+    .bind(&lc)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(name_lc, id)| (name_lc, RecipeRef { id }))
+        .collect())
+}
+
 // =============================================================
 // Serde helper — distinguish "field absent" from "field present and null".
 // =============================================================

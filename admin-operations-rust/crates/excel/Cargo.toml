@@ -55,3 +55,10 @@ thiserror.workspace = true
 # Round-trip tests exercise the parser against on-disk xlsx fixtures
 # shipped with the SvelteKit repo.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+# Property tests for the importer — `tests/import_proptest.rs` sweeps
+# the parse → analyse → stop → mismatch → normalise → validate →
+# resolve pipeline with randomly-generated workbooks. Pure synchronous
+# (targets `plan_import_pure` with a HashMap resolver), so no sqlx
+# dev-dep required here.
+proptest.workspace = true

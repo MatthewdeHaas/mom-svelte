@@ -46,6 +46,40 @@ pub async fn get_by_name(pool: &PgPool, name: &str) -> Result<Option<CompanyRef>
     Ok(row.map(|(id, active)| CompanyRef { id, active }))
 }
 
+/// Batched case-insensitive lookup for the importer. Returns a map
+/// keyed by **lowercased** name so a `MapResolver` can match a
+/// validator-produced name against the same key the importer uses on
+/// the single-name path. Unknown names are simply absent from the map
+/// — matching the `Option` semantics of `get_by_name`.
+pub async fn get_many_by_name(
+    pool: &PgPool,
+    names: &[String],
+) -> Result<std::collections::HashMap<String, CompanyRef>, sqlx::Error> {
+    use std::collections::HashMap;
+
+    if names.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Lowercase keys both for the SQL filter and for the returned map
+    // so lookup is uniformly case-insensitive. `name_lc` is what the
+    // resolver will key against.
+    let lc: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
+    let rows: Vec<(String, Uuid, bool)> = sqlx::query_as(
+        "SELECT LOWER(name) AS name_lc, id, active \
+         FROM company \
+         WHERE LOWER(name) = ANY($1::text[])",
+    )
+    .bind(&lc)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(name_lc, id, active)| (name_lc, CompanyRef { id, active }))
+        .collect())
+}
+
 // =============================================================
 // Public row types — mirror `src/lib/types.ts` `Company` and
 // `UserWithCompany`.

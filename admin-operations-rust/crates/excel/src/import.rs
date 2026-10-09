@@ -15,7 +15,11 @@
 
 use std::collections::HashMap;
 
-use db::queries::{companies, orders::InsertOrder, recipes};
+use db::queries::{
+    companies::{self, CompanyRef},
+    orders::InsertOrder,
+    recipes::{self, RecipeRef},
+};
 use domain::{ImportRowError, ImportWarning};
 use serde_json::json;
 use sqlx::PgPool;
@@ -24,6 +28,42 @@ use crate::headers::{analyse, HeaderAnalysis, F_RECIPE};
 use crate::normalise::normalise_row;
 use crate::parse::{parse_workbook, Cell, ParsedWorkbook};
 use crate::validate::{validate_row, ParsedRow};
+
+// ---------------------------------------------------------------------------
+// Resolver — the only piece of `plan_import` that needs DB access. The pure
+// pipeline below takes a `&dyn Resolver`, which lets property tests target
+// `plan_import_pure` without an async runtime or a pool. The production
+// path (`plan_import`) batch-fetches names into a `MapResolver` and reuses
+// the same pure body.
+// ---------------------------------------------------------------------------
+
+/// Case-insensitive company + active-recipe lookup. Implementors must
+/// match the SQL contract of `companies::get_by_name` /
+/// `recipes::get_by_name_active`: lookup is case-insensitive, inactive
+/// recipes are hidden, inactive companies are returned (the pure
+/// pipeline needs to distinguish "not found" from "inactive" to pick
+/// the right error message).
+pub trait Resolver {
+    fn company(&self, name: &str) -> Option<CompanyRef>;
+    fn recipe(&self, name: &str) -> Option<RecipeRef>;
+}
+
+/// HashMap-backed resolver. Keys MUST be lowercased — matches what
+/// `companies::get_many_by_name` / `recipes::get_many_by_name_active`
+/// return, and what the lookup methods below use.
+pub struct MapResolver {
+    pub companies: HashMap<String, CompanyRef>,
+    pub recipes: HashMap<String, RecipeRef>,
+}
+
+impl Resolver for MapResolver {
+    fn company(&self, name: &str) -> Option<CompanyRef> {
+        self.companies.get(&name.to_lowercase()).cloned()
+    }
+    fn recipe(&self, name: &str) -> Option<RecipeRef> {
+        self.recipes.get(&name.to_lowercase()).cloned()
+    }
+}
 
 /// What `plan_import` produces. `orders` is only populated when
 /// `errors.is_empty()` — otherwise the caller returns the plan as-is
@@ -44,14 +84,82 @@ pub enum ImportError {
     Db(#[from] sqlx::Error),
 }
 
-/// Parse + validate + resolve. No DB writes.
-///
-/// `created_by` is the user id attached to every inserted order; it's
-/// not consulted until the caller actually commits.
+/// Async entry point used by the API. Prefetches every distinct
+/// company / recipe name the workbook mentions into a `MapResolver`
+/// so the pure body below never touches the pool. Property tests
+/// bypass this wrapper and target `plan_import_pure` directly.
 pub async fn plan_import(
     bytes: &[u8],
     created_by: &str,
     pool: &PgPool,
+) -> Result<ImportPlan, ImportError> {
+    // Peek at the workbook to collect the names we need to resolve.
+    // We re-parse inside `plan_import_pure` — the parse step is cheap
+    // relative to the DB round-trip we save by batching, and keeping
+    // the pure entry point self-contained is worth more than
+    // threading a parsed workbook through.
+    let workbook = parse_workbook(bytes)?;
+    let (co_names, re_names) = collect_distinct_names(&workbook);
+
+    let companies_map = companies::get_many_by_name(pool, &co_names).await?;
+    let recipes_map = recipes::get_many_by_name_active(pool, &re_names).await?;
+
+    let resolver = MapResolver {
+        companies: companies_map,
+        recipes: recipes_map,
+    };
+    plan_import_pure(bytes, created_by, &resolver)
+}
+
+/// Collect the distinct values of the Customer and Recipe columns.
+/// Values are passed through verbatim (NOT trimmed) because the
+/// validator doesn't trim either — the single-name path was
+/// `get_by_name(pool, &p.company)` where `p.company` is whatever the
+/// validator produced, trailing whitespace and all. The batched
+/// resolver has to agree with that byte-for-byte or lookups miss on
+/// sheets with sloppy cells (see `real-client-week-3.xlsx`'s "Tuna
+/// Salad " rows). Dedup is case-insensitive via `.to_lowercase()`
+/// since the SQL `LOWER(name) = ANY($1)` filter is too.
+fn collect_distinct_names(workbook: &ParsedWorkbook) -> (Vec<String>, Vec<String>) {
+    // Keyed by lowercased form, holding the first-seen raw value so
+    // we send the SQL exactly what the validator will later ask for.
+    let mut companies: HashMap<String, String> = HashMap::new();
+    let mut recipes: HashMap<String, String> = HashMap::new();
+    for row in &workbook.rows {
+        for key in ["Customer", "customer"] {
+            if let Some(Cell::String(s)) = row.get(key) {
+                if !s.is_empty() {
+                    companies
+                        .entry(s.to_lowercase())
+                        .or_insert_with(|| s.clone());
+                }
+            }
+        }
+        for key in ["Recipe", "recipe"] {
+            if let Some(Cell::String(s)) = row.get(key) {
+                if !s.is_empty() {
+                    recipes.entry(s.to_lowercase()).or_insert_with(|| s.clone());
+                }
+            }
+        }
+    }
+    (
+        companies.into_values().collect(),
+        recipes.into_values().collect(),
+    )
+}
+
+/// Pure synchronous version of the pipeline. Takes a `&dyn Resolver`
+/// in place of the pool so property tests can run thousands of cases
+/// without an async runtime. Error messages and warning taxonomy are
+/// byte-identical to the async wrapper above.
+///
+/// `created_by` is the user id attached to every inserted order; it's
+/// not consulted until the caller actually commits.
+pub fn plan_import_pure(
+    bytes: &[u8],
+    created_by: &str,
+    resolver: &dyn Resolver,
 ) -> Result<ImportPlan, ImportError> {
     let workbook = parse_workbook(bytes)?;
     let mut warnings: Vec<ImportWarning> = Vec::new();
@@ -146,8 +254,8 @@ pub async fn plan_import(
         let row_number = (i as i64) + 2;
         let p = p.expect("validated rows are Some when errors is empty");
 
-        let company = companies::get_by_name(pool, &p.company).await?;
-        let recipe = recipes::get_by_name_active(pool, &p.recipe).await?;
+        let company = resolver.company(&p.company);
+        let recipe = resolver.recipe(&p.recipe);
 
         let mut row_errors: Vec<ImportRowError> = Vec::new();
         match company {
