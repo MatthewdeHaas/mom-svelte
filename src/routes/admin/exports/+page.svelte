@@ -78,7 +78,9 @@
   function buildUrl(i: number, path: string): string {
     const base = `/admin/exports/${path}`;
     if (modes[i] === 'week') return `${base}?week_of=${dates[i]}`;
-    return `${base}?shipment_date=${dates[i]}`;
+    // Day mode: xlsx exports take a range (single-day); packing-slips takes a reference date.
+    if (path === 'packing-slips') return `${base}?date=${dates[i]}`;
+    return `${base}?from=${dates[i]}&to=${dates[i]}`;
   }
 
   function jumpToday(i: number) {

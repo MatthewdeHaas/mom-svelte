@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { callerFromLocals, internalFetch } from '$lib/server/api-client';
+import { resolvePackingSlipsDate } from '$lib/server/exports/resolve-range';
 
 /**
  * `GET /admin/exports/packing-slips?date=YYYY-MM-DD`
@@ -22,8 +23,7 @@ import { callerFromLocals, internalFetch } from '$lib/server/api-client';
 export const GET: RequestHandler = async ({ locals, url }) => {
 	if (locals.user?.role !== 'admin') throw error(403, 'Forbidden');
 
-	const date = url.searchParams.get('date');
-	if (!date) throw error(400, 'date is required');
+	const date = resolvePackingSlipsDate(url);
 
 	const caller = callerFromLocals(locals);
 	const upstream = await internalFetch(
