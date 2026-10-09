@@ -1,0 +1,52 @@
+[package]
+name = "flags-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "flags-tui"
+path = "src/main.rs"
+
+[dependencies]
+# Local — compile-time flag catalog only (no DB access).
+flags = { path = "../flags" }
+
+# TUI
+ratatui = "0.28"
+crossterm = "0.28"
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# HTTP (rustls, no OpenSSL footgun). JSON feature is for Response::json.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Serde
+serde.workspace = true
+serde_json.workspace = true
+
+# Async runtime — only the main fn runs on it; the TUI loop itself
+# is blocking crossterm I/O.
+tokio = { version = "1.40", features = ["macros", "rt"] }
+
+# HMAC-SHA256 header building — mirrors crates/api/src/auth.rs.
+hmac.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+# Types
+chrono.workspace = true
+uuid.workspace = true
+
+# Randomness: nonce for HMAC. The TUI only mints a nonce once per
+# process invocation so `rand`'s cost here is negligible.
+rand.workspace = true
+
+# Errors
+anyhow.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

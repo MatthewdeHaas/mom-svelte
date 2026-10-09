@@ -7,6 +7,7 @@ members = [
     "crates/excel",
     "crates/pdf",
     "crates/api",
+    "crates/flags-tui",
 ]
 
 # Shared dependency versions. Each crate opts in only to what it uses so
