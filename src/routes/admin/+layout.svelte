@@ -4,7 +4,7 @@
   import { Separator } from '$lib/components/ui/separator';
   import { Badge } from '$lib/components/ui/badge';
   import { Sheet, SheetContent, SheetTrigger } from '$lib/components/ui/sheet';
-  import { Button } from '$lib/components/ui/button';
+  import { Button, buttonVariants } from '$lib/components/ui/button';
   import { Tooltip, TooltipContent, TooltipTrigger } from '$lib/components/ui/tooltip';
 
   // Icon imports
@@ -409,9 +409,15 @@
       <div class="mobile-trigger">
         <Sheet bind:open={mobileOpen}>
           <SheetTrigger>
-            <Button variant="ghost" size="icon">
-              <Menu class="h-5 w-5" />
-            </Button>
+            {#snippet child({ props })}
+              <button
+                {...props}
+                class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+                aria-label="Open menu"
+              >
+                <Menu class="h-5 w-5" />
+              </button>
+            {/snippet}
           </SheetTrigger>
           <SheetContent side="left" class="p-0 w-[220px]" style="background: var(--motm-sidebar-bg); border-right: 1px solid var(--motm-sidebar-border);">
             <!-- Re-use same nav structure for mobile sheet -->
