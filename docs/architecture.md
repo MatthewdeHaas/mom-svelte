@@ -104,13 +104,22 @@ endpoint twice, compare sha256 digests.
 
 DB-backed, resolved per-request. Flag definitions are ZSTs in
 `admin-operations-rust/crates/flags/src/lib.rs`; admin surface at
-`admin-operations-rust/crates/api/src/flags_handler.rs:24` (`list`) and
-`:61` (`check`). `/admin/flags` is read-only in the browser.
+`admin-operations-rust/crates/api/src/flags_handler.rs:31` (`list`) and
+`:68` (`check`). `/admin/flags` is read-only in the browser.
 
-**Track 7** will add a local ratatui TUI that emits flag-change
-migrations through git review ("flags-as-migrations") — write access
-gated on repo access, not web auth. See `docs/handoff-track6.md` after
-section header "After 6".
+`GET /api/flags/snapshot` (`flags_handler.rs:151`) is the hydration
+endpoint for the local flags-TUI (`crates/flags-tui/`, see
+`docs/feature-flags.md`). It returns the full catalog + raw
+`feature_flag` + `feature_flag_company` rows + the company list in one
+JSON blob. Protected by the standard HMAC middleware **plus** a
+handler-level check that the caller's `user_id` matches
+`AppState.flags_snapshot_user_id` — loaded once in `main.rs` from the
+`FLAGS_SNAPSHOT_USER_ID` env var. Unset env var → 503 (fail-closed);
+mismatched caller → 403. Carried on state (not re-read from env per
+request) so parallel `#[sqlx::test]` runs don't race on
+`std::env::set_var`. Audit-logged at `info` on every pull. Read-only
+by construction — the only path to mutate flags is a migration file
+applied through the normal Railway redeploy chain.
 
 ## Local dev
 

@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            flag_name   AS \"flag_name!\",\n            company_id  AS \"company_id!: Uuid\",\n            enabled     AS \"enabled!\",\n            created_at  AS \"created_at!: DateTime<Utc>\",\n            updated_at  AS \"updated_at!: DateTime<Utc>\"\n        FROM feature_flag_company\n        ORDER BY flag_name ASC, company_id ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "flag_name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "company_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "enabled!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0888aadcd744126345e206e81e7d10d044e2c9f0ce0e0fa635e51342f292c8de"
+}

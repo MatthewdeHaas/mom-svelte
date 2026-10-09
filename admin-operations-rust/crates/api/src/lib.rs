@@ -51,6 +51,11 @@ pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/flags", get(flags_handler::list))
         .route("/flags/check", post(flags_handler::check))
+        // Snapshot endpoint for the local flags-TUI. HMAC-signed as
+        // normal, PLUS an in-handler check that `auth.user_id` matches
+        // `state.flags_snapshot_user_id`. Fail-closed (503) when the
+        // state slot is unset. See `flags_handler::snapshot`.
+        .route("/flags/snapshot", get(flags_handler::snapshot))
         .route("/import/preview", post(import::preview))
         .route("/import/commit", post(import::commit))
         // Recipe-imports surface — admin-only, multipart .xlsx upload.

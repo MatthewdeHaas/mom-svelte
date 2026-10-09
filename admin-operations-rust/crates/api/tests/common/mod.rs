@@ -93,6 +93,18 @@ impl TestServer {
 /// this the handlers emit structured errors into the void and the
 /// test sees only the opaque `{"error":"internal"}` body.
 pub async fn spawn_server(pool: PgPool) -> TestServer {
+    spawn_server_with(pool, None).await
+}
+
+/// Variant that lets the caller plant a `flags_snapshot_user_id` on
+/// `AppState`. Mirrors the behavior of setting
+/// `FLAGS_SNAPSHOT_USER_ID` in prod — but set on the typed struct
+/// rather than in process env, so parallel `#[sqlx::test]` runs can't
+/// race on `std::env::set_var`. Used only by `tests/flags_snapshot.rs`.
+pub async fn spawn_server_with(
+    pool: PgPool,
+    flags_snapshot_user_id: Option<String>,
+) -> TestServer {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -101,7 +113,8 @@ pub async fn spawn_server(pool: PgPool) -> TestServer {
         .with_test_writer()
         .try_init();
 
-    let state = AppState::new(pool, Arc::new(TEST_SECRET.to_vec()));
+    let state = AppState::new(pool, Arc::new(TEST_SECRET.to_vec()))
+        .with_flags_snapshot_user_id(flags_snapshot_user_id);
     let app = router(state);
 
     // Port 0 → kernel assigns a free port. We read it back off the

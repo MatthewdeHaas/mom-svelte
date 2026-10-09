@@ -29,7 +29,8 @@ async fn main() -> anyhow::Result<()> {
     // `../scripts/migrations` at build time.
     db::migrate(&pool).await.context("run migrations")?;
 
-    let state = AppState::new(pool, cfg.internal_auth_secret.clone());
+    let state = AppState::new(pool, cfg.internal_auth_secret.clone())
+        .with_flags_snapshot_user_id(cfg.flags_snapshot_user_id.clone());
 
     let app = router(state.clone());
 
@@ -50,6 +51,12 @@ struct Config {
     port: u16,
     database_url: String,
     internal_auth_secret: Arc<Vec<u8>>,
+    /// User id authorised to pull the full flag snapshot (TUI
+    /// hydration). Optional on startup — `None` means the endpoint
+    /// fail-closes with 503 until an operator sets the env var.
+    /// Loaded here (not re-read per request) because mutating env in
+    /// parallel `#[sqlx::test]` runs is a documented data race.
+    flags_snapshot_user_id: Option<String>,
 }
 
 impl Config {
@@ -70,10 +77,18 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(8080);
 
+        // Trim + treat empty as unset — a blank Railway variable should
+        // not accidentally authorise user_id "".
+        let flags_snapshot_user_id = std::env::var("FLAGS_SNAPSHOT_USER_ID")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
         Ok(Self {
             port,
             database_url,
             internal_auth_secret: Arc::new(secret.into_bytes()),
+            flags_snapshot_user_id,
         })
     }
 }
