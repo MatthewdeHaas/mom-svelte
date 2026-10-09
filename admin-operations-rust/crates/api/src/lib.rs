@@ -56,6 +56,11 @@ pub fn router(state: AppState) -> Router {
         // `state.flags_snapshot_user_id`. Fail-closed (503) when the
         // state slot is unset. See `flags_handler::snapshot`.
         .route("/flags/snapshot", get(flags_handler::snapshot))
+        // Drift mirror — same gate as /flags/snapshot. Returns the
+        // committed state (parsed from embedded migrations) alongside
+        // the live rows so the SvelteKit /admin/flags page can show a
+        // read-only diff. See `flags_handler::drift`.
+        .route("/flags/drift", get(flags_handler::drift))
         .route("/import/preview", post(import::preview))
         .route("/import/commit", post(import::commit))
         // Recipe-imports surface — admin-only, multipart .xlsx upload.

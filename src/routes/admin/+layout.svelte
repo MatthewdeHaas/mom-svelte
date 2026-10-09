@@ -19,6 +19,7 @@
     Download,
     BarChart3,
     DollarSign,
+    Flag,
     Menu,
     LogOut,
     ChevronRight,
@@ -65,6 +66,13 @@
         { label: 'Insights',    href: '/admin/insights',    icon: BarChart3 },
         { label: 'Financials',  href: '/admin/financials',  icon: DollarSign },
         { label: 'Exports',     href: '/admin/exports',     icon: Download },
+        // Read-only drift mirror; the Rust endpoint behind it 403s for
+        // everyone except the operator user id, so for every other admin
+        // this surface returns 404 and the sidebar link dead-ends on a
+        // Not Found page. That's intentional — flipping flags is a
+        // local-TUI-plus-migration workflow, not something to expose in
+        // the web admin. See `docs/feature-flags.md`.
+        { label: 'Feature flags', href: '/admin/flags',     icon: Flag },
       ],
     },
   ];
