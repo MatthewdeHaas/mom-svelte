@@ -199,7 +199,13 @@ fn build_workbook(rows: &[OrderSummaryRow]) -> Result<Vec<u8>, ExportError> {
             o.recipe_name.as_deref().unwrap_or("—"),
             text_fmt,
         )?;
-        write_str(ws, row, 3, o.meal_category.as_deref().unwrap_or(""), text_fmt)?;
+        write_str(
+            ws,
+            row,
+            3,
+            o.meal_category.as_deref().unwrap_or(""),
+            text_fmt,
+        )?;
 
         // Day — centered.
         let day_fmt = if banded { &center_band } else { &center };

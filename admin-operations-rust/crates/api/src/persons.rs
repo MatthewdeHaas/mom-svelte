@@ -11,7 +11,8 @@
 //! only). The TS consumers are:
 //!   - admin: `src/routes/admin/companies/[id]` (lists any company's roster)
 //!   - client: `src/routes/client/roster`, `/client/roster/[id]`,
-//!             `/client/attendance`, `/client/menu`
+//!     `/client/attendance`, `/client/menu`
+//!
 //! The client routes always operate on the caller's own `company_id`.
 //! Mirror that here:
 //!   - `role == Admin` → unrestricted.
@@ -263,9 +264,7 @@ pub async fn create(
     Json(body): Json<InsertPersonData>,
 ) -> Result<(StatusCode, Json<PersonRow>), ApiError> {
     can_read_company_persons(&auth, body.company_id)?;
-    let row = persons::create(&state.pool, body)
-        .await
-        .map_err(map_pg)?;
+    let row = persons::create(&state.pool, body).await.map_err(map_pg)?;
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -421,9 +420,7 @@ fn map_pg(e: sqlx::Error) -> ApiError {
     if let sqlx::Error::Database(ref db_err) = e {
         if let Some(code) = db_err.code() {
             if matches!(code.as_ref(), "23503" | "23514") {
-                return ApiError::Domain(DomainError::Validation(
-                    db_err.message().to_string(),
-                ));
+                return ApiError::Domain(DomainError::Validation(db_err.message().to_string()));
             }
         }
     }

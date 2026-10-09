@@ -279,10 +279,7 @@ pub async fn list_paginated(
         count_qb.push_bind(format!("%{}%", s));
         count_qb.push(")");
     }
-    let total: i64 = count_qb
-        .build_query_scalar::<i64>()
-        .fetch_one(pool)
-        .await?;
+    let total: i64 = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
 
     // ---- Data ----
     let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(
@@ -383,10 +380,7 @@ pub async fn get_users_by_company(
 
 /// `createCompany`. Trims name server-side (matches TS
 /// `data.name.trim()`). Defaults: active = true.
-pub async fn create(
-    pool: &PgPool,
-    data: InsertCompanyData,
-) -> Result<CompanyRow, sqlx::Error> {
+pub async fn create(pool: &PgPool, data: InsertCompanyData) -> Result<CompanyRow, sqlx::Error> {
     let name = data.name.trim();
     let active = data.active.unwrap_or(true);
     sqlx::query_as!(

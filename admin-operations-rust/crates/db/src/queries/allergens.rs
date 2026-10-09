@@ -134,10 +134,7 @@ pub async fn get_ref_count(pool: &PgPool, id: Uuid) -> Result<RefCount, sqlx::Er
 
 /// `createAllergen`. Trims name server-side (matches TS
 /// `data.name.trim()` at `allergens.ts:46`).
-pub async fn create(
-    pool: &PgPool,
-    data: InsertAllergenData,
-) -> Result<AllergenRow, sqlx::Error> {
+pub async fn create(pool: &PgPool, data: InsertAllergenData) -> Result<AllergenRow, sqlx::Error> {
     let name = data.name.trim();
     sqlx::query_as!(
         AllergenRow,
@@ -191,11 +188,8 @@ pub async fn update(
 /// away). The caller's pre-check is still the right UX move: deleting
 /// an allergen that's in use would silently drop its join rows.
 pub async fn delete(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query!(
-        r#"DELETE FROM allergen WHERE id = $1"#,
-        id,
-    )
-    .execute(pool)
-    .await?;
+    let result = sqlx::query!(r#"DELETE FROM allergen WHERE id = $1"#, id,)
+        .execute(pool)
+        .await?;
     Ok(result.rows_affected() > 0)
 }

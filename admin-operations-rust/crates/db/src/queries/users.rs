@@ -81,10 +81,7 @@ pub struct UserCompanyRow {
 /// SELECT id FROM "user" WHERE email = $1
 /// ```
 /// Used as a pre-insert duplicate probe in `createUserWithPassword`.
-pub async fn get_by_email(
-    pool: &PgPool,
-    email: &str,
-) -> Result<Option<UserIdRow>, sqlx::Error> {
+pub async fn get_by_email(pool: &PgPool, email: &str) -> Result<Option<UserIdRow>, sqlx::Error> {
     sqlx::query_as!(
         UserIdRow,
         r#"SELECT id AS "id!" FROM "user" WHERE email = $1"#,

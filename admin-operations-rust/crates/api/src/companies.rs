@@ -249,9 +249,7 @@ fn map_pg(e: sqlx::Error) -> ApiError {
                     ))
                 }
                 "23503" | "23514" => {
-                    return ApiError::Domain(DomainError::Validation(
-                        db_err.message().to_string(),
-                    ))
+                    return ApiError::Domain(DomainError::Validation(db_err.message().to_string()))
                 }
                 _ => {}
             }

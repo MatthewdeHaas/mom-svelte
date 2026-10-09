@@ -193,7 +193,10 @@ pub async fn get_kpi_metrics(
     .await?;
 
     let week_over_week_change = if row.total_meals_prior > 0.0 {
-        Some(((row.total_meals - row.total_meals_prior) / row.total_meals_prior * 100.0).round() as i32)
+        Some(
+            ((row.total_meals - row.total_meals_prior) / row.total_meals_prior * 100.0).round()
+                as i32,
+        )
     } else {
         None
     };

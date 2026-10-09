@@ -48,18 +48,16 @@ pub fn pin_pdf_bytes(bytes: Vec<u8>) -> Result<Vec<u8>, PdfError> {
     //
     // If the shape doesn't match (foreign PDF, future printpdf change),
     // skip silently — the determinism tests catch the regression.
-    if let Ok(id_obj) = doc.trailer.get_mut(b"ID") {
-        if let Object::Array(arr) = id_obj {
-            if arr.len() == 2 {
-                arr[0] = Object::String(
-                    PINNED_INSTANCE_ID.as_bytes().to_vec(),
-                    StringFormat::Literal,
-                );
-                arr[1] = Object::String(
-                    PINNED_INSTANCE_ID.as_bytes().to_vec(),
-                    StringFormat::Literal,
-                );
-            }
+    if let Ok(Object::Array(arr)) = doc.trailer.get_mut(b"ID") {
+        if arr.len() == 2 {
+            arr[0] = Object::String(
+                PINNED_INSTANCE_ID.as_bytes().to_vec(),
+                StringFormat::Literal,
+            );
+            arr[1] = Object::String(
+                PINNED_INSTANCE_ID.as_bytes().to_vec(),
+                StringFormat::Literal,
+            );
         }
     }
 
@@ -78,12 +76,8 @@ pub fn pin_pdf_bytes(bytes: Vec<u8>) -> Result<Vec<u8>, PdfError> {
         .iter()
         .filter_map(|(id, obj)| match obj {
             Object::Stream(s) => {
-                let is_metadata = s
-                    .dict
-                    .get(b"Type")
-                    .ok()
-                    .and_then(|o| o.as_name_str().ok())
-                    == Some("Metadata");
+                let is_metadata =
+                    s.dict.get(b"Type").ok().and_then(|o| o.as_name_str().ok()) == Some("Metadata");
                 if is_metadata {
                     Some(*id)
                 } else {
@@ -156,8 +150,8 @@ mod tests {
 
     #[test]
     fn scrub_replaces_32_char_instance_id() {
-        let xml =
-            "<xmpMM:InstanceID>uuid:ABCDEFGHIJABCDEFGHIJABCDEFGHIJAB</xmpMM:InstanceID>".to_string();
+        let xml = "<xmpMM:InstanceID>uuid:ABCDEFGHIJABCDEFGHIJABCDEFGHIJAB</xmpMM:InstanceID>"
+            .to_string();
         let out = scrub_xmp_instance_id(&xml);
         assert!(out.contains(&format!(
             "<xmpMM:InstanceID>uuid:{PINNED_INSTANCE_ID}</xmpMM:InstanceID>"

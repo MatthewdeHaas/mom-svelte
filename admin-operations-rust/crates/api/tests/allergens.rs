@@ -279,7 +279,13 @@ async fn create_returns_inserted_row(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin(&server, &user.id, "/api/allergens", &json!({ "name": "Wheat" })).await;
+    let res = post_admin(
+        &server,
+        &user.id,
+        "/api/allergens",
+        &json!({ "name": "Wheat" }),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::CREATED);
     let row: AllergenRow = decode_ok(res).await;
     assert_eq!(row.name, "Wheat");
@@ -310,7 +316,13 @@ async fn create_persists_so_appears_in_list(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    post_admin(&server, &user.id, "/api/allergens", &json!({ "name": "Mustard" })).await;
+    post_admin(
+        &server,
+        &user.id,
+        "/api/allergens",
+        &json!({ "name": "Mustard" }),
+    )
+    .await;
 
     let rows: Vec<AllergenRow> =
         decode_ok(get_admin(&server, &user.id, "/api/allergens").await).await;
@@ -324,12 +336,22 @@ async fn create_rejects_duplicate_name_with_409(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let first =
-        post_admin(&server, &user.id, "/api/allergens", &json!({ "name": "Lupin" })).await;
+    let first = post_admin(
+        &server,
+        &user.id,
+        "/api/allergens",
+        &json!({ "name": "Lupin" }),
+    )
+    .await;
     assert_eq!(first.status(), StatusCode::CREATED);
 
-    let second =
-        post_admin(&server, &user.id, "/api/allergens", &json!({ "name": "Lupin" })).await;
+    let second = post_admin(
+        &server,
+        &user.id,
+        "/api/allergens",
+        &json!({ "name": "Lupin" }),
+    )
+    .await;
     assert_eq!(second.status(), StatusCode::CONFLICT);
 
     server.stop().await;
@@ -463,7 +485,12 @@ async fn ref_count_zero_for_missing_id_returns_200(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let counts: RefCount = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/allergens/{BOGUS}/ref-count")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/allergens/{BOGUS}/ref-count"),
+        )
+        .await,
     )
     .await;
     assert_eq!(counts.ingredients, 0);

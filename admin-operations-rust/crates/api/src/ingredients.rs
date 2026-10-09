@@ -147,8 +147,7 @@ pub async fn list_with_allergens_paginated(
         search: q.search,
     };
     let pagination = parse_from_query(q.page, q.per_page, 50);
-    let page =
-        ingredients::list_with_allergens_paginated(&state.pool, &opts, pagination).await?;
+    let page = ingredients::list_with_allergens_paginated(&state.pool, &opts, pagination).await?;
     Ok(Json(page))
 }
 
@@ -192,7 +191,9 @@ pub async fn create(
     Json(body): Json<InsertIngredientData>,
 ) -> Result<(StatusCode, Json<IngredientRow>), ApiError> {
     require_admin(&auth)?;
-    let row = ingredients::create(&state.pool, body).await.map_err(map_pg)?;
+    let row = ingredients::create(&state.pool, body)
+        .await
+        .map_err(map_pg)?;
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -283,9 +284,7 @@ fn map_pg(e: sqlx::Error) -> ApiError {
                     ))
                 }
                 "23503" | "23514" => {
-                    return ApiError::Domain(DomainError::Validation(
-                        db_err.message().to_string(),
-                    ))
+                    return ApiError::Domain(DomainError::Validation(db_err.message().to_string()))
                 }
                 _ => {}
             }

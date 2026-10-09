@@ -13,10 +13,10 @@
 //! optional search filter; `set_ingredients` — multi-row VALUES).
 //! Everything else is compile-time `query_as!`-checked.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::{FromRow, PgExecutor, PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 use super::pagination::{build as build_paginated, offset, Paginated, PaginationParams};
 
@@ -165,10 +165,7 @@ pub struct IngredientLine {
 
 /// `getRecipes` — ordered by name. Static SQL via two branches so
 /// query_as! can type-check both.
-pub async fn list(
-    pool: &PgPool,
-    opts: &ListOpts,
-) -> Result<Vec<RecipeRow>, sqlx::Error> {
+pub async fn list(pool: &PgPool, opts: &ListOpts) -> Result<Vec<RecipeRow>, sqlx::Error> {
     if opts.include_inactive {
         sqlx::query_as!(
             RecipeRow,
@@ -369,7 +366,7 @@ pub async fn get_ingredients(
         let names = r.allergen_names.unwrap_or_default();
         let allergen: Vec<AllergenEmbed> = ids
             .into_iter()
-            .zip(names.into_iter())
+            .zip(names)
             .map(|(id, name)| AllergenEmbed { id, name })
             .collect();
         mapped.push(RecipeIngredientRow {
@@ -500,7 +497,10 @@ fn fan_out(raw: WithIngredientsRaw) -> RecipeWithIngredientsRow {
                 .filter_map(|(aidx, aid)| {
                     let aid = Uuid::parse_str(aid).ok()?;
                     let aname = anames.get(aidx).cloned().unwrap_or("").to_string();
-                    Some(AllergenEmbed { id: aid, name: aname })
+                    Some(AllergenEmbed {
+                        id: aid,
+                        name: aname,
+                    })
                 })
                 .collect();
 
@@ -552,8 +552,7 @@ pub async fn get_with_ingredients_by_ids(
     let mut sql = String::from(WITH_INGREDIENTS_SELECT);
     sql.push_str(" WHERE r.id = ANY($1) GROUP BY r.id ORDER BY r.name ASC");
 
-    let rows: Vec<WithIngredientsRaw> =
-        sqlx::query_as(&sql).bind(ids).fetch_all(pool).await?;
+    let rows: Vec<WithIngredientsRaw> = sqlx::query_as(&sql).bind(ids).fetch_all(pool).await?;
     Ok(rows.into_iter().map(fan_out).collect())
 }
 
@@ -585,10 +584,7 @@ pub async fn list_with_ingredients_paginated(
         count_qb.push_bind(format!("%{}%", s));
         count_qb.push(")");
     }
-    let total: i64 = count_qb
-        .build_query_scalar::<i64>()
-        .fetch_one(pool)
-        .await?;
+    let total: i64 = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
 
     // ---- Data ----
     let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(WITH_INGREDIENTS_SELECT);
@@ -615,10 +611,11 @@ pub async fn list_with_ingredients_paginated(
     qb.push(" OFFSET ");
     qb.push_bind(offset(&pagination));
 
-    let rows: Vec<WithIngredientsRaw> =
-        qb.build_query_as::<WithIngredientsRaw>().fetch_all(pool).await?;
-    let data: Vec<RecipeWithIngredientsRow> =
-        rows.into_iter().map(fan_out).collect();
+    let rows: Vec<WithIngredientsRaw> = qb
+        .build_query_as::<WithIngredientsRaw>()
+        .fetch_all(pool)
+        .await?;
+    let data: Vec<RecipeWithIngredientsRow> = rows.into_iter().map(fan_out).collect();
 
     Ok(build_paginated(data, total, pagination))
 }
@@ -631,10 +628,7 @@ pub async fn list_with_ingredients_paginated(
 
 /// `createRecipe`. Trims name server-side (matches TS `data.name.trim()`).
 /// Defaults: active = true.
-pub async fn create(
-    pool: &PgPool,
-    data: InsertRecipeData,
-) -> Result<RecipeRow, sqlx::Error> {
+pub async fn create(pool: &PgPool, data: InsertRecipeData) -> Result<RecipeRow, sqlx::Error> {
     let name = data.name.trim();
     let active = data.active.unwrap_or(true);
     sqlx::query_as!(

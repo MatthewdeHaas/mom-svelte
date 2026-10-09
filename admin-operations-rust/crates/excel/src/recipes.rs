@@ -161,7 +161,7 @@ fn parse_from_workbook(wb: &ParsedWorkbook) -> Result<ParseRecipesResult, ParseR
             issues.push(("recipe", "Recipe name is required"));
         }
         if let Some(a) = amount {
-            if !(a > 0.0) || !a.is_finite() {
+            if !a.is_finite() || a <= 0.0 {
                 issues.push(("amount", "Amount must be greater than zero"));
             }
         }
@@ -264,11 +264,7 @@ mod tests {
         let headers_vec: Vec<String> = headers.iter().map(|h| h.to_string()).collect();
         let rows_vec: Vec<HashMap<String, Cell>> = rows
             .iter()
-            .map(|r| {
-                r.iter()
-                    .map(|(k, v)| (k.to_string(), v.clone()))
-                    .collect()
-            })
+            .map(|r| r.iter().map(|(k, v)| (k.to_string(), v.clone())).collect())
             .collect();
         ParsedWorkbook {
             headers: headers_vec,

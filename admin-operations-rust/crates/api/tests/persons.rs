@@ -9,6 +9,7 @@
 
 mod common;
 
+use chrono::NaiveDate;
 use common::{
     persons::{
         attach_allergen, seed_allergen, seed_attendance, seed_company, seed_person,
@@ -19,7 +20,6 @@ use common::{
 use db::queries::persons::{
     AllergenEmbed, AttendanceRow, AttendanceWithPersonRow, PersonRow, PersonWithAllergensRow,
 };
-use chrono::NaiveDate;
 use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -217,10 +217,9 @@ async fn list_returns_empty_for_company_with_no_persons(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<PersonRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons?company_id={c}")).await,
-    )
-    .await;
+    let rows: Vec<PersonRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons?company_id={c}")).await)
+            .await;
     assert!(rows.is_empty());
 
     server.stop().await;
@@ -234,10 +233,9 @@ async fn list_returns_only_active_by_default(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<PersonRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons?company_id={c}")).await,
-    )
-    .await;
+    let rows: Vec<PersonRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons?company_id={c}")).await)
+            .await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
 
     assert!(ids.contains(&active));
@@ -276,10 +274,9 @@ async fn list_does_not_cross_companies(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<PersonRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons?company_id={c1}")).await,
-    )
-    .await;
+    let rows: Vec<PersonRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons?company_id={c1}")).await)
+            .await;
     assert!(rows.is_empty());
 
     server.stop().await;
@@ -293,10 +290,9 @@ async fn list_orders_by_name_ascending(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<PersonRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons?company_id={c}")).await,
-    )
-    .await;
+    let rows: Vec<PersonRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons?company_id={c}")).await)
+            .await;
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
     let a = names.iter().position(|n| *n == "Alice").expect("Alice");
     let z = names.iter().position(|n| *n == "Zara").expect("Zara");
@@ -583,10 +579,9 @@ async fn deactivate_hides_from_default_list(pool: PgPool) {
     )
     .await;
 
-    let rows: Vec<PersonRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons?company_id={c}")).await,
-    )
-    .await;
+    let rows: Vec<PersonRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons?company_id={c}")).await)
+            .await;
     assert!(rows.iter().all(|r| r.id != p));
 
     server.stop().await;
@@ -624,7 +619,12 @@ async fn deactivate_404_for_missing_id(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/persons/{BOGUS}/deactivate")).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/persons/{BOGUS}/deactivate"),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -658,7 +658,12 @@ async fn with_allergens_returns_empty_array_when_none(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let row: PersonWithAllergensRow = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/with-allergens")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/persons/{p}/with-allergens"),
+        )
+        .await,
     )
     .await;
     assert_eq!(row.id, p);
@@ -677,7 +682,12 @@ async fn with_allergens_includes_attached(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let row: PersonWithAllergensRow = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/with-allergens")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/persons/{p}/with-allergens"),
+        )
+        .await,
     )
     .await;
     let ids: Vec<Uuid> = row.allergen.iter().map(|a| a.id).collect();
@@ -815,10 +825,8 @@ async fn get_allergens_returns_empty_when_none(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<AllergenEmbed> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await,
-    )
-    .await;
+    let rows: Vec<AllergenEmbed> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await).await;
     assert!(rows.is_empty());
 
     server.stop().await;
@@ -835,10 +843,8 @@ async fn get_allergens_orders_by_name_ascending(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<AllergenEmbed> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await,
-    )
-    .await;
+    let rows: Vec<AllergenEmbed> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await).await;
     assert_eq!(rows[0].name, "AAAAllergen");
     assert_eq!(rows[1].name, "ZZZAllergen");
 
@@ -865,10 +871,8 @@ async fn add_allergen_attaches_and_returns_204(pool: PgPool) {
     .await;
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
-    let rows: Vec<AllergenEmbed> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await,
-    )
-    .await;
+    let rows: Vec<AllergenEmbed> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await).await;
     assert!(rows.iter().any(|al| al.id == a));
 
     server.stop().await;
@@ -898,10 +902,8 @@ async fn add_allergen_is_idempotent(pool: PgPool) {
     .await;
     assert_eq!(second.status(), StatusCode::NO_CONTENT);
 
-    let rows: Vec<AllergenEmbed> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await,
-    )
-    .await;
+    let rows: Vec<AllergenEmbed> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await).await;
     assert_eq!(rows.len(), 1);
 
     server.stop().await;
@@ -930,10 +932,8 @@ async fn remove_allergen_detaches_specific(pool: PgPool) {
     .await;
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
-    let rows: Vec<AllergenEmbed> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await,
-    )
-    .await;
+    let rows: Vec<AllergenEmbed> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await).await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
     assert!(!ids.contains(&a1));
     assert!(ids.contains(&a2));
@@ -982,10 +982,8 @@ async fn set_allergens_sets_initial(pool: PgPool) {
     .await;
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
-    let rows: Vec<AllergenEmbed> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await,
-    )
-    .await;
+    let rows: Vec<AllergenEmbed> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await).await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
     assert!(ids.contains(&a1));
     assert!(ids.contains(&a2));
@@ -1017,10 +1015,8 @@ async fn set_allergens_replaces_on_second_call(pool: PgPool) {
     )
     .await;
 
-    let rows: Vec<AllergenEmbed> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await,
-    )
-    .await;
+    let rows: Vec<AllergenEmbed> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await).await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
     assert!(!ids.contains(&old));
     assert!(ids.contains(&next));
@@ -1045,10 +1041,8 @@ async fn set_allergens_clears_when_empty(pool: PgPool) {
     )
     .await;
 
-    let rows: Vec<AllergenEmbed> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await,
-    )
-    .await;
+    let rows: Vec<AllergenEmbed> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/persons/{p}/allergens")).await).await;
     assert!(rows.is_empty());
 
     server.stop().await;
@@ -1387,7 +1381,13 @@ async fn client_can_list_own_company(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let rows: Vec<PersonRow> = decode_ok(
-        get_client(&server, &user.id, c, &format!("/api/persons?company_id={c}")).await,
+        get_client(
+            &server,
+            &user.id,
+            c,
+            &format!("/api/persons?company_id={c}"),
+        )
+        .await,
     )
     .await;
     assert!(rows.iter().any(|r| r.id == p));

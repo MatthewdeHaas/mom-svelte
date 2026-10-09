@@ -36,8 +36,8 @@ use chrono::{Datelike, Duration, NaiveDate, Weekday};
 use db::queries::orders::{self, OrderDetailRow, OrderFilters};
 use printpdf::path::PaintMode;
 use printpdf::{
-    BuiltinFont, Color, IndirectFontRef, Line, Mm, PdfDocumentReference, PdfLayerReference,
-    Point, Pt, Rect, Rgb, Svg, SvgTransform,
+    BuiltinFont, Color, IndirectFontRef, Line, Mm, PdfDocumentReference, PdfLayerReference, Point,
+    Pt, Rect, Rgb, Svg, SvgTransform,
 };
 use sqlx::PgPool;
 
@@ -63,9 +63,7 @@ const CONTENT_W: f32 = PAGE_W - ML - MR; // 592
 
 // ─── Logo ────────────────────────────────────────────────────────────
 
-const LOGO_SVG: &str = include_str!(
-    "../../../../static/mom-logo.svg"
-);
+const LOGO_SVG: &str = include_str!("../../../../static/mom-logo.svg");
 const LOGO_W: f32 = 100.0;
 // SVG viewBox is 192×107, preserve aspect ratio.
 const LOGO_H: f32 = (107.0 / 192.0) * LOGO_W; // ≈ 55.72 pt
@@ -117,11 +115,31 @@ struct Col {
 }
 
 const COLS: &[Col] = &[
-    Col { label: "Meal",     width: 230.0, align: Align::Left },
-    Col { label: "Category", width: 90.0,  align: Align::Left },
-    Col { label: "Qty",      width: 36.0,  align: Align::Center },
-    Col { label: "Temp",     width: 58.0,  align: Align::Center },
-    Col { label: "Note",     width: 178.0, align: Align::Left },
+    Col {
+        label: "Meal",
+        width: 230.0,
+        align: Align::Left,
+    },
+    Col {
+        label: "Category",
+        width: 90.0,
+        align: Align::Left,
+    },
+    Col {
+        label: "Qty",
+        width: 36.0,
+        align: Align::Center,
+    },
+    Col {
+        label: "Temp",
+        width: 58.0,
+        align: Align::Center,
+    },
+    Col {
+        label: "Note",
+        width: 178.0,
+        align: Align::Left,
+    },
 ];
 // 230 + 90 + 36 + 58 + 178 = 592 = CONTENT_W
 
@@ -315,7 +333,7 @@ fn page_header_y_after(_group: &SlipGroup) -> f32 {
 /// address line + 8 pt trailing pad). TS pdfkit measures text to pick
 /// the exact height; here we use fixed line-heights (12 pt bold name
 /// + 11 pt address + spacing) that are close enough for pagination
-/// decisions. The real paint pass uses the same offsets.
+///   decisions. The real paint pass uses the same offsets.
 fn company_block_height(group: &SlipGroup) -> f32 {
     let mut h = 14.0 + 3.0; // name line + spacing
     if !group.shipping_address.trim().is_empty() {
@@ -418,8 +436,20 @@ fn draw_hline(layer: &PdfLayerReference, y_pt_from_top: f32, thickness: f32, col
     layer.set_outline_thickness(thickness);
     let line = Line {
         points: vec![
-            (Point { x: Pt(ML), y: Pt(PAGE_H - y_pt_from_top) }, false),
-            (Point { x: Pt(PAGE_W - MR), y: Pt(PAGE_H - y_pt_from_top) }, false),
+            (
+                Point {
+                    x: Pt(ML),
+                    y: Pt(PAGE_H - y_pt_from_top),
+                },
+                false,
+            ),
+            (
+                Point {
+                    x: Pt(PAGE_W - MR),
+                    y: Pt(PAGE_H - y_pt_from_top),
+                },
+                false,
+            ),
         ],
         is_closed: false,
     };
@@ -429,8 +459,20 @@ fn draw_hline(layer: &PdfLayerReference, y_pt_from_top: f32, thickness: f32, col
 fn draw_vline(layer: &PdfLayerReference, x_pt: f32, y_top_pt: f32, y_bot_pt: f32) {
     let line = Line {
         points: vec![
-            (Point { x: Pt(x_pt), y: Pt(PAGE_H - y_top_pt) }, false),
-            (Point { x: Pt(x_pt), y: Pt(PAGE_H - y_bot_pt) }, false),
+            (
+                Point {
+                    x: Pt(x_pt),
+                    y: Pt(PAGE_H - y_top_pt),
+                },
+                false,
+            ),
+            (
+                Point {
+                    x: Pt(x_pt),
+                    y: Pt(PAGE_H - y_bot_pt),
+                },
+                false,
+            ),
         ],
         is_closed: false,
     };
@@ -519,6 +561,14 @@ fn approx_text_width(text: &str, size: f32) -> f32 {
 /// Place text aligned inside `[cell_x, cell_x + col.width]`. Padding
 /// matches TS (CELL_PAD_X each side). No wrapping — long strings
 /// overflow the right pad silently, same as TS `lineBreak: false`.
+///
+/// The 9-arg signature is deliberate: this is the single source of
+/// truth for cell-level text placement, called from 5 sites across
+/// `draw_table_header` and `draw_order_row`. Grouping into `Rect` +
+/// `TextStyle` structs would spread PDF coordinate math across call
+/// sites and risk byte-level drift in output. The 3 byte-identical
+/// PDF tests pin this contract — keep the signature flat.
+#[allow(clippy::too_many_arguments)]
 fn cell_text(
     layer: &PdfLayerReference,
     text: &str,
@@ -619,11 +669,7 @@ fn draw_company_block(
     y
 }
 
-fn draw_table_header(
-    layer: &PdfLayerReference,
-    f_bold: &IndirectFontRef,
-    y_in: f32,
-) -> f32 {
+fn draw_table_header(layer: &PdfLayerReference, f_bold: &IndirectFontRef, y_in: f32) -> f32 {
     draw_filled_rect(layer, ML, y_in, CONTENT_W, HEADER_ROW_H, c_header_bg());
     draw_row_border(layer, y_in, HEADER_ROW_H);
 
@@ -655,16 +701,19 @@ fn draw_order_row(
 ) -> f32 {
     draw_row_border(layer, y_in, ROW_H);
 
-    let temp = if order.frozen {
-        "Frozen"
-    } else if order.chilled {
-        "Chilled"
-    } else {
-        "Chilled" // TS falls through to Chilled when neither flag set
-    };
+    // TS falls through to Chilled when neither flag set, so non-frozen → Chilled.
+    let temp = if order.frozen { "Frozen" } else { "Chilled" };
     let cells = [
-        order.recipe.as_ref().map(|r| r.name.as_str()).unwrap_or("—").to_string(),
-        order.meal_category.clone().unwrap_or_else(|| "—".to_string()),
+        order
+            .recipe
+            .as_ref()
+            .map(|r| r.name.as_str())
+            .unwrap_or("—")
+            .to_string(),
+        order
+            .meal_category
+            .clone()
+            .unwrap_or_else(|| "—".to_string()),
         format!("{}", order.amount),
         temp.to_string(),
         order.client.clone().unwrap_or_default().trim().to_string(),
@@ -689,11 +738,7 @@ fn draw_order_row(
     y_in + ROW_H
 }
 
-fn draw_signature_line(
-    layer: &PdfLayerReference,
-    f_regular: &IndirectFontRef,
-    y_in: f32,
-) -> f32 {
+fn draw_signature_line(layer: &PdfLayerReference, f_regular: &IndirectFontRef, y_in: f32) -> f32 {
     let y = y_in + 12.0;
     draw_text(
         layer,
@@ -729,11 +774,27 @@ fn draw_page_footer(
 /// en-CA for this format exactly.
 fn format_date(d: NaiveDate) -> String {
     const WEEKDAYS: [&str; 7] = [
-        "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
     ];
     const MONTHS: [&str; 12] = [
-        "January", "February", "March", "April", "May", "June", "July", "August",
-        "September", "October", "November", "December",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     ];
     let wd = match d.weekday() {
         Weekday::Mon => 0,

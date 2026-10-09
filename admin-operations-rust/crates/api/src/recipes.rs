@@ -164,8 +164,9 @@ pub async fn get_with_ingredients_by_ids(
         .split(',')
         .filter(|s| !s.is_empty())
         .map(|s| {
-            Uuid::parse_str(s.trim())
-                .map_err(|_| ApiError::Domain(DomainError::Validation(format!("invalid uuid: {s}"))))
+            Uuid::parse_str(s.trim()).map_err(|_| {
+                ApiError::Domain(DomainError::Validation(format!("invalid uuid: {s}")))
+            })
         })
         .collect::<Result<_, _>>()?;
     let rows = recipes::get_with_ingredients_by_ids(&state.pool, &ids).await?;
@@ -278,9 +279,15 @@ pub async fn add_ingredient(
     Json(body): Json<AddIngredientBody>,
 ) -> Result<StatusCode, ApiError> {
     scope_write(&auth)?;
-    recipes::add_ingredient(&state.pool, recipe_id, ingredient_id, body.amount, &body.unit)
-        .await
-        .map_err(map_pg)?;
+    recipes::add_ingredient(
+        &state.pool,
+        recipe_id,
+        ingredient_id,
+        body.amount,
+        &body.unit,
+    )
+    .await
+    .map_err(map_pg)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -329,9 +336,7 @@ fn map_pg(e: sqlx::Error) -> ApiError {
                     ))
                 }
                 "23503" | "23514" => {
-                    return ApiError::Domain(DomainError::Validation(
-                        db_err.message().to_string(),
-                    ))
+                    return ApiError::Domain(DomainError::Validation(db_err.message().to_string()))
                 }
                 _ => {}
             }

@@ -47,18 +47,6 @@ use crate::{auth::AuthCtx, error::ApiError, state::AppState};
 const MAX_UPLOAD_BYTES: usize = 5 * 1024 * 1024;
 
 // ---------------------------------------------------------------
-// Scope helper — recipe imports are admin-only.
-// ---------------------------------------------------------------
-
-fn require_admin(auth: &AuthCtx) -> Result<(), ApiError> {
-    if auth.role == Role::Admin {
-        Ok(())
-    } else {
-        Err(ApiError::Domain(DomainError::Forbidden))
-    }
-}
-
-// ---------------------------------------------------------------
 // 422 wire shape — mirrors the TS `fail(422, { parseErrors, ... })`
 // branch so the dispatcher-side forwarder can bounce the body through.
 // ---------------------------------------------------------------
@@ -77,7 +65,7 @@ struct ParseErrorsBody {
 /// `axum::Response` directly — bypasses `ApiError` because the 422
 /// case needs a structured body, not the plain `{error, message}`
 /// shape `ApiError` emits.
-enum PrepareError {
+pub enum PrepareError {
     /// Hard failure before any row was parsed: bad xlsx, missing
     /// sheet, missing required columns. Maps to 400 + a plain-text
     /// message string via `ApiError::Validation`.
@@ -89,6 +77,10 @@ enum PrepareError {
     Empty,
     /// Multipart / upload-shape problem. 400 with a message.
     Upload(String),
+    /// Caller is not an admin — 403.
+    Forbidden,
+    /// DB failure during the commit path — 500 (details logged).
+    Db(sqlx::Error),
 }
 
 impl IntoResponse for PrepareError {
@@ -106,11 +98,11 @@ impl IntoResponse for PrepareError {
             .into_response(),
             PrepareError::RowErrors(errs) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
-                Json(ParseErrorsBody {
-                    parse_errors: errs,
-                }),
+                Json(ParseErrorsBody { parse_errors: errs }),
             )
                 .into_response(),
+            PrepareError::Forbidden => ApiError::Domain(DomainError::Forbidden).into_response(),
+            PrepareError::Db(e) => ApiError::Db(e).into_response(),
         }
     }
 }
@@ -118,7 +110,9 @@ impl IntoResponse for PrepareError {
 /// Shared prelude: pull the file off the multipart body, parse it,
 /// surface the three "no rows for you" branches. On success returns
 /// the parsed row vec, ready for either preview or commit.
-async fn prepare(multipart: Multipart) -> Result<Vec<domain::recipes::RecipeExcelRowParsed>, PrepareError> {
+async fn prepare(
+    multipart: Multipart,
+) -> Result<Vec<domain::recipes::RecipeExcelRowParsed>, PrepareError> {
     let bytes = read_xlsx_upload(multipart).await?;
     let parsed = parse_recipe_xlsx(&bytes).map_err(|e| match e {
         // Hard parse failure → surface the user-visible message. TS
@@ -147,9 +141,11 @@ pub async fn preview(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthCtx>,
     multipart: Multipart,
-) -> Result<Json<RecipeImportPreview>, Response> {
-    require_admin(&auth).map_err(IntoResponse::into_response)?;
-    let rows = prepare(multipart).await.map_err(IntoResponse::into_response)?;
+) -> Result<Json<RecipeImportPreview>, PrepareError> {
+    if auth.role != Role::Admin {
+        return Err(PrepareError::Forbidden);
+    }
+    let rows = prepare(multipart).await?;
 
     // Collect the input ingredient names (filter_map strips rows with no
     // ingredient and dedupes first-seen; TS does the same via
@@ -167,7 +163,7 @@ pub async fn preview(
     // Existing names from the DB — ordered, deduped by `list_names`.
     let existing = ingredients::list_names(&state.pool)
         .await
-        .map_err(|e| ApiError::Db(e).into_response())?;
+        .map_err(PrepareError::Db)?;
 
     let warnings = find_fuzzy_warnings(
         &input_names,
@@ -188,14 +184,16 @@ pub async fn commit(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthCtx>,
     multipart: Multipart,
-) -> Result<Json<RecipeImportResult>, Response> {
-    require_admin(&auth).map_err(IntoResponse::into_response)?;
-    let rows = prepare(multipart).await.map_err(IntoResponse::into_response)?;
+) -> Result<Json<RecipeImportResult>, PrepareError> {
+    if auth.role != Role::Admin {
+        return Err(PrepareError::Forbidden);
+    }
+    let rows = prepare(multipart).await?;
 
     let created_by = auth.user_id.as_str();
     let result = recipe_imports::import_recipes_from_rows(&state.pool, &rows, created_by)
         .await
-        .map_err(|e| ApiError::Db(e).into_response())?;
+        .map_err(PrepareError::Db)?;
 
     Ok(Json(result))
 }

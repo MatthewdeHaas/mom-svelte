@@ -365,8 +365,7 @@ const SUMMARY_SELECT: &str = "SELECT \
     JOIN company c ON c.id = o.company_id \
     LEFT JOIN recipe r ON r.id = o.recipe_id";
 
-const SUMMARY_ORDER: &str =
-    " ORDER BY o.serving_date DESC, c.name ASC, o.id ASC";
+const SUMMARY_ORDER: &str = " ORDER BY o.serving_date DESC, c.name ASC, o.id ASC";
 
 /// `getOrders` — unpaginated list filtered by `OrderFilters`, ordered
 /// by serving_date DESC, company name ASC, id ASC. Runtime SQL because
@@ -395,10 +394,7 @@ pub async fn list_paginated(
          JOIN company c ON c.id = o.company_id",
     );
     push_filters(&mut count_qb, filters);
-    let total: i64 = count_qb
-        .build_query_scalar::<i64>()
-        .fetch_one(pool)
-        .await?;
+    let total: i64 = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
 
     // --- Data ---
     let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(SUMMARY_SELECT);
@@ -408,17 +404,17 @@ pub async fn list_paginated(
     qb.push_bind(pagination.per_page);
     qb.push(" OFFSET ");
     qb.push_bind(offset(&pagination));
-    let data = qb.build_query_as::<OrderSummaryRow>().fetch_all(pool).await?;
+    let data = qb
+        .build_query_as::<OrderSummaryRow>()
+        .fetch_all(pool)
+        .await?;
 
     Ok(build_paginated(data, total, pagination))
 }
 
 /// `getOrderById` — full detail with embedded `company` and optional
 /// `recipe`. Returns `None` on no match (handler maps to 404).
-pub async fn get_by_id(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<Option<OrderDetailRow>, sqlx::Error> {
+pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Option<OrderDetailRow>, sqlx::Error> {
     // One query, all three tables; map to the nested shape in Rust so
     // the JSON matches the TS structure byte for byte.
     let row = sqlx::query!(
@@ -839,13 +835,13 @@ pub async fn set_status_batch(
 /// Fetch a single order's `company_id` without the full detail join.
 /// Used to answer "does this order belong to the caller's company?"
 /// before returning `GET /orders/:id` or committing a mutation.
-pub async fn get_company_id(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<Option<Uuid>, sqlx::Error> {
-    sqlx::query_scalar!(r#"SELECT company_id AS "company_id!: Uuid" FROM "order" WHERE id = $1"#, id)
-        .fetch_optional(pool)
-        .await
+pub async fn get_company_id(pool: &PgPool, id: Uuid) -> Result<Option<Uuid>, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"SELECT company_id AS "company_id!: Uuid" FROM "order" WHERE id = $1"#,
+        id
+    )
+    .fetch_optional(pool)
+    .await
 }
 
 /// Keep clippy quiet about unused Executor import if the compile-time

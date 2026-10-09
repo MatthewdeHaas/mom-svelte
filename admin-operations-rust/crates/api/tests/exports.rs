@@ -167,12 +167,11 @@ async fn seed_second_company_order(pool: &PgPool) -> Uuid {
     .await
     .expect("seed company 2");
 
-    let recipe_id = sqlx::query_scalar::<_, Uuid>(
-        "SELECT id FROM recipe WHERE name = 'Exports Test Recipe'",
-    )
-    .fetch_one(pool)
-    .await
-    .expect("look up recipe");
+    let recipe_id =
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM recipe WHERE name = 'Exports Test Recipe'")
+            .fetch_one(pool)
+            .await
+            .expect("look up recipe");
 
     let data = InsertOrderData {
         company_id,

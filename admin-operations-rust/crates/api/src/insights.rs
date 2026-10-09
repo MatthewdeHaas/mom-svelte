@@ -99,7 +99,8 @@ pub async fn kpi(
     Query(q): Query<KpiQuery>,
 ) -> Result<Json<KpiMetrics>, ApiError> {
     require_admin(&auth)?;
-    let metrics = insights::get_kpi_metrics(&state.pool, q.from, q.to, q.prior_from, q.prior_to).await?;
+    let metrics =
+        insights::get_kpi_metrics(&state.pool, q.from, q.to, q.prior_from, q.prior_to).await?;
     Ok(Json(metrics))
 }
 

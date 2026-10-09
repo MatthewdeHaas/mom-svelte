@@ -114,14 +114,12 @@ async fn attach_recipe_ingredient(
 }
 
 async fn attach_ingredient_allergen(pool: &PgPool, ingredient_id: Uuid, allergen_id: Uuid) {
-    sqlx::query(
-        "INSERT INTO ingredient_allergen (ingredient_id, allergen_id) VALUES ($1, $2)",
-    )
-    .bind(ingredient_id)
-    .bind(allergen_id)
-    .execute(pool)
-    .await
-    .expect("attach ingredient_allergen");
+    sqlx::query("INSERT INTO ingredient_allergen (ingredient_id, allergen_id) VALUES ($1, $2)")
+        .bind(ingredient_id)
+        .bind(allergen_id)
+        .execute(pool)
+        .await
+        .expect("attach ingredient_allergen");
 }
 
 /// Seed one order with explicit (status, source, amount, serving_date).
@@ -176,21 +174,14 @@ async fn seed_person_inactive(pool: &PgPool, company_id: Uuid, name: &str) -> Uu
     .expect("seed person inactive")
 }
 
-async fn seed_attendance(
-    pool: &PgPool,
-    person_id: Uuid,
-    serving_date: NaiveDate,
-    attending: bool,
-) {
-    sqlx::query(
-        "INSERT INTO attendance (person_id, serving_date, attending) VALUES ($1, $2, $3)",
-    )
-    .bind(person_id)
-    .bind(serving_date)
-    .bind(attending)
-    .execute(pool)
-    .await
-    .expect("seed attendance");
+async fn seed_attendance(pool: &PgPool, person_id: Uuid, serving_date: NaiveDate, attending: bool) {
+    sqlx::query("INSERT INTO attendance (person_id, serving_date, attending) VALUES ($1, $2, $3)")
+        .bind(person_id)
+        .bind(serving_date)
+        .bind(attending)
+        .execute(pool)
+        .await
+        .expect("seed attendance");
 }
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -233,9 +224,36 @@ async fn kpi_total_meals_excludes_cancelled(pool: PgPool) {
     let c = seed_company(&pool, "Co").await;
     let r = seed_recipe(&pool, "R").await;
     // Two live orders (3 + 4) + one cancelled (99 should not count).
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 3.0, date(2026, 6, 10)).await;
-    seed_order(&pool, c, r, "fulfilled", "admin_manual", 4.0, date(2026, 6, 20)).await;
-    seed_order(&pool, c, r, "cancelled", "admin_manual", 99.0, date(2026, 6, 15)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        3.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "fulfilled",
+        "admin_manual",
+        4.0,
+        date(2026, 6, 20),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "cancelled",
+        "admin_manual",
+        99.0,
+        date(2026, 6, 15),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -261,8 +279,26 @@ async fn kpi_wow_pct_positive_change(pool: PgPool) {
     // Prior window = 10 meals, current = 15 → +50%.
     let c = seed_company(&pool, "Co").await;
     let r = seed_recipe(&pool, "R").await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 10.0, date(2026, 5, 15)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 15.0, date(2026, 6, 15)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        10.0,
+        date(2026, 5, 15),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        15.0,
+        date(2026, 6, 15),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -290,7 +326,16 @@ async fn kpi_wow_pct_null_when_prior_zero(pool: PgPool) {
     // (matches TS `weekOverWeekChange: null`).
     let c = seed_company(&pool, "Co").await;
     let r = seed_recipe(&pool, "R").await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 5.0, date(2026, 6, 10)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        5.0,
+        date(2026, 6, 10),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -319,11 +364,56 @@ async fn kpi_status_counts_include_cancelled(pool: PgPool) {
     // cancelled; the cancelled filter only affects `total_meals`.)
     let c = seed_company(&pool, "Co").await;
     let r = seed_recipe(&pool, "R").await;
-    seed_order(&pool, c, r, "pending", "admin_manual", 1.0, date(2026, 6, 1)).await;
-    seed_order(&pool, c, r, "pending", "admin_manual", 1.0, date(2026, 6, 2)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 1.0, date(2026, 6, 3)).await;
-    seed_order(&pool, c, r, "fulfilled", "admin_manual", 1.0, date(2026, 6, 4)).await;
-    seed_order(&pool, c, r, "cancelled", "admin_manual", 1.0, date(2026, 6, 5)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "pending",
+        "admin_manual",
+        1.0,
+        date(2026, 6, 1),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "pending",
+        "admin_manual",
+        1.0,
+        date(2026, 6, 2),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        1.0,
+        date(2026, 6, 3),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "fulfilled",
+        "admin_manual",
+        1.0,
+        date(2026, 6, 4),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "cancelled",
+        "admin_manual",
+        1.0,
+        date(2026, 6, 5),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -355,9 +445,36 @@ async fn kpi_active_companies_distinct_and_excludes_all_cancelled(pool: PgPool) 
     let a = seed_company(&pool, "A").await;
     let b = seed_company(&pool, "B").await;
     let r = seed_recipe(&pool, "R").await;
-    seed_order(&pool, a, r, "confirmed", "admin_manual", 1.0, date(2026, 6, 10)).await;
-    seed_order(&pool, b, r, "cancelled", "admin_manual", 1.0, date(2026, 6, 10)).await;
-    seed_order(&pool, b, r, "cancelled", "admin_manual", 1.0, date(2026, 6, 11)).await;
+    seed_order(
+        &pool,
+        a,
+        r,
+        "confirmed",
+        "admin_manual",
+        1.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        b,
+        r,
+        "cancelled",
+        "admin_manual",
+        1.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        b,
+        r,
+        "cancelled",
+        "admin_manual",
+        1.0,
+        date(2026, 6, 11),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -385,11 +502,47 @@ async fn kpi_active_companies_distinct_and_excludes_all_cancelled(pool: PgPool) 
 async fn volume_daily_groups_per_day(pool: PgPool) {
     let c = seed_company(&pool, "Co").await;
     let r = seed_recipe(&pool, "R").await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 2.0, date(2026, 6, 10)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 3.0, date(2026, 6, 10)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 5.0, date(2026, 6, 11)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        2.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        3.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        5.0,
+        date(2026, 6, 11),
+    )
+    .await;
     // Cancelled must not count.
-    seed_order(&pool, c, r, "cancelled", "admin_manual", 99.0, date(2026, 6, 10)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "cancelled",
+        "admin_manual",
+        99.0,
+        date(2026, 6, 10),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -418,9 +571,36 @@ async fn volume_weekly_buckets(pool: PgPool) {
     // (Mon) is week start for 06-17. One row per week bucket.
     let c = seed_company(&pool, "Co").await;
     let r = seed_recipe(&pool, "R").await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 2.0, date(2026, 6, 10)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 3.0, date(2026, 6, 11)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 7.0, date(2026, 6, 17)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        2.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        3.0,
+        date(2026, 6, 11),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        7.0,
+        date(2026, 6, 17),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -474,11 +654,47 @@ async fn top_recipes_ordered_by_amount_desc_and_percent_sums_100(pool: PgPool) {
     let r1 = seed_recipe(&pool, "Alpha").await;
     let r2 = seed_recipe(&pool, "Beta").await;
     let r3 = seed_recipe(&pool, "Gamma").await;
-    seed_order(&pool, c, r1, "confirmed", "admin_manual", 60.0, date(2026, 6, 10)).await;
-    seed_order(&pool, c, r2, "confirmed", "admin_manual", 30.0, date(2026, 6, 11)).await;
-    seed_order(&pool, c, r3, "confirmed", "admin_manual", 10.0, date(2026, 6, 12)).await;
+    seed_order(
+        &pool,
+        c,
+        r1,
+        "confirmed",
+        "admin_manual",
+        60.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r2,
+        "confirmed",
+        "admin_manual",
+        30.0,
+        date(2026, 6, 11),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r3,
+        "confirmed",
+        "admin_manual",
+        10.0,
+        date(2026, 6, 12),
+    )
+    .await;
     // Cancelled must be excluded.
-    seed_order(&pool, c, r1, "cancelled", "admin_manual", 999.0, date(2026, 6, 13)).await;
+    seed_order(
+        &pool,
+        c,
+        r1,
+        "cancelled",
+        "admin_manual",
+        999.0,
+        date(2026, 6, 13),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -513,7 +729,16 @@ async fn top_recipes_respects_limit(pool: PgPool) {
     let c = seed_company(&pool, "Co").await;
     for (i, amt) in [50.0, 40.0, 30.0, 20.0, 10.0].into_iter().enumerate() {
         let r = seed_recipe(&pool, &format!("R{i:02}")).await;
-        seed_order(&pool, c, r, "confirmed", "admin_manual", amt, date(2026, 6, 10)).await;
+        seed_order(
+            &pool,
+            c,
+            r,
+            "confirmed",
+            "admin_manual",
+            amt,
+            date(2026, 6, 10),
+        )
+        .await;
     }
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -562,9 +787,36 @@ async fn companies_ordered_by_total_amount_desc(pool: PgPool) {
     let a = seed_company(&pool, "A").await;
     let b = seed_company(&pool, "B").await;
     let r = seed_recipe(&pool, "R").await;
-    seed_order(&pool, a, r, "confirmed", "admin_manual", 10.0, date(2026, 6, 10)).await;
-    seed_order(&pool, b, r, "confirmed", "admin_manual", 30.0, date(2026, 6, 10)).await;
-    seed_order(&pool, b, r, "cancelled", "admin_manual", 999.0, date(2026, 6, 11)).await;
+    seed_order(
+        &pool,
+        a,
+        r,
+        "confirmed",
+        "admin_manual",
+        10.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        b,
+        r,
+        "confirmed",
+        "admin_manual",
+        30.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        b,
+        r,
+        "cancelled",
+        "admin_manual",
+        999.0,
+        date(2026, 6, 11),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -596,10 +848,46 @@ async fn companies_ordered_by_total_amount_desc(pool: PgPool) {
 async fn source_mix_groups_by_source(pool: PgPool) {
     let c = seed_company(&pool, "Co").await;
     let r = seed_recipe(&pool, "R").await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 5.0, date(2026, 6, 1)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 3.0, date(2026, 6, 2)).await;
-    seed_order(&pool, c, r, "confirmed", "excel_import", 10.0, date(2026, 6, 3)).await;
-    seed_order(&pool, c, r, "cancelled", "client_portal", 99.0, date(2026, 6, 4)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        5.0,
+        date(2026, 6, 1),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        3.0,
+        date(2026, 6, 2),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "excel_import",
+        10.0,
+        date(2026, 6, 3),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "cancelled",
+        "client_portal",
+        99.0,
+        date(2026, 6, 4),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
@@ -639,13 +927,58 @@ async fn ingredient_demand_sums_product_and_includes_allergens(pool: PgPool) {
     attach_recipe_ingredient(&pool, r, flour, 2.0, "cup").await;
     attach_ingredient_allergen(&pool, flour, gluten).await;
 
-    seed_order(&pool, c, r, "pending", "admin_manual", 10.0, date(2026, 6, 10)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 10.0, date(2026, 6, 11)).await;
-    seed_order(&pool, c, r, "confirmed", "admin_manual", 10.0, date(2026, 6, 12)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "pending",
+        "admin_manual",
+        10.0,
+        date(2026, 6, 10),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        10.0,
+        date(2026, 6, 11),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "confirmed",
+        "admin_manual",
+        10.0,
+        date(2026, 6, 12),
+    )
+    .await;
     // 'cancelled' and 'fulfilled' must NOT count — ingredient demand
     // is for future production (pending/confirmed only).
-    seed_order(&pool, c, r, "cancelled", "admin_manual", 999.0, date(2026, 6, 13)).await;
-    seed_order(&pool, c, r, "fulfilled", "admin_manual", 999.0, date(2026, 6, 14)).await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "cancelled",
+        "admin_manual",
+        999.0,
+        date(2026, 6, 13),
+    )
+    .await;
+    seed_order(
+        &pool,
+        c,
+        r,
+        "fulfilled",
+        "admin_manual",
+        999.0,
+        date(2026, 6, 14),
+    )
+    .await;
 
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;

@@ -448,7 +448,7 @@ async fn commit_422_on_row_errors_no_writes(pool: PgPool) {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     let v: Value = serde_json::from_str(&body).expect("422 body");
-    assert!(v["parse_errors"].as_array().unwrap().len() >= 1);
+    assert!(!v["parse_errors"].as_array().unwrap().is_empty());
 
     let (n_recipe, n_ri): (i64, i64) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM recipe), (SELECT COUNT(*) FROM recipe_ingredient)",
@@ -544,7 +544,10 @@ async fn second_commit_replaces_recipe_ingredient(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("count");
-    assert_eq!(caesar_lines, 1, "second import replaced the ingredient list");
+    assert_eq!(
+        caesar_lines, 1,
+        "second import replaced the ingredient list"
+    );
 
     let salad_lines: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM recipe_ingredient ri \
@@ -557,4 +560,3 @@ async fn second_commit_replaces_recipe_ingredient(pool: PgPool) {
     assert_eq!(salad_lines, 2, "untouched recipe keeps its lines");
     server.stop().await;
 }
-

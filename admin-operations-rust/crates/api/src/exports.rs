@@ -114,7 +114,10 @@ fn bytes_response(content_type: &'static str, filename: &str, bytes: Vec<u8>) ->
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type)
-        .header(header::CONTENT_DISPOSITION, attachment_disposition(filename))
+        .header(
+            header::CONTENT_DISPOSITION,
+            attachment_disposition(filename),
+        )
         .body(Body::from(bytes))
         .expect("build byte response")
 }
@@ -193,7 +196,11 @@ pub async fn packing_slips(
 
     if slips.len() == 1 {
         let slip = slips.remove(0);
-        return Ok(bytes_response("application/pdf", &slip.filename, slip.pdf_bytes));
+        return Ok(bytes_response(
+            "application/pdf",
+            &slip.filename,
+            slip.pdf_bytes,
+        ));
     }
 
     let (mon, _) = week_bounds_est(q.date);
@@ -214,9 +221,7 @@ pub async fn packing_slips(
 /// - Entry mtime: DOS epoch (1980-01-01 00:00:00). Without this,
 ///   `zip::DateTime::default()` would stamp wall-clock time and the
 ///   `*_bytes_identical_across_runs` test flaps.
-fn build_packing_slips_zip(
-    slips: &[PackingSlipPdf],
-) -> Result<Vec<u8>, zip::result::ZipError> {
+fn build_packing_slips_zip(slips: &[PackingSlipPdf]) -> Result<Vec<u8>, zip::result::ZipError> {
     let mut buf: Vec<u8> = Vec::with_capacity(slips.iter().map(|s| s.pdf_bytes.len() + 256).sum());
     {
         let cursor = Cursor::new(&mut buf);

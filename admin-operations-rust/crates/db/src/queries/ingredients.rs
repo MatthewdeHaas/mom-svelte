@@ -154,11 +154,9 @@ pub async fn list(pool: &PgPool, opts: &ListOpts) -> Result<Vec<IngredientRow>, 
 /// `getIngredientNames` — lightweight list used by the importer for
 /// fuzzy matching. Returns names only, ordered.
 pub async fn list_names(pool: &PgPool) -> Result<Vec<String>, sqlx::Error> {
-    sqlx::query_scalar!(
-        r#"SELECT name AS "name!" FROM ingredient ORDER BY name"#
-    )
-    .fetch_all(pool)
-    .await
+    sqlx::query_scalar!(r#"SELECT name AS "name!" FROM ingredient ORDER BY name"#)
+        .fetch_all(pool)
+        .await
 }
 
 /// `getIngredientById` — returns `None` if the row doesn't exist OR is
@@ -281,7 +279,7 @@ pub async fn list_with_allergens(
                 let names = r.allergen_names.unwrap_or_default();
                 let allergen = ids
                     .into_iter()
-                    .zip(names.into_iter())
+                    .zip(names)
                     .map(|(id, name)| AllergenEmbed { id, name })
                     .collect();
                 IngredientWithAllergensRow {
@@ -321,7 +319,7 @@ pub async fn list_with_allergens(
                 let names = r.allergen_names.unwrap_or_default();
                 let allergen = ids
                     .into_iter()
-                    .zip(names.into_iter())
+                    .zip(names)
                     .map(|(id, name)| AllergenEmbed { id, name })
                     .collect();
                 IngredientWithAllergensRow {
@@ -371,7 +369,7 @@ fn fan_out(raw: WithAllergensRaw) -> IngredientWithAllergensRow {
     let names = raw.allergen_names.unwrap_or_default();
     let allergen = ids
         .into_iter()
-        .zip(names.into_iter())
+        .zip(names)
         .map(|(id, name)| AllergenEmbed { id, name })
         .collect();
     IngredientWithAllergensRow {
@@ -411,10 +409,7 @@ pub async fn list_with_allergens_paginated(
         count_qb.push_bind(format!("%{}%", s));
         count_qb.push(")");
     }
-    let total: i64 = count_qb
-        .build_query_scalar::<i64>()
-        .fetch_one(pool)
-        .await?;
+    let total: i64 = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
 
     // ---- Data ----
     let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(WITH_ALLERGENS_SELECT);
@@ -441,10 +436,11 @@ pub async fn list_with_allergens_paginated(
     qb.push(" OFFSET ");
     qb.push_bind(offset(&pagination));
 
-    let rows: Vec<WithAllergensRaw> =
-        qb.build_query_as::<WithAllergensRaw>().fetch_all(pool).await?;
-    let data: Vec<IngredientWithAllergensRow> =
-        rows.into_iter().map(fan_out).collect();
+    let rows: Vec<WithAllergensRaw> = qb
+        .build_query_as::<WithAllergensRaw>()
+        .fetch_all(pool)
+        .await?;
+    let data: Vec<IngredientWithAllergensRow> = rows.into_iter().map(fan_out).collect();
 
     Ok(build_paginated(data, total, pagination))
 }
@@ -526,10 +522,7 @@ pub async fn update(
 
 /// `deactivateIngredient`. Soft delete — hard delete is blocked by
 /// ON DELETE RESTRICT on recipe_ingredient. Mirrors the TS one-liner.
-pub async fn deactivate(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<Option<IngredientRow>, sqlx::Error> {
+pub async fn deactivate(pool: &PgPool, id: Uuid) -> Result<Option<IngredientRow>, sqlx::Error> {
     update(
         pool,
         id,
@@ -611,9 +604,8 @@ pub async fn set_allergens(
     .await?;
 
     if !allergen_ids.is_empty() {
-        let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(
-            "INSERT INTO ingredient_allergen (ingredient_id, allergen_id) ",
-        );
+        let mut qb: QueryBuilder<Postgres> =
+            QueryBuilder::new("INSERT INTO ingredient_allergen (ingredient_id, allergen_id) ");
         qb.push_values(allergen_ids.iter(), |mut b, aid| {
             b.push_bind(ingredient_id).push_bind(aid);
         });

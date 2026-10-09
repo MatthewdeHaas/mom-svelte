@@ -242,10 +242,9 @@ async fn get_by_token_returns_the_row(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let row: InviteRow = decode_ok(
-        get_admin(&server, &user.id, "/api/invites/by-token?token=tok-lookup").await,
-    )
-    .await;
+    let row: InviteRow =
+        decode_ok(get_admin(&server, &user.id, "/api/invites/by-token?token=tok-lookup").await)
+            .await;
     assert_eq!(row.id, id);
     assert_eq!(row.token, "tok-lookup");
     assert_eq!(row.email, "lookup@x.com");
@@ -419,10 +418,8 @@ async fn mark_used_stamps_used_at(pool: PgPool) {
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
     // Confirm via by-token read.
-    let row: InviteRow = decode_ok(
-        get_admin(&server, &user.id, "/api/invites/by-token?token=tok-mark").await,
-    )
-    .await;
+    let row: InviteRow =
+        decode_ok(get_admin(&server, &user.id, "/api/invites/by-token?token=tok-mark").await).await;
     assert!(row.used_at.is_some());
 
     server.stop().await;
@@ -459,10 +456,8 @@ async fn revoke_stamps_used_at(pool: PgPool) {
     let res = post_admin_empty(&server, &user.id, &format!("/api/invites/{id}/revoke")).await;
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
-    let row: InviteRow = decode_ok(
-        get_admin(&server, &user.id, "/api/invites/by-token?token=tok-rev").await,
-    )
-    .await;
+    let row: InviteRow =
+        decode_ok(get_admin(&server, &user.id, "/api/invites/by-token?token=tok-rev").await).await;
     assert!(row.used_at.is_some());
 
     server.stop().await;
@@ -473,12 +468,7 @@ async fn revoke_404_for_missing_id(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(
-        &server,
-        &user.id,
-        &format!("/api/invites/{BOGUS}/revoke"),
-    )
-    .await;
+    let res = post_admin_empty(&server, &user.id, &format!("/api/invites/{BOGUS}/revoke")).await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -578,13 +568,7 @@ async fn client_cannot_revoke_invite(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_client_empty(
-        &server,
-        &user.id,
-        c,
-        &format!("/api/invites/{id}/revoke"),
-    )
-    .await;
+    let res = post_client_empty(&server, &user.id, c, &format!("/api/invites/{id}/revoke")).await;
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
 
     server.stop().await;
@@ -653,12 +637,7 @@ async fn public_get_by_token_404_for_unknown(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = get_admin(
-        &server,
-        &user.id,
-        "/api/invites/by-token/public?token=nope",
-    )
-    .await;
+    let res = get_admin(&server, &user.id, "/api/invites/by-token/public?token=nope").await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;

@@ -95,8 +95,7 @@ pub async fn generate(
             let entry = agg.entry(key).or_insert_with(|| {
                 // Allergen names: dedupe + sort for stable output.
                 // BTreeSet handles both in one shot.
-                let names: BTreeSet<&str> =
-                    ing.allergen.iter().map(|a| a.name.as_str()).collect();
+                let names: BTreeSet<&str> = ing.allergen.iter().map(|a| a.name.as_str()).collect();
                 let allergens = names.into_iter().collect::<Vec<_>>().join(", ");
                 Aggregated {
                     name: ing.name.clone(),
@@ -115,7 +114,7 @@ pub async fn generate(
     // non-ASCII in the dataset today). If that changes, swap to
     // `unicase` / `caseless`.
     let mut rows: Vec<Aggregated> = agg.into_values().collect();
-    rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    rows.sort_by_key(|a| a.name.to_lowercase());
 
     build_workbook(&rows)
 }

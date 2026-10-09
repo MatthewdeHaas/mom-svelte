@@ -78,7 +78,11 @@ fn derive_margin(price: Option<f64>, cost: Option<f64>) -> (Option<f64>, Option<
     match (price, cost) {
         (Some(p), Some(c)) => {
             let margin = p - c;
-            let pct = if p > 0.0 { Some((p - c) / p * 100.0) } else { None };
+            let pct = if p > 0.0 {
+                Some((p - c) / p * 100.0)
+            } else {
+                None
+            };
             (Some(margin), pct)
         }
         _ => (None, None),
@@ -92,9 +96,7 @@ fn derive_margin(price: Option<f64>, cost: Option<f64>) -> (Option<f64>, Option<
 /// `getRecipesWithMargins` — one row per active recipe, with the sum of
 /// ingredient costs. LEFT JOINs so a recipe with no ingredients still
 /// appears (ingredient_cost = NULL).
-pub async fn get_recipes_with_margins(
-    pool: &PgPool,
-) -> Result<Vec<RecipeMarginRow>, sqlx::Error> {
+pub async fn get_recipes_with_margins(pool: &PgPool) -> Result<Vec<RecipeMarginRow>, sqlx::Error> {
     let rows = sqlx::query!(
         r#"
         SELECT
@@ -141,11 +143,10 @@ pub async fn get_recipes_with_margins_paginated(
     // ---- Count ----
     // `COUNT(*)` on a bare recipe table so we count recipes, not join
     // rows. Matches TS `financials.ts:81`.
-    let total: i64 = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) AS "count!: i64" FROM recipe WHERE active = TRUE"#,
-    )
-    .fetch_one(pool)
-    .await?;
+    let total: i64 =
+        sqlx::query_scalar!(r#"SELECT COUNT(*) AS "count!: i64" FROM recipe WHERE active = TRUE"#,)
+            .fetch_one(pool)
+            .await?;
 
     // ---- Data ----
     let offset = super::pagination::offset(&pagination);

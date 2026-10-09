@@ -304,7 +304,7 @@ pub async fn list_with_allergens_by_company(
                 let names = r.allergen_names.unwrap_or_default();
                 let allergen = ids
                     .into_iter()
-                    .zip(names.into_iter())
+                    .zip(names)
                     .map(|(id, name)| AllergenEmbed { id, name })
                     .collect();
                 PersonWithAllergensRow {
@@ -345,7 +345,7 @@ pub async fn list_with_allergens_by_company(
                 let names = r.allergen_names.unwrap_or_default();
                 let allergen = ids
                     .into_iter()
-                    .zip(names.into_iter())
+                    .zip(names)
                     .map(|(id, name)| AllergenEmbed { id, name })
                     .collect();
                 PersonWithAllergensRow {
@@ -369,10 +369,7 @@ pub async fn list_with_allergens_by_company(
 
 /// `createPerson`. Trims name server-side (matches TS
 /// `data.name.trim()` at `persons.ts:119`). Default: active = true.
-pub async fn create(
-    pool: &PgPool,
-    data: InsertPersonData,
-) -> Result<PersonRow, sqlx::Error> {
+pub async fn create(pool: &PgPool, data: InsertPersonData) -> Result<PersonRow, sqlx::Error> {
     let name = data.name.trim();
     let active = data.active.unwrap_or(true);
     sqlx::query_as!(
@@ -427,10 +424,7 @@ pub async fn update(
 
 /// `deactivatePerson`. Soft delete — attendance history + allergen
 /// rows are preserved. Mirrors the TS one-liner at `persons.ts:142`.
-pub async fn deactivate(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<Option<PersonRow>, sqlx::Error> {
+pub async fn deactivate(pool: &PgPool, id: Uuid) -> Result<Option<PersonRow>, sqlx::Error> {
     update(
         pool,
         id,
@@ -587,7 +581,7 @@ pub async fn get_attendance_by_date(
             let names = r.allergen_names.unwrap_or_default();
             let allergen: Vec<AllergenEmbed> = ids
                 .into_iter()
-                .zip(names.into_iter())
+                .zip(names)
                 .map(|(id, name)| AllergenEmbed { id, name })
                 .collect();
             AttendanceWithPersonRow {

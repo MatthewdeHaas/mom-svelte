@@ -126,10 +126,9 @@ async fn by_email_hit(pool: PgPool) {
     let admin = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let row: IdOnly = decode_ok(
-        get_admin(&server, &admin.id, "/api/users/by-email?email=found@x.com").await,
-    )
-    .await;
+    let row: IdOnly =
+        decode_ok(get_admin(&server, &admin.id, "/api/users/by-email?email=found@x.com").await)
+            .await;
     assert_eq!(row.id, seeded);
 
     server.stop().await;

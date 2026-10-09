@@ -28,7 +28,6 @@ use rand::RngCore;
 use sha2::Sha256;
 use sqlx::PgPool;
 use tokio::task::JoinHandle;
-use tracing_subscriber;
 
 type HmacSha256 = Hmac<Sha256>;
 

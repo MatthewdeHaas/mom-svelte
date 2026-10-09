@@ -58,9 +58,7 @@ pub fn parse_from_query(
     default_per_page: i64,
 ) -> PaginationParams {
     let page = page.unwrap_or(1).max(1);
-    let per_page = per_page
-        .unwrap_or(default_per_page)
-        .clamp(10, 100);
+    let per_page = per_page.unwrap_or(default_per_page).clamp(10, 100);
     PaginationParams { page, per_page }
 }
 

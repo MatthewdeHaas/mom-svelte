@@ -598,12 +598,9 @@ pub async fn set_all_slots(
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
 
-    sqlx::query!(
-        r#"DELETE FROM menu_recipe WHERE menu_id = $1"#,
-        menu_id,
-    )
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query!(r#"DELETE FROM menu_recipe WHERE menu_id = $1"#, menu_id,)
+        .execute(&mut *tx)
+        .await?;
 
     if !slots.is_empty() {
         let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(

@@ -282,7 +282,12 @@ async fn margins_paginated_defaults_to_page_1(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let page: Paginated<RecipeMarginRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/financials/recipe-margins/paginated").await,
+        get_admin(
+            &server,
+            &user.id,
+            "/api/financials/recipe-margins/paginated",
+        )
+        .await,
     )
     .await;
     assert_eq!(page.total, 3);
@@ -346,7 +351,12 @@ async fn margins_paginated_count_ignores_join(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let page: Paginated<RecipeMarginRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/financials/recipe-margins/paginated").await,
+        get_admin(
+            &server,
+            &user.id,
+            "/api/financials/recipe-margins/paginated",
+        )
+        .await,
     )
     .await;
     assert_eq!(page.total, 1);

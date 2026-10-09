@@ -9,11 +9,14 @@
 
 mod common;
 
+use chrono::NaiveDate;
 use common::{
-    menus::{seed_menu, seed_menu_dates, seed_menu_inactive, seed_recipe, seed_slot, BASE_END, BASE_START},
+    menus::{
+        seed_menu, seed_menu_dates, seed_menu_inactive, seed_recipe, seed_slot, BASE_END,
+        BASE_START,
+    },
     seed_user, signed_headers, spawn_server, TestServer,
 };
-use chrono::NaiveDate;
 use db::queries::menus::{MenuRecipeRow, MenuRecipeWithNameRow, MenuRow, MenuWithRecipesRow};
 use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
@@ -206,10 +209,8 @@ async fn list_includes_inactive_when_flag_set(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<MenuRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/menus?include_inactive=true").await,
-    )
-    .await;
+    let rows: Vec<MenuRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/menus?include_inactive=true").await).await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
     assert!(ids.contains(&inactive));
 
@@ -330,10 +331,8 @@ async fn get_menu_recipes_empty_for_menu_without_slots(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let rows: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     assert!(rows.is_empty());
 
     server.stop().await;
@@ -347,10 +346,8 @@ async fn get_menu_recipes_denormalises_name_and_active(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let rows: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].recipe_name, "Pancakes");
     assert!(rows[0].recipe_active);
@@ -367,10 +364,8 @@ async fn get_menu_recipes_orders_by_week_day_meal(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let rows: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     assert_eq!(rows[0].cycle_week, 1);
     assert_eq!(rows[1].cycle_week, 2);
 
@@ -403,10 +398,9 @@ async fn get_with_recipes_empty_slots_array(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let row: MenuWithRecipesRow = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/with-recipes")).await,
-    )
-    .await;
+    let row: MenuWithRecipesRow =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/with-recipes")).await)
+            .await;
     assert!(row.recipe.is_empty());
 
     server.stop().await;
@@ -420,10 +414,9 @@ async fn get_with_recipes_includes_slots(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let row: MenuWithRecipesRow = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/with-recipes")).await,
-    )
-    .await;
+    let row: MenuWithRecipesRow =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/with-recipes")).await)
+            .await;
     assert_eq!(row.recipe.len(), 1);
     assert_eq!(row.recipe[0].recipe_id, r);
 
@@ -623,7 +616,9 @@ async fn get_slot_404_for_missing(pool: PgPool) {
     let res = get_admin(
         &server,
         &user.id,
-        &format!("/api/menus/{m}/slots/by-coord?cycle_week=1&day_of_week=monday&meal_category=lunch"),
+        &format!(
+            "/api/menus/{m}/slots/by-coord?cycle_week=1&day_of_week=monday&meal_category=lunch"
+        ),
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -665,7 +660,9 @@ async fn get_slot_404_for_different_day(pool: PgPool) {
     let res = get_admin(
         &server,
         &user.id,
-        &format!("/api/menus/{m}/slots/by-coord?cycle_week=1&day_of_week=tuesday&meal_category=lunch"),
+        &format!(
+            "/api/menus/{m}/slots/by-coord?cycle_week=1&day_of_week=tuesday&meal_category=lunch"
+        ),
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -885,10 +882,8 @@ async fn set_slot_upserts_on_same_coord(pool: PgPool) {
     let _: MenuRecipeRow = decode_ok(post_admin(&server, &user.id, &path, &first).await).await;
     let _: MenuRecipeRow = decode_ok(post_admin(&server, &user.id, &path, &second).await).await;
 
-    let slots: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let slots: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     assert_eq!(slots.len(), 1);
     assert_eq!(slots[0].recipe_id, r2);
 
@@ -930,10 +925,8 @@ async fn set_slot_allows_different_coords(pool: PgPool) {
     )
     .await;
 
-    let slots: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let slots: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     assert_eq!(slots.len(), 2);
 
     server.stop().await;
@@ -965,10 +958,8 @@ async fn clear_slot_removes_existing_and_returns_true(pool: PgPool) {
     .await;
     assert_eq!(v["cleared"], json!(true));
 
-    let slots: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let slots: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     assert!(slots.is_empty());
 
     server.stop().await;
@@ -1019,10 +1010,8 @@ async fn clear_slot_leaves_other_slots_untouched(pool: PgPool) {
     )
     .await;
 
-    let slots: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let slots: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     assert_eq!(slots.len(), 1);
     assert_eq!(slots[0].day_of_week, "tuesday");
 
@@ -1055,10 +1044,8 @@ async fn set_all_slots_inserts_everything(pool: PgPool) {
     .await;
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
-    let slots: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let slots: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     let ids: Vec<Uuid> = slots.iter().map(|s| s.recipe_id).collect();
     assert!(ids.contains(&r1));
     assert!(ids.contains(&r2));
@@ -1099,10 +1086,8 @@ async fn set_all_slots_replaces_on_second_call(pool: PgPool) {
     )
     .await;
 
-    let slots: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let slots: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     let ids: Vec<Uuid> = slots.iter().map(|s| s.recipe_id).collect();
     assert!(!ids.contains(&old));
     assert!(ids.contains(&next));
@@ -1132,10 +1117,8 @@ async fn set_all_slots_empty_array_clears(pool: PgPool) {
     .await;
     let _ = put_admin(&server, &user.id, &path, &json!({ "slots": [] })).await;
 
-    let slots: Vec<MenuRecipeWithNameRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await,
-    )
-    .await;
+    let slots: Vec<MenuRecipeWithNameRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/menus/{m}/recipes")).await).await;
     assert!(slots.is_empty());
 
     server.stop().await;

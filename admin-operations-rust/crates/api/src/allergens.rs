@@ -26,9 +26,7 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
-use db::queries::allergens::{
-    self, AllergenRow, InsertAllergenData, RefCount,
-};
+use db::queries::allergens::{self, AllergenRow, InsertAllergenData, RefCount};
 use domain::{DomainError, Role};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -180,9 +178,7 @@ fn map_pg(e: sqlx::Error) -> ApiError {
                     ))
                 }
                 "23503" => {
-                    return ApiError::Domain(DomainError::Validation(
-                        db_err.message().to_string(),
-                    ))
+                    return ApiError::Domain(DomainError::Validation(db_err.message().to_string()))
                 }
                 _ => {}
             }

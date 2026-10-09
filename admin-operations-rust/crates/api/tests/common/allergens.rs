@@ -36,13 +36,11 @@ pub async fn seed_ingredient(pool: &PgPool, name: &str) -> Uuid {
 /// Insert a company, return its id. Needed to parent persons for the
 /// `get_ref_count` person-side.
 pub async fn seed_company(pool: &PgPool, name: &str) -> Uuid {
-    sqlx::query_scalar::<_, Uuid>(
-        "INSERT INTO company (name) VALUES ($1) RETURNING id",
-    )
-    .bind(name)
-    .fetch_one(pool)
-    .await
-    .expect("seed company")
+    sqlx::query_scalar::<_, Uuid>("INSERT INTO company (name) VALUES ($1) RETURNING id")
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .expect("seed company")
 }
 
 /// Insert a person tied to a company. Returns the person id.
@@ -58,11 +56,7 @@ pub async fn seed_person(pool: &PgPool, company_id: Uuid, name: &str) -> Uuid {
 }
 
 /// Attach an allergen to an ingredient. Idempotent via ON CONFLICT.
-pub async fn attach_allergen_to_ingredient(
-    pool: &PgPool,
-    ingredient_id: Uuid,
-    allergen_id: Uuid,
-) {
+pub async fn attach_allergen_to_ingredient(pool: &PgPool, ingredient_id: Uuid, allergen_id: Uuid) {
     sqlx::query(
         "INSERT INTO ingredient_allergen (ingredient_id, allergen_id) \
          VALUES ($1, $2) ON CONFLICT DO NOTHING",

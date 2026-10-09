@@ -190,10 +190,9 @@ async fn list_includes_inactive_when_flag_set(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<IngredientRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/ingredients?include_inactive=true").await,
-    )
-    .await;
+    let rows: Vec<IngredientRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/ingredients?include_inactive=true").await)
+            .await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
 
     assert!(ids.contains(&inactive));

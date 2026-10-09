@@ -92,7 +92,9 @@ pub fn pin_xlsx_bytes(bytes: Vec<u8>) -> Result<Vec<u8>, ExportError> {
                 buf = scrubbed.into_bytes();
             }
 
-            writer.start_file(&name, options).map_err(ExportError::Zip)?;
+            writer
+                .start_file(&name, options)
+                .map_err(ExportError::Zip)?;
             writer.write_all(&buf).map_err(ExportError::Io)?;
         }
 

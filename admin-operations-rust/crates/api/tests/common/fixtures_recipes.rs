@@ -21,13 +21,7 @@ use rust_xlsxwriter::Workbook;
 /// Minimal, happy-path workbook: one recipe, one ingredient, one allergen.
 /// Headers match the TS parser's `normaliseHeader` tolerance (any casing).
 pub fn happy_single_row() -> Vec<u8> {
-    build_from_rows(&[&[
-        "Chicken Caesar",
-        "Chicken Breast",
-        "200",
-        "g",
-        "Dairy",
-    ]])
+    build_from_rows(&[&["Chicken Caesar", "Chicken Breast", "200", "g", "Dairy"]])
 }
 
 /// Two recipes, each with two ingredients, mixed allergens. Exercises

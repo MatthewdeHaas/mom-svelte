@@ -117,10 +117,7 @@ pub async fn list_by_company(
 
 /// `createInvite`. Trims + lowercases email server-side to mirror
 /// `invites.ts:36` (`data.email.toLowerCase().trim()`).
-pub async fn create(
-    pool: &PgPool,
-    data: InsertInviteData,
-) -> Result<InviteRow, sqlx::Error> {
+pub async fn create(pool: &PgPool, data: InsertInviteData) -> Result<InviteRow, sqlx::Error> {
     let email = data.email.trim().to_lowercase();
     sqlx::query_as!(
         InviteRow,
@@ -153,12 +150,9 @@ pub async fn create(
 /// match. The TS surface returns `void`, but a boolean is strictly
 /// more informative and the handler can translate it to 204/404.
 pub async fn mark_used(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query!(
-        r#"UPDATE invite SET used_at = now() WHERE id = $1"#,
-        id,
-    )
-    .execute(pool)
-    .await?;
+    let result = sqlx::query!(r#"UPDATE invite SET used_at = now() WHERE id = $1"#, id,)
+        .execute(pool)
+        .await?;
     Ok(result.rows_affected() > 0)
 }
 

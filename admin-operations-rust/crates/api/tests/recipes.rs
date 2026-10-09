@@ -11,8 +11,8 @@ mod common;
 
 use common::{
     recipes::{
-        attach_allergen_to_ingredient, attach_ingredient_to_recipe, seed_allergen,
-        seed_ingredient, seed_recipe, seed_recipe_inactive,
+        attach_allergen_to_ingredient, attach_ingredient_to_recipe, seed_allergen, seed_ingredient,
+        seed_recipe, seed_recipe_inactive,
     },
     seed_user, signed_headers, spawn_server, TestServer,
 };
@@ -174,8 +174,7 @@ async fn list_excludes_inactive_by_default(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeRow> =
-        decode_ok(get_admin(&server, &user.id, "/api/recipes").await).await;
+    let rows: Vec<RecipeRow> = decode_ok(get_admin(&server, &user.id, "/api/recipes").await).await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
 
     assert!(ids.contains(&active));
@@ -190,10 +189,8 @@ async fn list_includes_inactive_when_flag_set(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/recipes?include_inactive=true").await,
-    )
-    .await;
+    let rows: Vec<RecipeRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/recipes?include_inactive=true").await).await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
 
     assert!(ids.contains(&inactive));
@@ -208,11 +205,13 @@ async fn list_orders_rows_by_name_ascending(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeRow> =
-        decode_ok(get_admin(&server, &user.id, "/api/recipes").await).await;
+    let rows: Vec<RecipeRow> = decode_ok(get_admin(&server, &user.id, "/api/recipes").await).await;
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
 
-    let apple = names.iter().position(|n| *n == "Apple Salad").expect("Apple");
+    let apple = names
+        .iter()
+        .position(|n| *n == "Apple Salad")
+        .expect("Apple");
     let zucchini = names
         .iter()
         .position(|n| *n == "Zucchini Soup")
@@ -228,8 +227,7 @@ async fn list_rows_have_expected_shape(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeRow> =
-        decode_ok(get_admin(&server, &user.id, "/api/recipes").await).await;
+    let rows: Vec<RecipeRow> = decode_ok(get_admin(&server, &user.id, "/api/recipes").await).await;
     let found = rows.iter().find(|r| r.id == id).expect("found");
 
     assert!(found.active);
@@ -331,12 +329,7 @@ async fn by_name_returns_404_for_inactive_without_flag(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = get_admin(
-        &server,
-        &user.id,
-        "/api/recipes/by-name?name=InactiveName",
-    )
-    .await;
+    let res = get_admin(&server, &user.id, "/api/recipes/by-name?name=InactiveName").await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -369,10 +362,8 @@ async fn by_name_is_case_insensitive(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let row: RecipeRow = decode_ok(
-        get_admin(&server, &user.id, "/api/recipes/by-name?name=case+soup").await,
-    )
-    .await;
+    let row: RecipeRow =
+        decode_ok(get_admin(&server, &user.id, "/api/recipes/by-name?name=case+soup").await).await;
 
     assert_eq!(row.id, id);
 
@@ -390,7 +381,12 @@ async fn get_ingredients_returns_empty_when_none(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let rows: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
 
@@ -409,7 +405,12 @@ async fn get_ingredients_returns_correct_fields(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let rows: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
 
@@ -431,7 +432,12 @@ async fn get_ingredients_amount_is_number(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let rows: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
 
@@ -452,7 +458,12 @@ async fn get_ingredients_orders_by_name(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let rows: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
@@ -475,7 +486,12 @@ async fn get_ingredients_includes_allergens(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let rows: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
 
@@ -494,7 +510,12 @@ async fn get_ingredients_empty_allergens_when_none(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let rows: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
 
@@ -595,10 +616,8 @@ async fn list_with_ingredients_excludes_inactive(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeWithIngredientsRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/recipes/with-ingredients").await,
-    )
-    .await;
+    let rows: Vec<RecipeWithIngredientsRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/recipes/with-ingredients").await).await;
 
     assert!(!rows.iter().any(|r| r.id == inactive));
 
@@ -611,10 +630,8 @@ async fn list_with_ingredients_returns_arrays(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeWithIngredientsRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/recipes/with-ingredients").await,
-    )
-    .await;
+    let rows: Vec<RecipeWithIngredientsRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/recipes/with-ingredients").await).await;
 
     // Vec is always an array — compile-time check. But also assert it
     // decoded without panic above.
@@ -635,10 +652,8 @@ async fn list_with_ingredients_no_cross_contamination(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeWithIngredientsRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/recipes/with-ingredients").await,
-    )
-    .await;
+    let rows: Vec<RecipeWithIngredientsRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/recipes/with-ingredients").await).await;
 
     let row1 = rows.iter().find(|r| r.id == r1).expect("r1");
     let row2 = rows.iter().find(|r| r.id == r2).expect("r2");
@@ -661,10 +676,8 @@ async fn list_with_ingredients_unpacks_allergens(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeWithIngredientsRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/recipes/with-ingredients").await,
-    )
-    .await;
+    let rows: Vec<RecipeWithIngredientsRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/recipes/with-ingredients").await).await;
 
     let row = rows.iter().find(|r| r.id == rid).expect("row");
     let ing = row
@@ -686,10 +699,8 @@ async fn list_with_ingredients_amount_is_number(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<RecipeWithIngredientsRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/recipes/with-ingredients").await,
-    )
-    .await;
+    let rows: Vec<RecipeWithIngredientsRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/recipes/with-ingredients").await).await;
 
     let row = rows.iter().find(|r| r.id == rid).expect("row");
     assert!((row.ingredients[0].amount - 99.9).abs() < 1e-9);
@@ -765,22 +776,10 @@ async fn create_rejects_duplicate_name_with_409(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let first = post_admin(
-        &server,
-        &user.id,
-        "/api/recipes",
-        &json!({ "name": "Dup" }),
-    )
-    .await;
+    let first = post_admin(&server, &user.id, "/api/recipes", &json!({ "name": "Dup" })).await;
     assert_eq!(first.status(), StatusCode::CREATED);
 
-    let second = post_admin(
-        &server,
-        &user.id,
-        "/api/recipes",
-        &json!({ "name": "Dup" }),
-    )
-    .await;
+    let second = post_admin(&server, &user.id, "/api/recipes", &json!({ "name": "Dup" })).await;
     assert_eq!(second.status(), StatusCode::CONFLICT);
 
     server.stop().await;
@@ -895,8 +894,7 @@ async fn deactivated_is_excluded_from_list(pool: PgPool) {
 
     post_admin_empty(&server, &user.id, &format!("/api/recipes/{id}/deactivate")).await;
 
-    let rows: Vec<RecipeRow> =
-        decode_ok(get_admin(&server, &user.id, "/api/recipes").await).await;
+    let rows: Vec<RecipeRow> = decode_ok(get_admin(&server, &user.id, "/api/recipes").await).await;
     assert!(!rows.iter().any(|r| r.id == id));
 
     server.stop().await;
@@ -930,8 +928,12 @@ async fn deactivate_404_for_missing(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res =
-        post_admin_empty(&server, &user.id, &format!("/api/recipes/{BOGUS}/deactivate")).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/recipes/{BOGUS}/deactivate"),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -958,7 +960,12 @@ async fn add_ingredient_associates(pool: PgPool) {
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
     let ings: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
     assert!(ings.iter().any(|i| i.ingredient_id == iid));
@@ -989,7 +996,12 @@ async fn add_ingredient_upserts_on_conflict(pool: PgPool) {
     .await;
 
     let ings: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
 
@@ -1020,7 +1032,12 @@ async fn remove_ingredient_only_removes_target(pool: PgPool) {
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
     let ings: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
     let ids: Vec<Uuid> = ings.iter().map(|i| i.ingredient_id).collect();
@@ -1075,7 +1092,12 @@ async fn set_ingredients_applies_set(pool: PgPool) {
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 
     let ings: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
     let ids: Vec<Uuid> = ings.iter().map(|i| i.ingredient_id).collect();
@@ -1114,7 +1136,12 @@ async fn set_ingredients_replaces_prior(pool: PgPool) {
     .await;
 
     let ings: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
     let ids: Vec<Uuid> = ings.iter().map(|i| i.ingredient_id).collect();
@@ -1148,7 +1175,12 @@ async fn set_ingredients_empty_clears(pool: PgPool) {
     .await;
 
     let ings: Vec<RecipeIngredientRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{rid}/ingredients")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/recipes/{rid}/ingredients"),
+        )
+        .await,
     )
     .await;
 
@@ -1192,10 +1224,9 @@ async fn is_active_false_for_missing(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let body: Value = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/recipes/{BOGUS}/active")).await,
-    )
-    .await;
+    let body: Value =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/recipes/{BOGUS}/active")).await)
+            .await;
     assert_eq!(body["active"], json!(false));
 
     server.stop().await;

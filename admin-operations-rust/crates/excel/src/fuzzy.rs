@@ -51,7 +51,11 @@ pub fn levenshtein(a: &str, b: &str) -> usize {
     for i in 1..=la {
         curr[0] = i;
         for j in 1..=lb {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
             let del = prev[j] + 1;
             let ins = curr[j - 1] + 1;
             let sub = prev[j - 1] + cost;

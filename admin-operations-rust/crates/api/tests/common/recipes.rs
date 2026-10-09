@@ -54,11 +54,7 @@ pub async fn seed_allergen(pool: &PgPool, name: &str) -> Uuid {
 
 /// Attach an allergen to an ingredient via the `ingredient_allergen`
 /// join table. Idempotent via ON CONFLICT DO NOTHING.
-pub async fn attach_allergen_to_ingredient(
-    pool: &PgPool,
-    ingredient_id: Uuid,
-    allergen_id: Uuid,
-) {
+pub async fn attach_allergen_to_ingredient(pool: &PgPool, ingredient_id: Uuid, allergen_id: Uuid) {
     sqlx::query(
         "INSERT INTO ingredient_allergen (ingredient_id, allergen_id) \
          VALUES ($1, $2) ON CONFLICT DO NOTHING",

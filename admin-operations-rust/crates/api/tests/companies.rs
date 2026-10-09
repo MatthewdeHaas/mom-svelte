@@ -10,9 +10,7 @@
 mod common;
 
 use common::{
-    companies::{
-        seed_company, seed_company_full, seed_company_inactive, seed_user_in_company,
-    },
+    companies::{seed_company, seed_company_full, seed_company_inactive, seed_user_in_company},
     seed_user, signed_headers, spawn_server, TestServer,
 };
 use db::queries::companies::{CompanyRow, UserWithCompanyRow};
@@ -166,10 +164,8 @@ async fn list_includes_inactive_when_flag_set(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<CompanyRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/companies?include_inactive=true").await,
-    )
-    .await;
+    let rows: Vec<CompanyRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/companies?include_inactive=true").await).await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
 
     assert!(ids.contains(&inactive));
@@ -188,7 +184,10 @@ async fn list_orders_rows_by_name_ascending(pool: PgPool) {
         decode_ok(get_admin(&server, &user.id, "/api/companies").await).await;
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
 
-    let alpha = names.iter().position(|n| *n == "Alpha Corp").expect("Alpha");
+    let alpha = names
+        .iter()
+        .position(|n| *n == "Alpha Corp")
+        .expect("Alpha");
     let zeta = names.iter().position(|n| *n == "Zeta Corp").expect("Zeta");
     assert!(alpha < zeta);
 
@@ -317,7 +316,12 @@ async fn by_name_is_case_insensitive(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let row: CompanyRow = decode_ok(
-        get_admin(&server, &user.id, "/api/companies/by-name?name=case+test+co").await,
+        get_admin(
+            &server,
+            &user.id,
+            "/api/companies/by-name?name=case+test+co",
+        )
+        .await,
     )
     .await;
 
@@ -555,8 +559,12 @@ async fn deactivate_sets_active_false(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res =
-        post_admin_empty(&server, &user.id, &format!("/api/companies/{id}/deactivate")).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/companies/{id}/deactivate"),
+    )
+    .await;
     let row: CompanyRow = decode_ok(res).await;
 
     assert!(!row.active);
@@ -570,7 +578,12 @@ async fn deactivated_is_excluded_from_list(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    post_admin_empty(&server, &user.id, &format!("/api/companies/{id}/deactivate")).await;
+    post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/companies/{id}/deactivate"),
+    )
+    .await;
 
     let rows: Vec<CompanyRow> =
         decode_ok(get_admin(&server, &user.id, "/api/companies").await).await;
@@ -585,7 +598,12 @@ async fn deactivated_is_still_retrievable_by_id(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    post_admin_empty(&server, &user.id, &format!("/api/companies/{id}/deactivate")).await;
+    post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/companies/{id}/deactivate"),
+    )
+    .await;
 
     let row: CompanyRow =
         decode_ok(get_admin(&server, &user.id, &format!("/api/companies/{id}")).await).await;
@@ -637,10 +655,8 @@ async fn users_by_company_empty_when_none(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<UserWithCompanyRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/companies/{id}/users")).await,
-    )
-    .await;
+    let rows: Vec<UserWithCompanyRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/companies/{id}/users")).await).await;
     assert!(rows.is_empty());
 
     server.stop().await;
@@ -654,10 +670,8 @@ async fn users_by_company_returns_users_with_company_embedded(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<UserWithCompanyRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/companies/{id}/users")).await,
-    )
-    .await;
+    let rows: Vec<UserWithCompanyRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/companies/{id}/users")).await).await;
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].email, "user@example.com");
@@ -677,10 +691,8 @@ async fn users_by_company_does_not_return_users_from_other_companies(pool: PgPoo
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<UserWithCompanyRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/companies/{c1}/users")).await,
-    )
-    .await;
+    let rows: Vec<UserWithCompanyRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/companies/{c1}/users")).await).await;
 
     assert!(!rows.iter().any(|u| u.email == "other@example.com"));
 
@@ -696,10 +708,8 @@ async fn users_by_company_ordered_by_email_ascending(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<UserWithCompanyRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/companies/{id}/users")).await,
-    )
-    .await;
+    let rows: Vec<UserWithCompanyRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/companies/{id}/users")).await).await;
     let emails: Vec<&str> = rows.iter().map(|u| u.email.as_str()).collect();
 
     let a = emails.iter().position(|e| *e == "a@example.com").unwrap();
@@ -767,13 +777,7 @@ async fn client_sees_other_company_as_404(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = get_client(
-        &server,
-        &user.id,
-        own,
-        &format!("/api/companies/{other}"),
-    )
-    .await;
+    let res = get_client(&server, &user.id, own, &format!("/api/companies/{other}")).await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;

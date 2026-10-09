@@ -18,7 +18,7 @@ use common::{
 };
 use db::queries::{
     orders::{
-        self, InsertOrderData, OrderDetailRow, OrderRow, OrderSummaryRow, OrderStatusCounts,
+        self, InsertOrderData, OrderDetailRow, OrderRow, OrderStatusCounts, OrderSummaryRow,
         UpdateOrderData,
     },
     pagination::Paginated,
@@ -72,11 +72,7 @@ async fn post_admin(
 }
 
 /// Issue a POST with no body as admin — status-transition endpoints.
-async fn post_admin_empty(
-    server: &TestServer,
-    user_id: &str,
-    path: &str,
-) -> reqwest::Response {
+async fn post_admin_empty(server: &TestServer, user_id: &str, path: &str) -> reqwest::Response {
     let mut req = Client::new().post(format!("{}{}", server.base_url, path));
     for (k, v) in signed_headers(user_id, "admin", "") {
         req = req.header(k, v);
@@ -171,10 +167,9 @@ async fn list_filters_by_company_id(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let rows: Vec<OrderSummaryRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/orders?company_id={c1}")).await,
-    )
-    .await;
+    let rows: Vec<OrderSummaryRow> =
+        decode_ok(get_admin(&server, &user.id, &format!("/api/orders?company_id={c1}")).await)
+            .await;
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, o1.id);
@@ -219,7 +214,12 @@ async fn list_filters_by_recipe_id(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let rows: Vec<OrderSummaryRow> = decode_ok(
-        get_admin(&server, &user.id, &format!("/api/orders?recipe_id={recipe}")).await,
+        get_admin(
+            &server,
+            &user.id,
+            &format!("/api/orders?recipe_id={recipe}"),
+        )
+        .await,
     )
     .await;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
@@ -330,7 +330,12 @@ async fn paginated_clamps_page_below_one(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let page: Paginated<OrderSummaryRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/orders/paginated?page=0&per_page=10").await,
+        get_admin(
+            &server,
+            &user.id,
+            "/api/orders/paginated?page=0&per_page=10",
+        )
+        .await,
     )
     .await;
 
@@ -345,16 +350,12 @@ async fn paginated_clamps_per_page_bounds(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let low: Paginated<OrderSummaryRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/orders/paginated?per_page=1").await,
-    )
-    .await;
+    let low: Paginated<OrderSummaryRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/orders/paginated?per_page=1").await).await;
     assert_eq!(low.per_page, 10, "per_page<10 clamps up to 10");
 
-    let high: Paginated<OrderSummaryRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/orders/paginated?per_page=5000").await,
-    )
-    .await;
+    let high: Paginated<OrderSummaryRow> =
+        decode_ok(get_admin(&server, &user.id, "/api/orders/paginated?per_page=5000").await).await;
     assert_eq!(high.per_page, 100, "per_page>100 clamps down to 100");
 
     server.stop().await;
@@ -373,7 +374,12 @@ async fn paginated_reports_total_and_total_pages(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let page: Paginated<OrderSummaryRow> = decode_ok(
-        get_admin(&server, &user.id, "/api/orders/paginated?page=1&per_page=10").await,
+        get_admin(
+            &server,
+            &user.id,
+            "/api/orders/paginated?page=1&per_page=10",
+        )
+        .await,
     )
     .await;
 
@@ -600,7 +606,8 @@ async fn create_respects_explicit_status(pool: PgPool) {
         "serving_date": BASE_SERVING,
         "shipment_date": BASE_SHIPMENT,
     });
-    let order: OrderRow = decode_ok(post_admin(&server, &user.id, "/api/orders", &body).await).await;
+    let order: OrderRow =
+        decode_ok(post_admin(&server, &user.id, "/api/orders", &body).await).await;
 
     assert_eq!(order.status, "confirmed");
 
@@ -720,9 +727,16 @@ async fn update_patches_amount_only(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let body = json!({ "amount": 99.0 });
-    let updated: OrderRow =
-        decode_ok(patch_admin(&server, &user.id, &format!("/api/orders/{}", order.id), &body).await)
-            .await;
+    let updated: OrderRow = decode_ok(
+        patch_admin(
+            &server,
+            &user.id,
+            &format!("/api/orders/{}", order.id),
+            &body,
+        )
+        .await,
+    )
+    .await;
 
     assert!(updated.frozen, "unrelated field unchanged (COALESCE)");
     assert!((updated.amount - 99.0).abs() < 1e-9);
@@ -741,9 +755,16 @@ async fn update_patches_multiple_fields(pool: PgPool) {
         "chilled": true,
         "client": "Handle with care",
     });
-    let updated: OrderRow =
-        decode_ok(patch_admin(&server, &user.id, &format!("/api/orders/{}", order.id), &body).await)
-            .await;
+    let updated: OrderRow = decode_ok(
+        patch_admin(
+            &server,
+            &user.id,
+            &format!("/api/orders/{}", order.id),
+            &body,
+        )
+        .await,
+    )
+    .await;
 
     assert!(updated.frozen);
     assert!(updated.chilled);
@@ -759,9 +780,16 @@ async fn update_change_persists_across_reads(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let body = json!({ "client": "Updated note" });
-    let _: OrderRow =
-        decode_ok(patch_admin(&server, &user.id, &format!("/api/orders/{}", order.id), &body).await)
-            .await;
+    let _: OrderRow = decode_ok(
+        patch_admin(
+            &server,
+            &user.id,
+            &format!("/api/orders/{}", order.id),
+            &body,
+        )
+        .await,
+    )
+    .await;
 
     let detail: OrderDetailRow =
         decode_ok(get_admin(&server, &user.id, &format!("/api/orders/{}", order.id)).await).await;
@@ -781,7 +809,12 @@ async fn confirm_transitions_pending_to_confirmed(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let out: OrderRow = decode_ok(
-        post_admin_empty(&server, &user.id, &format!("/api/orders/{}/confirm", order.id)).await,
+        post_admin_empty(
+            &server,
+            &user.id,
+            &format!("/api/orders/{}/confirm", order.id),
+        )
+        .await,
     )
     .await;
     assert_eq!(out.status, "confirmed");
@@ -797,7 +830,12 @@ async fn confirm_returns_404_when_not_pending(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/orders/{}/confirm", order.id)).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/orders/{}/confirm", order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -812,7 +850,12 @@ async fn confirm_returns_404_for_fulfilled(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/orders/{}/confirm", order.id)).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/orders/{}/confirm", order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -826,7 +869,12 @@ async fn confirm_returns_404_for_cancelled(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/orders/{}/confirm", order.id)).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/orders/{}/confirm", order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -861,7 +909,12 @@ async fn fulfill_transitions_confirmed_to_fulfilled(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let out: OrderRow = decode_ok(
-        post_admin_empty(&server, &user.id, &format!("/api/orders/{}/fulfill", order.id)).await,
+        post_admin_empty(
+            &server,
+            &user.id,
+            &format!("/api/orders/{}/fulfill", order.id),
+        )
+        .await,
     )
     .await;
     assert_eq!(out.status, "fulfilled");
@@ -875,7 +928,12 @@ async fn fulfill_returns_404_when_still_pending(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/orders/{}/fulfill", order.id)).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/orders/{}/fulfill", order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -890,7 +948,12 @@ async fn fulfill_returns_404_when_already_fulfilled(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/orders/{}/fulfill", order.id)).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/orders/{}/fulfill", order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -904,7 +967,12 @@ async fn fulfill_returns_404_for_cancelled(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/orders/{}/fulfill", order.id)).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/orders/{}/fulfill", order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -921,7 +989,12 @@ async fn cancel_cancels_pending(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let out: OrderRow = decode_ok(
-        post_admin_empty(&server, &user.id, &format!("/api/orders/{}/cancel", order.id)).await,
+        post_admin_empty(
+            &server,
+            &user.id,
+            &format!("/api/orders/{}/cancel", order.id),
+        )
+        .await,
     )
     .await;
     assert_eq!(out.status, "cancelled");
@@ -938,7 +1011,12 @@ async fn cancel_cancels_confirmed(pool: PgPool) {
     let server = spawn_server(pool).await;
 
     let out: OrderRow = decode_ok(
-        post_admin_empty(&server, &user.id, &format!("/api/orders/{}/cancel", order.id)).await,
+        post_admin_empty(
+            &server,
+            &user.id,
+            &format!("/api/orders/{}/cancel", order.id),
+        )
+        .await,
     )
     .await;
     assert_eq!(out.status, "cancelled");
@@ -954,7 +1032,12 @@ async fn cancel_returns_404_when_already_cancelled(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/orders/{}/cancel", order.id)).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/orders/{}/cancel", order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -969,7 +1052,12 @@ async fn cancel_returns_404_for_fulfilled(pool: PgPool) {
     let user = seed_user(&pool).await;
     let server = spawn_server(pool).await;
 
-    let res = post_admin_empty(&server, &user.id, &format!("/api/orders/{}/cancel", order.id)).await;
+    let res = post_admin_empty(
+        &server,
+        &user.id,
+        &format!("/api/orders/{}/cancel", order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;
@@ -1075,7 +1163,13 @@ async fn client_cannot_filter_into_other_company(pool: PgPool) {
 
     // Client passes `company_id=<theirs>` — the handler must override.
     let rows: Vec<OrderSummaryRow> = decode_ok(
-        get_client(&server, &user.id, mine, &format!("/api/orders?company_id={theirs}")).await,
+        get_client(
+            &server,
+            &user.id,
+            mine,
+            &format!("/api/orders?company_id={theirs}"),
+        )
+        .await,
     )
     .await;
 
@@ -1099,7 +1193,13 @@ async fn client_get_by_id_404s_for_other_company_row(pool: PgPool) {
 
     // Client's company is `mine` — asking for a row in `theirs` must
     // 404 (lie about existence), not 403.
-    let res = get_client(&server, &user.id, mine, &format!("/api/orders/{}", their_order.id)).await;
+    let res = get_client(
+        &server,
+        &user.id,
+        mine,
+        &format!("/api/orders/{}", their_order.id),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
     server.stop().await;

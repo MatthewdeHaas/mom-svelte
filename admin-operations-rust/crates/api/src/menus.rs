@@ -188,9 +188,15 @@ pub async fn get_slot(
     Path(id): Path<Uuid>,
     Query(q): Query<SlotCoordQuery>,
 ) -> Result<Json<MenuRecipeWithNameRow>, ApiError> {
-    let row = menus::get_slot(&state.pool, id, q.cycle_week, &q.day_of_week, &q.meal_category)
-        .await?
-        .ok_or(ApiError::Domain(DomainError::NotFound))?;
+    let row = menus::get_slot(
+        &state.pool,
+        id,
+        q.cycle_week,
+        &q.day_of_week,
+        &q.meal_category,
+    )
+    .await?
+    .ok_or(ApiError::Domain(DomainError::NotFound))?;
     Ok(Json(row))
 }
 
@@ -312,9 +318,7 @@ fn map_pg(e: sqlx::Error) -> ApiError {
                     ))
                 }
                 "23503" | "23514" => {
-                    return ApiError::Domain(DomainError::Validation(
-                        db_err.message().to_string(),
-                    ))
+                    return ApiError::Domain(DomainError::Validation(db_err.message().to_string()))
                 }
                 _ => {}
             }

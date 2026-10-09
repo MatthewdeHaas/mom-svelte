@@ -63,10 +63,7 @@ pub fn router(state: AppState) -> Router {
         .route("/orders/paginated", get(orders::list_paginated))
         .route("/orders/counts", get(orders::counts))
         .route("/orders/batch/status", post(orders::set_status_batch))
-        .route(
-            "/orders/:id",
-            get(orders::get_by_id).patch(orders::update),
-        )
+        .route("/orders/:id", get(orders::get_by_id).patch(orders::update))
         .route("/orders/:id/confirm", post(orders::confirm))
         .route("/orders/:id/fulfill", post(orders::fulfill))
         .route("/orders/:id/cancel", post(orders::cancel))
@@ -113,10 +110,7 @@ pub fn router(state: AppState) -> Router {
             "/companies/:id",
             get(companies::get_by_id).patch(companies::update),
         )
-        .route(
-            "/companies/:id/users",
-            get(companies::get_users_by_company),
-        )
+        .route("/companies/:id/users", get(companies::get_users_by_company))
         .route("/companies/:id/deactivate", post(companies::deactivate))
         // Ingredients surface — mirrors `src/lib/server/queries/ingredients.ts`.
         // Order matters: literal paths (`/names`, `/paginated`,
@@ -143,10 +137,7 @@ pub fn router(state: AppState) -> Router {
             "/ingredients/:id/with-allergens",
             get(ingredients::get_with_allergens),
         )
-        .route(
-            "/ingredients/:id/deactivate",
-            post(ingredients::deactivate),
-        )
+        .route("/ingredients/:id/deactivate", post(ingredients::deactivate))
         .route(
             "/ingredients/:id/allergens",
             put(ingredients::set_allergens),
@@ -163,10 +154,7 @@ pub fn router(state: AppState) -> Router {
         // nested `/:id/allergens/:allergen_id` route is unambiguous
         // (both segments are UUIDs; literal `/allergens` separates them).
         .route("/persons", get(persons::list).post(persons::create))
-        .route(
-            "/persons/with-allergens",
-            get(persons::list_with_allergens),
-        )
+        .route("/persons/with-allergens", get(persons::list_with_allergens))
         .route(
             "/persons/:id",
             get(persons::get_by_id).patch(persons::update),
@@ -184,10 +172,7 @@ pub fn router(state: AppState) -> Router {
             post(persons::add_allergen).delete(persons::remove_allergen),
         )
         .route("/persons/:id/deactivate", post(persons::deactivate))
-        .route(
-            "/attendance/batch",
-            post(persons::upsert_attendance_batch),
-        )
+        .route("/attendance/batch", post(persons::upsert_attendance_batch))
         .route(
             "/attendance",
             get(persons::get_attendance_by_date).post(persons::upsert_attendance),
@@ -196,10 +181,7 @@ pub fn router(state: AppState) -> Router {
         // Order matters: literal `/by-name` registers before `/:id` or axum
         // tries to parse "by-name" as a UUID. The `/:id/ref-count` route
         // is unambiguous (`:id` is a UUID segment, `ref-count` is literal).
-        .route(
-            "/allergens",
-            get(allergens::list).post(allergens::create),
-        )
+        .route("/allergens", get(allergens::list).post(allergens::create))
         .route("/allergens/by-name", get(allergens::get_by_name))
         .route(
             "/allergens/:id",
@@ -225,10 +207,7 @@ pub fn router(state: AppState) -> Router {
             "/invites/by-token/public",
             get(invites::get_by_token_public),
         )
-        .route(
-            "/invites/consume-by-token",
-            post(invites::consume_by_token),
-        )
+        .route("/invites/consume-by-token", post(invites::consume_by_token))
         .route("/invites/:id/mark-used", post(invites::mark_used))
         .route("/invites/:id/revoke", post(invites::revoke))
         // Financials surface — mirrors `src/lib/server/queries/financials.ts`.
@@ -254,10 +233,7 @@ pub fn router(state: AppState) -> Router {
         // when the week has exactly one `(company, shipment_date)` group,
         // `application/zip` when it has more than one (archive assembled
         // in-handler with per-company subfolders), `404` when zero.
-        .route(
-            "/exports/production-order",
-            get(exports::production_order),
-        )
+        .route("/exports/production-order", get(exports::production_order))
         .route("/exports/shopping-list", get(exports::shopping_list))
         .route("/exports/packing-slips", get(exports::packing_slips))
         // Menus surface — mirrors `src/lib/server/queries/menus.ts`.
@@ -269,14 +245,8 @@ pub fn router(state: AppState) -> Router {
         .route("/menus", get(menus::list).post(menus::create))
         .route("/menus/with-recipes", get(menus::list_with_recipes))
         .route("/menus/active-for-date", get(menus::active_for_date))
-        .route(
-            "/menus/:id",
-            get(menus::get_by_id).patch(menus::update),
-        )
-        .route(
-            "/menus/:id/with-recipes",
-            get(menus::get_with_recipes),
-        )
+        .route("/menus/:id", get(menus::get_by_id).patch(menus::update))
+        .route("/menus/:id/with-recipes", get(menus::get_with_recipes))
         .route("/menus/:id/recipes", get(menus::get_menu_recipes))
         .route("/menus/:id/deactivate", post(menus::deactivate))
         .route(
@@ -284,10 +254,7 @@ pub fn router(state: AppState) -> Router {
             post(menus::set_slot).put(menus::set_all_slots),
         )
         .route("/menus/:id/slots/clear", post(menus::clear_slot))
-        .route(
-            "/menus/:id/slots/by-coord",
-            get(menus::get_slot),
-        )
+        .route("/menus/:id/slots/by-coord", get(menus::get_slot))
         // Insights surface — mirrors `src/lib/server/queries/insights.ts`.
         // Admin-only across the board; all 8 endpoints enforce
         // `require_admin` defensively (the /admin/insights SvelteKit
