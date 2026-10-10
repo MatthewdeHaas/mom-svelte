@@ -67,9 +67,10 @@ export default defineConfig({
         PORT: '8081',
         DATABASE_URL,
         INTERNAL_AUTH_SECRET,
-        // Keep the Rust service quiet in test logs; failures still bubble
-        // up via /healthz non-200 and spec assertions.
-        RUST_LOG: 'warn',
+        // Verbose logs so CI shows what the Rust import handler
+        // actually says when the E2E suite is red. Dial back to
+        // `warn` once the import flow is green again.
+        RUST_LOG: 'debug',
       },
     },
     {
