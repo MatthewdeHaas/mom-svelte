@@ -37,33 +37,63 @@ UI, never the repo**.
 
 ## Deploys
 
-**Today:** Railway git-push → build → deploy. Both services' Dockerfiles
-build from this repo.
+GitHub Actions → Railway. CI runs on every push to `main`
+(`.github/workflows/ci.yaml`); on a green run, `deploy.yaml` fires via
+`workflow_run` and ships both services in parallel.
 
-**Future (Track 4):** GHA → GHCR → Railway image pulls + Infisical for
-secrets. Deferred until after Track 7.
+The workflow matrix is `[mom-svelte, Rust-API]`. For each service it:
+
+1. Pulls prod secrets from Infisical (project `admin-operations`, env
+   `prod`) using the `Infisical/secrets-action`.
+2. Filters down to that service's allowlist (web gets Better Auth +
+   `RUST_API_URL`; Rust gets `DATABASE_URL` — never the other way
+   around). Missing keys log a warning but don't fail the deploy, so a
+   staged rollout can add a key later.
+3. `railway variables --set K=V ...` pushes the allowlisted values.
+4. `railway up --service <svc> --detach` triggers the build.
+
+Both Dockerfiles build from this repo on Railway's side. Build contexts
+are the repo root so each image can `COPY scripts/migrations` (see the
+"Migrations in prod" section — symlinks out of context would silently
+produce an empty sqlx migrator).
+
+**Manual re-deploy:** `gh workflow run deploy.yaml` or the Actions UI →
+Deploy → Run workflow. Same path CI uses; no manual `railway up` needed.
+
+**Escape hatch:** if Infisical is unavailable, set repo variable
+`INFISICAL_BYPASS=1` and re-run. The workflow skips both the fetch and
+the `railway variables --set` steps — Railway keeps serving with its
+last-known-good values. Clear the bypass once Infisical is back.
 
 ## Health checks
 
-Both services expose `GET /healthz`:
+Both services expose `GET /healthz` (DB-only, 500 ms timeout, 200/503).
+SvelteKit also exposes `GET /healthz/deep` which additionally probes
+Rust via `internalFetch` and returns 200 only if both sides are green.
 
-- Rust: `admin-operations-rust/crates/api/src/health.rs:15` — `SELECT 1`
-  with 500 ms timeout. 200 ok, 503 degraded. Point Railway's check at
-  `/healthz`, not `/`.
-- SvelteKit: standard SvelteKit health endpoint.
+Railway's probe target is `/healthz`, **not** `/healthz/deep` — coupling
+liveness to the Rust service would cause cascading restarts whenever
+Rust cycles. Use `/healthz/deep` from an uptime monitor or by hand.
+
+- Rust: `admin-operations-rust/crates/api/src/health.rs`.
+- SvelteKit shallow: `src/routes/healthz/+server.ts`.
+- SvelteKit deep: `src/routes/healthz/deep/+server.ts`.
 
 ## Migrations in prod
 
-Two migrators, both idempotent:
+The Rust binary owns migrations in prod: `sqlx::migrate!` runs on
+startup against the shared Postgres
+(`admin-operations-rust/crates/api/src/main.rs:30`). Ledger:
+`_sqlx_migrations` (SHA-384).
 
-- SvelteKit container start runs `pnpm run migrate` (`Dockerfile:28`).
-  Ledger: `migrations` (sha256).
-- Rust binary start runs `sqlx::migrate!`
-  (`admin-operations-rust/crates/api/src/main.rs:30`). Ledger:
-  `_sqlx_migrations` (SHA-384).
+The SvelteKit container no longer runs the TS migrator — its `CMD` only
+seeds the admin user (when `SEED_ADMIN=1`) and starts the Node server
+(`Dockerfile:36`). The TS migrator and its `migrations` (sha256) ledger
+remain live for dev/CI, where tests still rely on it.
 
-First mover takes the ledger lock; the other sees everything as already
-applied and skips. Order between the two deploys does not matter.
+All migrations are idempotent (`CREATE TABLE IF NOT EXISTS`,
+`DO $$ ... to_regclass() ...`), so a fresh dev DB can run either
+migrator first with no divergence.
 
 Source of truth is `scripts/migrations/`. The Rust image gets a build-
 time **copy** (not symlink) via `admin-operations-rust/Dockerfile` —
@@ -121,12 +151,50 @@ Never run raw `postgres` / `pg_ctl` locally — always use the compose
 service so credentials, port, and volume stay consistent with the
 rest of the stack.
 
+## Infisical
+
+Prod secrets live in Infisical, not GitHub or Railway's dashboard.
+
+**Project layout:**
+
+- Project: `admin-operations`
+- Environments: `dev`, `prod`
+- Machine identities (universal auth):
+  - `ci-dev-reader` — read `dev`. Used by local `infisical run`.
+  - `ci-prod-reader` — read `prod`. Used by `deploy.yaml`.
+
+**GitHub repo secrets required for `deploy.yaml`:**
+
+| Secret | Purpose |
+|---|---|
+| `INFISICAL_CLIENT_ID_PROD` | `ci-prod-reader` identity ID |
+| `INFISICAL_CLIENT_SECRET_PROD` | `ci-prod-reader` secret |
+| `RAILWAY_TOKEN` | project-scoped Railway token |
+
+**Local use:** `infisical run --env=dev -- pnpm dev`. The `infisical` CLI
+is in the flake, so `nix develop` or direnv autoload picks it up.
+
+**Rotating a prod secret:** update it in Infisical → re-run
+`deploy.yaml` (manual dispatch is fine) → Railway redeploys both
+services with the new value. Both services share
+`INTERNAL_AUTH_SECRET`, so expect a few seconds of 401 blips mid-
+rollout; same tradeoff as the `INTERNAL_AUTH_SECRET` rotation section
+above.
+
+**Adding a new prod secret:**
+
+1. Add the key in Infisical → prod.
+2. Add the key to the matching service's `allowlist` in
+   `.github/workflows/deploy.yaml`. **Do not** copy a web secret into
+   Rust's allowlist or vice versa — the allowlist is the only thing
+   keeping blast radius bounded.
+3. Push the workflow change; the next deploy will pick it up.
+
 ## Local troubleshooting
 
 - `docker compose logs db` — Postgres logs.
 - `pnpm dev` — SvelteKit on 5173.
-- `bash -c '. .direnv/flake-profile-*.rc && cd admin-operations-rust && cargo run -p api'`
-  — Rust on 8080.
+- `cd admin-operations-rust && cargo run -p api` — Rust on 8080.
 
 **Port note:** `pnpm test:e2e` spins up its own copies on 5174/8081
 (`playwright.config.ts:7,29`). Don't run `pnpm dev` + e2e at the same

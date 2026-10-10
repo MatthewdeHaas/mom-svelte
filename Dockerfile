@@ -25,4 +25,12 @@ COPY --from=builder /app/scripts scripts/
 COPY --from=builder /app/tsconfig.json ./
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 EXPOSE 3000
-CMD ["sh", "-c", "pnpm run migrate && pnpm run seed:admin && node build"]
+# Post-Track-3-Step-6, Rust owns the data layer and runs its own
+# `sqlx::migrate!` on startup against the shared Postgres — this
+# container no longer runs the TS migrator in prod. The two-ledger
+# bridge in `scripts/backfill-dev-sqlx.ts` is a dev-only tool.
+#
+# `seed:admin` stays behind SEED_ADMIN=1 so a fresh environment can
+# opt in explicitly; the default no-ops to avoid a surprising write
+# on every rollout.
+CMD ["sh", "-c", "if [ \"${SEED_ADMIN:-0}\" = \"1\" ]; then pnpm run seed:admin; fi && node build"]

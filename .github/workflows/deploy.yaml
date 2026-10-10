@@ -1,0 +1,107 @@
+name: Deploy
+
+# Two-service Railway deploy, triggered after CI succeeds on main.
+#
+# Secrets live in Infisical (project `admin-operations`, env `prod`) — not
+# in GitHub, not in Railway's dashboard. This workflow fetches them per
+# service with a strict allowlist so the web container never sees DATABASE_URL
+# and the Rust container never sees BETTER_AUTH_SECRET.
+#
+# Required GitHub secrets:
+#   - INFISICAL_CLIENT_ID_PROD      machine identity for prod reader
+#   - INFISICAL_CLIENT_SECRET_PROD  machine identity secret
+#   - RAILWAY_TOKEN                 project-scoped Railway token
+#
+# Escape hatch: if Infisical is down, set `vars.INFISICAL_BYPASS=1` on the
+# repo and re-run — the job will skip the fetch step and expect the Railway
+# dashboard to still carry the last-known-good values. See docs/ops.md.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    # Only run on successful CI completions, OR manual dispatch.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: mom-svelte
+            # Web container needs: Better Auth creds, public URL,
+            # internal HMAC secret (to call Rust), and the Rust base URL.
+            # It does NOT need DATABASE_URL — Rust owns the data layer.
+            allowlist: "BETTER_AUTH_SECRET BETTER_AUTH_URL INTERNAL_AUTH_SECRET RUST_API_URL RESEND_API_KEY EMAIL_FROM ADMIN_EMAIL"
+          - service: Rust-API
+            # Rust container needs: Postgres creds, internal HMAC secret
+            # (to verify incoming web calls), and nothing else.
+            allowlist: "DATABASE_URL INTERNAL_AUTH_SECRET RUST_LOG"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Fetch secrets from Infisical
+        if: vars.INFISICAL_BYPASS != '1'
+        uses: Infisical/secrets-action@v1.0.9
+        with:
+          method: universal
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID_PROD }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET_PROD }}
+          project-slug: admin-operations
+          env-slug: prod
+          # The action writes every secret to $GITHUB_ENV; we filter down
+          # to the allowlist in the next step before pushing to Railway.
+          export-type: env
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@3
+
+      - name: Push allowlisted secrets to Railway
+        if: vars.INFISICAL_BYPASS != '1'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          ALLOWLIST: ${{ matrix.allowlist }}
+        run: |
+          set -euo pipefail
+          # Build `--set K=V` args for each allowlisted key that Infisical
+          # actually set. Missing keys skip silently so a staged rollout
+          # (add key in Infisical later) doesn't wedge the deploy.
+          args=()
+          for key in $ALLOWLIST; do
+            # Indirect expansion: value of the env var named $key.
+            value="${!key:-}"
+            if [ -n "$value" ]; then
+              args+=(--set "${key}=${value}")
+            else
+              echo "::warning::Infisical did not provide ${key} for ${{ matrix.service }}"
+            fi
+          done
+          if [ ${#args[@]} -eq 0 ]; then
+            echo "No secrets to push — skipping variables update."
+            exit 0
+          fi
+          railway variables \
+            --service "${{ matrix.service }}" \
+            "${args[@]}"
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up \
+            --service "${{ matrix.service }}" \
+            --detach

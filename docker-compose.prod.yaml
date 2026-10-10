@@ -10,8 +10,44 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      RUST_API_URL: http://rust-api:8080
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      rust-api:
+        condition: service_healthy
+    healthcheck:
+      # Node images lack curl; use the built-in http module to probe.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/healthz', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Rust API — see admin-operations-rust/README.md.
+  # Build context is the repo root so the Dockerfile can COPY the
+  # canonical `scripts/migrations/` directory into the crate.
+  rust-api:
+    build:
+      context: .
+      dockerfile: admin-operations-rust/Dockerfile
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
+      PORT: 8080
+      RUST_LOG: ${RUST_LOG:-info,sqlx::query=warn}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # The runtime image is debian:bookworm-slim with ca-certificates
+      # only — no curl/wget. Hit /healthz via bash+/dev/tcp instead so
+      # the image stays minimal.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf \"GET /healthz HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q \"200 OK\" <&3'"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   db:
     image: postgres:17
@@ -22,7 +58,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

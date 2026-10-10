@@ -50,7 +50,7 @@ RUN groupadd --system app && useradd --system --gid app --uid 1000 app
 # ca-certificates for outbound HTTPS (if we ever call Resend / S3);
 # libgcc / libstdc++ come with the base image.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates bash \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -1,0 +1,18 @@
+[build]
+builder = "dockerfile"
+# Build context is the repo root (one level up) so the Dockerfile
+# can `COPY scripts/migrations ./migrations` — sqlx::migrate! embeds
+# the migration bytes at compile time, so the directory must exist
+# inside the build context, not as a symlink out of it.
+buildContext = ".."
+dockerfilePath = "admin-operations-rust/Dockerfile"
+
+[deploy]
+# Rust `/healthz` runs a 500ms DB ping (see
+# admin-operations-rust/crates/api/src/health.rs). Mirrors the
+# SvelteKit side so Railway's probe semantics are identical for
+# both services.
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
