@@ -1,5 +1,20 @@
 # Track 4a — CI/CD + Infisical: Summary & Next Steps
 
+> **Withdrawn 2026-10-09 — Infisical removed from the pipeline.**
+>
+> After setting up the Infisical account and starting the port-over,
+> we concluded the vault's complexity wasn't justified at this scale
+> (one deployer, one env, ~9 secrets, deploys measured in weeks).
+> `deploy.yaml` was rewritten to just run `railway up` — no fetch, no
+> allowlist, no bypass flag. Secrets now live in Railway's per-service
+> dashboard directly.
+>
+> The sections below are preserved as historical record of the Track
+> 4a design pass. The **CI / healthchecks / request-ID / migrations**
+> material is still accurate. The **Infisical bootstrap guide** is
+> dead — ignore it. Current ops reality is in `docs/ops.md § Secrets`.
+> Revisit a vault when the team passes one deployer or services pass ~5.
+
 Track 4a landed in four commits on `main` (all local, nothing pushed):
 
 | Commit | Scope |
@@ -56,164 +71,92 @@ Better Auth secrets that are **never** promoted to prod.
 - `scripts/lint-migrations.ts` enforces the idempotent patterns in CI.
   Added to `pnpm run lint:migrations` and gated in `ci.yaml`.
 
-**Deploy workflow (`.github/workflows/deploy.yaml`):**
+**Deploy workflow (`.github/workflows/deploy.yaml`) — current state after 2026-10-09 rewrite:**
 
 - Triggered by `workflow_run` after CI goes green on `main`, or manual
   dispatch.
-- Matrix over `[mom-svelte, Rust-API]` runs the two services in
-  parallel. Per-service allowlist: web gets `BETTER_AUTH_SECRET`,
-  `BETTER_AUTH_URL`, `INTERNAL_AUTH_SECRET`, `RUST_API_URL`,
-  `RESEND_API_KEY`, `EMAIL_FROM`, `ADMIN_EMAIL`. Rust gets
-  `DATABASE_URL`, `INTERNAL_AUTH_SECRET`, `RUST_LOG`. The allowlist is
-  the only thing bounding blast radius if a secret is accidentally
-  shared.
-- Escape hatch: repo var `INFISICAL_BYPASS=1` skips both the fetch and
-  the `railway variables --set` steps so Railway can still deploy on
-  last-known-good values during an Infisical outage.
+- Matrix over `[mom-svelte, Rust-API]` runs `railway up --service <svc>
+  --detach` in parallel. Nothing else — no secret fetch, no allowlist,
+  no bypass flag.
+- Blast-radius bound is now Railway-native: a secret set on
+  `mom-svelte`'s dashboard is invisible to `Rust-API` and vice versa.
 
 **Local dev:**
 
-- Flake now ships `railway` and `infisical` CLIs. `nix develop` or
-  direnv autoload picks them up.
+- Flake ships `railway` CLI. direnv autoload picks it up.
 - `scripts/backfill-dev-sqlx.ts` is a dev-only tool to seed the sqlx
   ledger from an existing TS-migrated DB so `/healthz/deep` works
   without a full nuke-and-replay.
 
 ## Setting up Infisical — step by step
 
+> **Section withdrawn 2026-10-09.** Infisical was removed from the
+> pipeline. The guide below is kept as historical record of the design
+> pass; **do not follow it**. Current ops reality: edit secrets
+> directly in Railway's per-service dashboard. See `docs/ops.md §
+> Secrets`.
+
+<details>
+<summary>Historical Infisical bootstrap (do not follow)</summary>
+
 **1. Create the account + project** (~5 min on the web)
 
 - Sign up at <https://app.infisical.com> (free tier is more than enough
   for this project).
-- New project → name it **`admin-operations`**. The slug must match
-  what `deploy.yaml:67` passes to `project-slug`; if you name it
-  differently, update the workflow to match.
-- Infisical gives you two envs by default: `dev` and `prod`. That's
-  what the workflow expects. Leave them.
+- New project → name it **`admin-operations`**.
+- Infisical gives you two envs by default: `dev` and `prod`.
 
-**2. Populate `prod` secrets**
+**2. Populate `prod` secrets** from `railway variables --service
+mom-svelte` and `--service Rust-API`.
 
-Fastest way to grab current prod values is from your laptop:
+**3. Create a machine identity** (`ci-prod-reader`, Universal Auth,
+read-only on `admin-operations/prod`).
 
-```sh
-railway login            # if you haven't already
-railway link             # pick striking-encouragement / production
-railway variables --service mom-svelte
-railway variables --service Rust-API
-```
+**4. Add GitHub repo secrets**: `INFISICAL_CLIENT_ID_PROD`,
+`INFISICAL_CLIENT_SECRET_PROD`, `RAILWAY_TOKEN`.
 
-Then in Infisical → `admin-operations` → `prod`, add:
+**5. (Optional)** `ci-dev-reader` for local `infisical run --env=dev`.
 
-| Key | Where from | Who gets it in deploy |
-|---|---|---|
-| `BETTER_AUTH_SECRET` | current `mom-svelte` value | web |
-| `BETTER_AUTH_URL` | current `mom-svelte` value (public URL) | web |
-| `INTERNAL_AUTH_SECRET` | current value (shared both sides) | both |
-| `RUST_API_URL` | `http://rust-api.railway.internal:8080` or Railway's internal DNS | web |
-| `RESEND_API_KEY` | current `mom-svelte` value | web |
-| `EMAIL_FROM` | `Meals on the Move <noreply@mealsonthemove.ca>` | web |
-| `ADMIN_EMAIL` | your admin email | web |
-| `DATABASE_URL` | current `Rust-API` value (Railway Postgres DSN) | Rust |
-| `RUST_LOG` | `info,sqlx::query=warn` | Rust |
-
-Double-check `RUST_API_URL` — on Railway's private network it's
-`<service>.railway.internal`. If the service is named `Rust-API` in the
-dashboard, the DNS name becomes `rust-api.railway.internal` (Railway
-lowercases).
-
-**3. Create the machine identity**
-
-Infisical UI → **Access Control** → **Machine Identities** → **Create**.
-
-- Name: `ci-prod-reader`
-- Auth method: **Universal Auth** (that's what
-  `Infisical/secrets-action@v1.0.9` uses).
-- Scope: read-only access to `admin-operations` → `prod`. No write, no
-  `dev`. (This is Infisical's "Role" + "Project" permissions on the
-  identity.)
-- Save. The next screen shows **Client ID** and **Client Secret** —
-  **copy both now**, the secret is shown exactly once.
-
-**4. Add GitHub repo secrets**
-
-Repo → **Settings** → **Secrets and variables** → **Actions** → **New
-repository secret**:
-
-- `INFISICAL_CLIENT_ID_PROD` — paste the client ID
-- `INFISICAL_CLIENT_SECRET_PROD` — paste the client secret
-- `RAILWAY_TOKEN` — from Railway: Account Settings → Tokens → **Create
-  Token**, project-scoped to `striking-encouragement`. **Not** account-
-  wide; account-wide tokens fail with a confusing permissions error on
-  `railway up`.
-
-**5. (Optional but recommended) `dev` identity for local use**
-
-Same shape:
-
-- `ci-dev-reader` machine identity, scoped read-only to
-  `admin-operations` → `dev`.
-- Populate `dev` secrets in Infisical (your local Better Auth secret,
-  the dev Postgres DSN, etc.).
-- Add to `~/.zshrc` or your shell profile:
-  ```sh
-  export INFISICAL_CLIENT_ID=<dev-reader-id>
-  export INFISICAL_CLIENT_SECRET=<dev-reader-secret>
-  ```
-- Then run the app with `infisical run --env=dev -- pnpm dev` and
-  `infisical run --env=dev -- cargo run -p api`. This gets `.env.local`
-  out of the repo entirely.
-
-The `infisical` CLI is already in the flake, so `nix develop` or direnv
-autoload has it on PATH.
+</details>
 
 ## How close you are to a real deploy
 
-Once GH secrets are set and Infisical is populated, you are **one `git
-push` away**. The sequence is:
+**Current state (2026-10-09):** one `git push` away. The sequence is:
 
 1. Push `main`.
 2. CI (`ci.yaml`) runs: typecheck, vitest, Rust fmt/clippy/test, E2E.
 3. On green, GitHub fires `deploy.yaml` via `workflow_run`.
-4. Deploy's matrix runs `mom-svelte` and `Rust-API` in parallel. For
-   each: Infisical fetch → allowlist filter → `railway variables --set`
-   → `railway up --detach`.
-5. Railway builds the two images, swaps traffic once `/healthz` returns
-   200.
+4. Deploy's matrix runs `railway up --service <svc> --detach` on
+   `mom-svelte` and `Rust-API` in parallel.
+5. Railway builds the two images using the values already in each
+   service's Variables dashboard, swaps traffic once `/healthz`
+   returns 200.
 
-**Three things to verify before the first push or the first run will
-fail:**
+**Three things to verify before the first push:**
 
 - Railway service names in `.github/workflows/deploy.yaml` match the
   dashboard **exactly**: `mom-svelte` and `Rust-API`. Case and hyphen
   matter.
-- `RAILWAY_TOKEN` is project-scoped to `striking-encouragement`, not
-  account-wide.
+- `RAILWAY_TOKEN` GH secret exists and is project-scoped to
+  `striking-encouragement`, not account-wide. Account-wide tokens fail
+  with a confusing permissions error on `railway up`.
 - The `Rust-API` Railway service points at the Rust `railway.toml`. If
   you created the service by picking the repo in Railway's UI without
   specifying a config path, add `Config File Path =
   admin-operations-rust/railway.toml` in that service's Settings →
-  Deploy, otherwise Railway will try to build with the top-level
-  `railway.toml` (which builds the SvelteKit image and would deploy the
-  wrong binary to the wrong service).
+  Deploy. Otherwise Railway will try to build with the top-level
+  `railway.toml` and deploy the SvelteKit image into the Rust service.
 
-**What's untested until you do the above:**
-
-- The `Infisical/secrets-action@v1.0.9` call — never run against a real
-  tenant in this repo.
-- The `railway variables --set` + `railway up` matrix in GHA.
-
-If anything breaks on the first real deploy, those two steps are where
-to look. The escape hatch (`vars.INFISICAL_BYPASS=1`) exists specifically
-so an Infisical hiccup doesn't block an emergency deploy — set the var,
-re-run, Railway serves on its stored values.
+**What's untested until you do the above:** the `railway up` matrix in
+GHA. The CLI call is trivial, but it's never been run against a real
+project token from a GHA runner for this repo.
 
 ## Is this Track 4b?
 
-No. There is no Track 4b in the plan. This is the final shape of 4a —
-Infisical account creation is deliberately a human step (OAuth, UI
-clicks, scoped tokens) that doesn't belong in automation. The code side
-is finished; the ops side is a one-time setup documented above and in
-`docs/ops.md`.
+No. Track 4b (GHCR Docker image builds) is a separate deferred
+optimization — see `docs/handoff-track4b.md` once it's written. 4a is
+closed by the first green `workflow_run → deploy.yaml` cycle after the
+three pre-flight checks pass.
 
 ## Still local
 

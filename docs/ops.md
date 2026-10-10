@@ -41,29 +41,31 @@ GitHub Actions → Railway. CI runs on every push to `main`
 (`.github/workflows/ci.yaml`); on a green run, `deploy.yaml` fires via
 `workflow_run` and ships both services in parallel.
 
-The workflow matrix is `[mom-svelte, Rust-API]`. For each service it:
-
-1. Pulls prod secrets from Infisical (project `admin-operations`, env
-   `prod`) using the `Infisical/secrets-action`.
-2. Filters down to that service's allowlist (web gets Better Auth +
-   `RUST_API_URL`; Rust gets `DATABASE_URL` — never the other way
-   around). Missing keys log a warning but don't fail the deploy, so a
-   staged rollout can add a key later.
-3. `railway variables --set K=V ...` pushes the allowlisted values.
-4. `railway up --service <svc> --detach` triggers the build.
+The workflow matrix is `[mom-svelte, Rust-API]`. For each service it
+runs `railway up --service <svc> --detach` — nothing else. Railway
+builds the image from the Dockerfile and swaps traffic once `/healthz`
+returns 200.
 
 Both Dockerfiles build from this repo on Railway's side. Build contexts
 are the repo root so each image can `COPY scripts/migrations` (see the
 "Migrations in prod" section — symlinks out of context would silently
 produce an empty sqlx migrator).
 
+**Secrets live in Railway's dashboard, per service.** Edit them in the
+Railway UI (`striking-encouragement` → `mom-svelte` or `Rust-API` →
+Variables). Railway's per-service env is the blast-radius bound — a
+value set on `mom-svelte` is natively invisible to `Rust-API` and vice
+versa. The deploy workflow never touches variables; it only triggers
+builds.
+
 **Manual re-deploy:** `gh workflow run deploy.yaml` or the Actions UI →
 Deploy → Run workflow. Same path CI uses; no manual `railway up` needed.
 
-**Escape hatch:** if Infisical is unavailable, set repo variable
-`INFISICAL_BYPASS=1` and re-run. The workflow skips both the fetch and
-the `railway variables --set` steps — Railway keeps serving with its
-last-known-good values. Clear the bypass once Infisical is back.
+**Rotating a secret:** edit it in Railway's dashboard on each service
+that needs it, then trigger a redeploy (`gh workflow run deploy.yaml`
+or the Actions UI). Both services share `INTERNAL_AUTH_SECRET`, so
+rotate it on both and expect a few seconds of 401 blips mid-rollout —
+same tradeoff documented in `docs/internal-auth.md`.
 
 ## Health checks
 
@@ -151,44 +153,28 @@ Never run raw `postgres` / `pg_ctl` locally — always use the compose
 service so credentials, port, and volume stay consistent with the
 rest of the stack.
 
-## Infisical
+## Secrets
 
-Prod secrets live in Infisical, not GitHub or Railway's dashboard.
-
-**Project layout:**
-
-- Project: `admin-operations`
-- Environments: `dev`, `prod`
-- Machine identities (universal auth):
-  - `ci-dev-reader` — read `dev`. Used by local `infisical run`.
-  - `ci-prod-reader` — read `prod`. Used by `deploy.yaml`.
-
-**GitHub repo secrets required for `deploy.yaml`:**
-
-| Secret | Purpose |
+| Where | What |
 |---|---|
-| `INFISICAL_CLIENT_ID_PROD` | `ci-prod-reader` identity ID |
-| `INFISICAL_CLIENT_SECRET_PROD` | `ci-prod-reader` secret |
-| `RAILWAY_TOKEN` | project-scoped Railway token |
+| Railway dashboard | prod values, per service. Source of truth. |
+| GitHub repo secrets | only `RAILWAY_TOKEN` — a project-scoped token for `striking-encouragement`. |
+| Local dev | `.env.local` (gitignored). Values from the operator's password manager, not from prod. |
 
-**Local use:** `infisical run --env=dev -- pnpm dev`. The `infisical` CLI
-is in the flake, so `nix develop` or direnv autoload picks it up.
+**Why no secrets vault:** one deployer, one env, ~9 secrets, deploys
+measured in weeks. A sync agent (Infisical, Doppler, etc.) adds a
+moving part that fails silently (expired tokens, mapping drift). We
+tried the Infisical path and ripped it out on 2026-10-09 — see the
+withdrawn section in `docs/track-4a-summary.md`. Revisit when the team
+grows past one deployer or the service count passes ~5.
 
-**Rotating a prod secret:** update it in Infisical → re-run
-`deploy.yaml` (manual dispatch is fine) → Railway redeploys both
-services with the new value. Both services share
-`INTERNAL_AUTH_SECRET`, so expect a few seconds of 401 blips mid-
-rollout; same tradeoff as the `INTERNAL_AUTH_SECRET` rotation section
-above.
+**Emergency rotation** (e.g. a secret leaks publicly): edit in Railway's
+dashboard, then click Deploy on each affected service. Fast enough —
+Railway swaps traffic once `/healthz` returns 200, typically under 60s.
 
-**Adding a new prod secret:**
-
-1. Add the key in Infisical → prod.
-2. Add the key to the matching service's `allowlist` in
-   `.github/workflows/deploy.yaml`. **Do not** copy a web secret into
-   Rust's allowlist or vice versa — the allowlist is the only thing
-   keeping blast radius bounded.
-3. Push the workflow change; the next deploy will pick it up.
+**Adding a new secret:** add it on each service that needs it in
+Railway's dashboard. The deploy workflow doesn't need to change — it
+only triggers builds, it doesn't pass variables.
 
 ## Local troubleshooting
 
