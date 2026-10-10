@@ -250,6 +250,16 @@ jobs:
       - name: Run migrations
         run: pnpm run migrate
 
+      # `crates/db` uses `sqlx::migrate!("./../../migrations")` which
+      # resolves to `admin-operations-rust/migrations/` — a gitignored
+      # directory populated at build time by this sync script. Without
+      # it, `cargo build` fails at macro-expansion with "error
+      # canonicalizing migration directory". The `rust-ci` job runs
+      # this sync too; e2e needs its own copy before the release build.
+      # Must come before the ledger stamp (which reads this directory).
+      - name: Sync migrations into Rust crate
+        run: pnpm run rust:sync-migrations
+
       # Stamp `_sqlx_migrations` so the Rust API's startup migrator is
       # a no-op. The TS migrator just applied all 24 files but tracks
       # them in `migrations` (sha256); sqlx tracks them in
@@ -264,15 +274,6 @@ jobs:
       # late. Stamp from CI before the Rust server comes up.
       - name: Stamp sqlx migration ledger
         run: pnpm run migrate:backfill-sqlx
-
-      # `crates/db` uses `sqlx::migrate!("./../../migrations")` which
-      # resolves to `admin-operations-rust/migrations/` — a gitignored
-      # directory populated at build time by this sync script. Without
-      # it, `cargo build` fails at macro-expansion with "error
-      # canonicalizing migration directory". The `rust-ci` job runs
-      # this sync too; e2e needs its own copy before the release build.
-      - name: Sync migrations into Rust crate
-        run: pnpm run rust:sync-migrations
 
       # Pre-build the Rust API binary. Playwright's `webServer` block in
       # `playwright.config.ts` spawns `./admin-operations-rust/target/release/api`
