@@ -42,13 +42,9 @@ pub fn emit(
         return Ok(None);
     }
 
-    let next_num = next_migration_number(migrations_dir)
-        .context("resolve next migration number")?;
-    let filename = format!(
-        "{:03}_flags_{}.sql",
-        next_num,
-        now.format("%Y%m%dT%H%M%SZ")
-    );
+    let next_num =
+        next_migration_number(migrations_dir).context("resolve next migration number")?;
+    let filename = format!("{:03}_flags_{}.sql", next_num, now.format("%Y%m%dT%H%M%SZ"));
     let path = migrations_dir.join(filename);
 
     fs::write(&path, body).with_context(|| format!("write migration to {}", path.display()))?;
@@ -131,7 +127,11 @@ pub fn render_body(
         let needs_update = if grid.snapshot_flags.contains_key(&d.name) {
             now_state != was_state
         } else {
-            let default_cell = if d.default { CellState::True } else { CellState::False };
+            let default_cell = if d.default {
+                CellState::True
+            } else {
+                CellState::False
+            };
             now_state != default_cell
         };
         if needs_update {
@@ -158,7 +158,9 @@ pub fn render_body(
     let mut deletes: Vec<(String, uuid::Uuid)> = Vec::new();
     for d in &grid.rows {
         for (col_i, col) in grid.cols.iter().enumerate().skip(1) {
-            let Col::Company { id, .. } = col else { continue };
+            let Col::Company { id, .. } = col else {
+                continue;
+            };
             let key = (d.name.clone(), col_i);
             let now_state = grid.cells.get(&key).copied().unwrap_or(CellState::Unset);
             let was_state = grid.original.get(&key).copied().unwrap_or(CellState::Unset);
@@ -202,18 +204,16 @@ pub fn render_body(
 /// free number. Errors if the directory is missing — the TUI only
 /// runs inside a checkout where `scripts/migrations/` exists.
 fn next_migration_number(migrations_dir: &Path) -> Result<u32> {
-    let read = fs::read_dir(migrations_dir).with_context(|| {
-        format!(
-            "read migrations dir {}",
-            migrations_dir.display()
-        )
-    })?;
+    let read = fs::read_dir(migrations_dir)
+        .with_context(|| format!("read migrations dir {}", migrations_dir.display()))?;
 
     let mut highest: u32 = 0;
     for entry in read {
         let entry = entry.context("read dir entry")?;
         let file_name = entry.file_name();
-        let Some(name) = file_name.to_str() else { continue };
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
         if !name.ends_with(".sql") {
             continue;
         }
@@ -228,12 +228,9 @@ fn next_migration_number(migrations_dir: &Path) -> Result<u32> {
         {
             continue;
         }
-        let num: u32 = name[..3].parse().map_err(|_| {
-            anyhow!(
-                "migration filename {} has non-numeric NNN prefix",
-                name
-            )
-        })?;
+        let num: u32 = name[..3]
+            .parse()
+            .map_err(|_| anyhow!("migration filename {} has non-numeric NNN prefix", name))?;
         if num > highest {
             highest = num;
         }

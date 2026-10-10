@@ -107,16 +107,24 @@ impl Grid {
             cols.push(Col::Company { id, name, active });
         }
 
-        let snapshot_flags: HashMap<String, FlagRow> =
-            snap.flags.into_iter().map(|f| (f.name.clone(), f)).collect();
+        let snapshot_flags: HashMap<String, FlagRow> = snap
+            .flags
+            .into_iter()
+            .map(|f| (f.name.clone(), f))
+            .collect();
 
         // Index overrides by (flag_name, company_id).
         let overrides_idx: HashMap<(String, Uuid), bool> = snap
             .overrides
             .into_iter()
-            .map(|OverrideRow { flag_name, company_id, enabled, .. }| {
-                ((flag_name, company_id), enabled)
-            })
+            .map(
+                |OverrideRow {
+                     flag_name,
+                     company_id,
+                     enabled,
+                     ..
+                 }| { ((flag_name, company_id), enabled) },
+            )
             .collect();
 
         let mut cells = HashMap::new();
@@ -126,17 +134,29 @@ impl Grid {
             // Column 0 — Global.
             let global = snapshot_flags
                 .get(&flag_name)
-                .map(|f| if f.enabled_global { CellState::True } else { CellState::False })
+                .map(|f| {
+                    if f.enabled_global {
+                        CellState::True
+                    } else {
+                        CellState::False
+                    }
+                })
                 // Brand-new catalog flag — no DB row yet. The compile-time
                 // default lives on `FlagDescriptor::default`; mirror it so
                 // the user sees the state they'll land in once the emitted
                 // migration runs.
-                .unwrap_or(if flag.default { CellState::True } else { CellState::False });
+                .unwrap_or(if flag.default {
+                    CellState::True
+                } else {
+                    CellState::False
+                });
             cells.insert((flag_name.clone(), 0), global);
 
             // Columns 1.. — companies.
             for (col_i, col) in cols.iter().enumerate().skip(1) {
-                let Col::Company { id, .. } = col else { unreachable!() };
+                let Col::Company { id, .. } = col else {
+                    unreachable!()
+                };
                 let state = match overrides_idx.get(&(flag_name.clone(), *id)) {
                     Some(true) => CellState::True,
                     Some(false) => CellState::False,
@@ -171,7 +191,10 @@ impl Grid {
     /// Convenience accessor for the cell under the cursor.
     pub fn current(&self) -> CellState {
         let flag = self.rows[self.cursor_row].name.to_string();
-        *self.cells.get(&(flag, self.cursor_col)).unwrap_or(&CellState::Unset)
+        *self
+            .cells
+            .get(&(flag, self.cursor_col))
+            .unwrap_or(&CellState::Unset)
     }
 
     /// Cycle the cell under the cursor and store it. Returns the new
@@ -179,7 +202,12 @@ impl Grid {
     pub fn cycle_current(&mut self) -> CellState {
         let flag = self.rows[self.cursor_row].name.to_string();
         let key = (flag, self.cursor_col);
-        let next = self.cells.get(&key).copied().unwrap_or(CellState::Unset).cycle();
+        let next = self
+            .cells
+            .get(&key)
+            .copied()
+            .unwrap_or(CellState::Unset)
+            .cycle();
 
         // GLOBAL column clamps `Unset` → `False` on cycle. A global
         // can't be "unset" — the schema has NOT NULL enabled_global.

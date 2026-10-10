@@ -76,10 +76,96 @@ jobs:
       - name: Test
         run: pnpm run test
 
+  rust-ci:
+    name: Rust fmt / clippy / sqlx / test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: meals_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: meals_test
+      POSTGRES_HOST: localhost
+      DATABASE_URL: postgres://test:test@localhost:5432/meals_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache-workspaces: admin-operations-rust
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --version 0.8 --no-default-features --features native-tls,postgres --locked
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync migrations into Rust crate
+        run: pnpm run rust:sync-migrations
+
+      - name: sqlx offline cache check (fatal gate)
+        run: pnpm run rust:prepare-check
+
+      - name: cargo fmt --check
+        working-directory: admin-operations-rust
+        run: cargo fmt --check
+
+      - name: cargo clippy -D warnings
+        working-directory: admin-operations-rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run Node migrations (seeds schema for Rust tests)
+        run: pnpm run migrate
+
+      - name: cargo test --workspace
+        working-directory: admin-operations-rust
+        run: cargo test --workspace
+
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, rust-ci]
 
     services:
       postgres:
@@ -123,6 +209,12 @@ jobs:
           version: 10
           run_install: false
 
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache-workspaces: admin-operations-rust
+
       - name: Get pnpm store directory
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
@@ -154,22 +246,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
-
-  deploy:
-    name: Deploy to Railway
-    runs-on: ubuntu-latest
-    needs: [ci, e2e]
-    # Only deploy on pushes to main (not PRs)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy
-        run: railway up --service ${{ vars.RAILWAY_SERVICE_NAME }} --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

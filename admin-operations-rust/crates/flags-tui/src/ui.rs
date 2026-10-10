@@ -34,7 +34,8 @@ use crate::model::{CellState, Grid};
 /// What the user did when the loop returned.
 pub enum Outcome {
     QuitWithoutWriting,
-    WriteRequested(Grid),
+    // Grid is boxed to keep the enum small — clippy::large_enum_variant.
+    WriteRequested(Box<Grid>),
 }
 
 /// Enter raw mode, run the loop, and always restore the terminal on
@@ -43,8 +44,7 @@ pub enum Outcome {
 pub fn run(mut grid: Grid) -> Result<Outcome> {
     let mut stdout = io::stdout();
     enable_raw_mode().context("enable raw mode")?;
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
-        .context("enter alternate screen")?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture).context("enter alternate screen")?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).context("init terminal")?;
 
@@ -71,7 +71,9 @@ fn loop_inner<B: ratatui::backend::Backend>(
 ) -> Result<Outcome> {
     let mut show_help = false;
     loop {
-        terminal.draw(|f| draw(f, grid, show_help)).context("draw")?;
+        terminal
+            .draw(|f| draw(f, grid, show_help))
+            .context("draw")?;
 
         // Blocking read is fine — we don't animate or auto-refresh.
         let ev = event::read().context("read event")?;
@@ -89,7 +91,7 @@ fn loop_inner<B: ratatui::backend::Backend>(
                 }
             }
             KeyCode::Char('w') => {
-                return Ok(Outcome::WriteRequested(std::mem::replace(
+                return Ok(Outcome::WriteRequested(Box::new(std::mem::replace(
                     grid,
                     // Dummy — we won't touch `grid` after this; the
                     // real one has moved into the Outcome.
@@ -102,7 +104,7 @@ fn loop_inner<B: ratatui::backend::Backend>(
                         cursor_row: 0,
                         cursor_col: 0,
                     },
-                )));
+                ))));
             }
             KeyCode::Char('?') => {
                 show_help = !show_help;
@@ -128,10 +130,8 @@ fn loop_inner<B: ratatui::backend::Backend>(
                     grid.cursor_col -= 1;
                 }
             }
-            KeyCode::Right => {
-                if grid.cursor_col + 1 < grid.cols.len() {
-                    grid.cursor_col += 1;
-                }
+            KeyCode::Right if grid.cursor_col + 1 < grid.cols.len() => {
+                grid.cursor_col += 1;
             }
             _ => {}
         }
@@ -202,12 +202,11 @@ fn draw(f: &mut ratatui::Frame, grid: &Grid, show_help: bool) {
                 } else {
                     base
                 };
-                let cursored =
-                    if row_i == grid.cursor_row && col_i == grid.cursor_col {
-                        styled.bg(Color::DarkGray)
-                    } else {
-                        styled
-                    };
+                let cursored = if row_i == grid.cursor_row && col_i == grid.cursor_col {
+                    styled.bg(Color::DarkGray)
+                } else {
+                    styled
+                };
                 cells.push(Cell::from(state.glyph()).style(cursored));
             }
             Row::new(cells)
@@ -223,11 +222,9 @@ fn draw(f: &mut ratatui::Frame, grid: &Grid, show_help: bool) {
 
     let table = Table::new(rows, widths)
         .header(Row::new(header).bottom_margin(1))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" flags — ↑↓←→ move · space cycle · g toggle global · w write · q quit · ? help "),
-        );
+        .block(Block::default().borders(Borders::ALL).title(
+            " flags — ↑↓←→ move · space cycle · g toggle global · w write · q quit · ? help ",
+        ));
     f.render_widget(table, chunks[0]);
 
     // --- Status bar ---

@@ -23,9 +23,7 @@
 
 mod common;
 
-use common::{
-    companies::seed_company, seed_user, signed_headers, spawn_server_with, TestServer,
-};
+use common::{companies::seed_company, seed_user, signed_headers, spawn_server_with, TestServer};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use sqlx::PgPool;
@@ -67,27 +65,43 @@ async fn snapshot_200_when_user_matches_gate(pool: PgPool) {
     // Catalog comes from the compile-time flag registry — the five
     // ZSTs in `crates/flags/src/lib.rs`. If a flag is added/removed
     // this assertion will fire; update it alongside the catalog.
-    let catalog = body.get("catalog").and_then(Value::as_array).expect("catalog array");
-    assert_eq!(catalog.len(), 5, "catalog should list the 5 compile-time flags");
+    let catalog = body
+        .get("catalog")
+        .and_then(Value::as_array)
+        .expect("catalog array");
+    assert_eq!(
+        catalog.len(),
+        5,
+        "catalog should list the 5 compile-time flags"
+    );
 
     // Migration 009 seeds 5 globals; migration 010 seeds 3 more
     // (`use_rust_backend_imports`, `_queries`, `_insights`). The
     // handler returns every row ordered by name — just assert at
     // least the catalog's 5 are visible so the test survives new
     // `use_rust_backend_*` additions.
-    let flag_rows = body.get("flags").and_then(Value::as_array).expect("flags array");
+    let flag_rows = body
+        .get("flags")
+        .and_then(Value::as_array)
+        .expect("flags array");
     assert!(
         flag_rows.len() >= 5,
         "expected ≥5 feature_flag rows, got {}",
         flag_rows.len()
     );
 
-    let overrides = body.get("overrides").and_then(Value::as_array).expect("overrides array");
+    let overrides = body
+        .get("overrides")
+        .and_then(Value::as_array)
+        .expect("overrides array");
     assert_eq!(overrides.len(), 1, "the one seeded override");
     assert_eq!(overrides[0]["flag_name"], "insights");
     assert_eq!(overrides[0]["enabled"], true);
 
-    let companies = body.get("companies").and_then(Value::as_array).expect("companies array");
+    let companies = body
+        .get("companies")
+        .and_then(Value::as_array)
+        .expect("companies array");
     assert_eq!(companies.len(), 1);
     assert_eq!(companies[0]["name"], "Acme Catering");
     assert_eq!(companies[0]["active"], true);

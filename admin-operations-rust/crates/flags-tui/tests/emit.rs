@@ -45,7 +45,11 @@ fn grid_for(flag_name: &str, snapshot_global: bool, catalog_default: bool) -> Gr
         m.insert(flag_name.to_string(), row(flag_name, snapshot_global));
         m
     };
-    let global_cell = if snapshot_global { CellState::True } else { CellState::False };
+    let global_cell = if snapshot_global {
+        CellState::True
+    } else {
+        CellState::False
+    };
     let mut cells = HashMap::new();
     cells.insert((flag_name.to_string(), 0), global_cell);
     Grid {
@@ -79,13 +83,17 @@ fn no_changes_renders_header_only() {
 fn global_flip_emits_single_update() {
     let mut grid = grid_for("insights", false, false);
     // Snapshot is False; user flipped to True.
-    grid.cells.insert(("insights".to_string(), 0), CellState::True);
+    grid.cells
+        .insert(("insights".to_string(), 0), CellState::True);
 
     let body = render_body(&grid, now(), "http://example", "op-123");
     assert!(body.contains("-- Global default changes:"));
     assert!(body.contains("UPDATE feature_flag SET enabled_global = TRUE WHERE name = 'insights';"));
     // No per-company section.
-    assert!(!body.contains("feature_flag_company"), "unexpected overrides: {body}");
+    assert!(
+        !body.contains("feature_flag_company"),
+        "unexpected overrides: {body}"
+    );
 }
 
 #[test]
@@ -114,7 +122,11 @@ fn override_add_emits_single_upsert() {
         rows: vec![desc],
         cols: vec![
             Col::Global,
-            Col::Company { id: company_id, name: "Acme".to_string(), active: true },
+            Col::Company {
+                id: company_id,
+                name: "Acme".to_string(),
+                active: true,
+            },
         ],
         cells,
         original,
@@ -125,11 +137,10 @@ fn override_add_emits_single_upsert() {
 
     let body = render_body(&grid, now(), "http://example", "op-123");
     assert!(body.contains("-- Per-company overrides (upserts + deletes):"));
-    assert!(body.contains(
-        "INSERT INTO feature_flag_company (flag_name, company_id, enabled)"
-    ));
+    assert!(body.contains("INSERT INTO feature_flag_company (flag_name, company_id, enabled)"));
     assert!(body.contains("'11111111-2222-3333-4444-555555555555'::uuid"));
-    assert!(body.contains("ON CONFLICT (flag_name, company_id) DO UPDATE SET enabled = EXCLUDED.enabled"));
+    assert!(body
+        .contains("ON CONFLICT (flag_name, company_id) DO UPDATE SET enabled = EXCLUDED.enabled"));
     assert!(!body.contains("DELETE FROM"), "unexpected DELETE: {body}");
 }
 
@@ -158,7 +169,11 @@ fn override_clear_emits_single_delete() {
         rows: vec![desc],
         cols: vec![
             Col::Global,
-            Col::Company { id: company_id, name: "Acme".to_string(), active: true },
+            Col::Company {
+                id: company_id,
+                name: "Acme".to_string(),
+                active: true,
+            },
         ],
         cells,
         original,
@@ -211,5 +226,8 @@ fn new_catalog_flag_emits_insert_with_on_conflict_do_nothing() {
     assert!(body.contains("VALUES ('new_flag', 'A brand new flag.', FALSE)"));
     assert!(body.contains("ON CONFLICT (name) DO NOTHING"));
     // User didn't flip anything → no Section 2 UPDATE needed.
-    assert!(!body.contains("-- Global default changes:"), "unexpected UPDATE: {body}");
+    assert!(
+        !body.contains("-- Global default changes:"),
+        "unexpected UPDATE: {body}"
+    );
 }

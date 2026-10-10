@@ -153,10 +153,10 @@ pub async fn snapshot(
     Extension(auth): Extension<AuthCtx>,
 ) -> Result<Json<FlagSnapshot>, (StatusCode, &'static str)> {
     // Gate 1: env var must be set on the server.
-    let gated_user = state
-        .flags_snapshot_user_id
-        .as_ref()
-        .ok_or((StatusCode::SERVICE_UNAVAILABLE, "snapshot gate not configured"))?;
+    let gated_user = state.flags_snapshot_user_id.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "snapshot gate not configured",
+    ))?;
 
     // Gate 2: caller's user id must match. Audit-log the attempt
     // either way — a 403 here is interesting even when it's benign.
@@ -329,8 +329,7 @@ fn parse_committed_state() -> (Vec<CommittedFlag>, Vec<CommittedOverride>) {
     // reads from `CARGO_MANIFEST_DIR/../../migrations` at compile
     // time — same path, same files (synced by
     // `scripts/sync-rust-migrations.sh` + Dockerfile copy).
-    static MIGRATOR: db::sqlx::migrate::Migrator =
-        db::sqlx::migrate!("./../../migrations");
+    static MIGRATOR: db::sqlx::migrate::Migrator = db::sqlx::migrate!("./../../migrations");
 
     use std::collections::HashMap;
 
@@ -477,7 +476,9 @@ fn parse_insert_override(stmt: &str) -> Option<(String, Uuid, bool)> {
     let company_idx = cols
         .iter()
         .position(|c| c.eq_ignore_ascii_case("company_id"))?;
-    let enabled_idx = cols.iter().position(|c| c.eq_ignore_ascii_case("enabled"))?;
+    let enabled_idx = cols
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case("enabled"))?;
     let flag_name = unquote(vals.get(flag_idx)?)?;
     let company_id = unquote(vals.get(company_idx)?)?.parse().ok()?;
     let enabled = parse_bool(vals.get(enabled_idx)?)?;
@@ -491,7 +492,9 @@ fn parse_delete_override(stmt: &str) -> Option<(String, Uuid)> {
     let where_pos = lower.find(" where ")?;
     let where_clause = &stmt[where_pos + 7..];
     let flag_name = extract_eq_literal(where_clause, "flag_name")?;
-    let company_id = extract_eq_literal(where_clause, "company_id")?.parse().ok()?;
+    let company_id = extract_eq_literal(where_clause, "company_id")?
+        .parse()
+        .ok()?;
     Some((flag_name, company_id))
 }
 
@@ -502,10 +505,7 @@ fn split_insert(stmt: &str) -> Option<(Vec<String>, Vec<String>)> {
     let open_cols = stmt.find('(')?;
     let close_cols = stmt[open_cols..].find(')')? + open_cols;
     let cols_src = &stmt[open_cols + 1..close_cols];
-    let cols: Vec<String> = cols_src
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect();
+    let cols: Vec<String> = cols_src.split(',').map(|s| s.trim().to_string()).collect();
 
     let rest = &stmt[close_cols + 1..];
     let lower_rest = rest.to_ascii_lowercase();

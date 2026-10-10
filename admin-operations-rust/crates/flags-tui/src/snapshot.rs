@@ -78,16 +78,11 @@ pub struct FlagSnapshot {
 /// expects (`FLAGS_SNAPSHOT_USER_ID`). `secret` is the shared
 /// `INTERNAL_AUTH_SECRET`.
 pub async fn fetch(base_url: &str, user_id: &str, secret: &[u8]) -> Result<FlagSnapshot> {
-    let url = format!(
-        "{}/api/flags/snapshot",
-        base_url.trim_end_matches('/'),
-    );
+    let url = format!("{}/api/flags/snapshot", base_url.trim_end_matches('/'),);
 
     let headers = signed_headers(user_id, secret)?;
 
-    let client = Client::builder()
-        .build()
-        .context("build reqwest client")?;
+    let client = Client::builder().build().context("build reqwest client")?;
 
     let mut req = client.get(&url);
     for (k, v) in headers {

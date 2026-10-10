@@ -101,10 +101,7 @@ pub async fn spawn_server(pool: PgPool) -> TestServer {
 /// `FLAGS_SNAPSHOT_USER_ID` in prod — but set on the typed struct
 /// rather than in process env, so parallel `#[sqlx::test]` runs can't
 /// race on `std::env::set_var`. Used only by `tests/flags_snapshot.rs`.
-pub async fn spawn_server_with(
-    pool: PgPool,
-    flags_snapshot_user_id: Option<String>,
-) -> TestServer {
+pub async fn spawn_server_with(pool: PgPool, flags_snapshot_user_id: Option<String>) -> TestServer {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
