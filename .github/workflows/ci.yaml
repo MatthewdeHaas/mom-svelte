@@ -250,6 +250,21 @@ jobs:
       - name: Run migrations
         run: pnpm run migrate
 
+      # Stamp `_sqlx_migrations` so the Rust API's startup migrator is
+      # a no-op. The TS migrator just applied all 24 files but tracks
+      # them in `migrations` (sha256); sqlx tracks them in
+      # `_sqlx_migrations` (SHA-384). Without this stamp, the Rust
+      # binary spawned by Playwright's `webServer` sees an empty sqlx
+      # ledger and tries to re-run everything — migration 4 fails with
+      # "cannot drop table users because other objects depend on it"
+      # because migrations 1-3 already created users + FKs to it.
+      #
+      # `tests/e2e/global-setup.ts::backfillSqlxLedger` also does this,
+      # but Playwright runs globalSetup AFTER starting webServers — too
+      # late. Stamp from CI before the Rust server comes up.
+      - name: Stamp sqlx migration ledger
+        run: pnpm run migrate:backfill-sqlx
+
       # `crates/db` uses `sqlx::migrate!("./../../migrations")` which
       # resolves to `admin-operations-rust/migrations/` — a gitignored
       # directory populated at build time by this sync script. Without
