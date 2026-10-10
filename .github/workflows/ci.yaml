@@ -250,6 +250,15 @@ jobs:
       - name: Run migrations
         run: pnpm run migrate
 
+      # `crates/db` uses `sqlx::migrate!("./../../migrations")` which
+      # resolves to `admin-operations-rust/migrations/` — a gitignored
+      # directory populated at build time by this sync script. Without
+      # it, `cargo build` fails at macro-expansion with "error
+      # canonicalizing migration directory". The `rust-ci` job runs
+      # this sync too; e2e needs its own copy before the release build.
+      - name: Sync migrations into Rust crate
+        run: pnpm run rust:sync-migrations
+
       # Pre-build the Rust API binary. Playwright's `webServer` block in
       # `playwright.config.ts` spawns `./admin-operations-rust/target/release/api`
       # directly, and Playwright starts webServers BEFORE running globalSetup —
