@@ -18,6 +18,14 @@ async fn main() -> anyhow::Result<()> {
 
     let cfg = Config::from_env()?;
     tracing::info!(port = cfg.port, "starting admin-operations-rust");
+    // Diagnostic for the HMAC-mismatch failure class documented in
+    // `docs/ops.md` — NOT the secret itself, just its length. A length
+    // mismatch between the two services is the single most common
+    // cause of 401s on `/api/*`.
+    tracing::info!(
+        internal_auth_secret_bytes = cfg.internal_auth_secret.len(),
+        "INTERNAL_AUTH_SECRET loaded"
+    );
 
     let pool = db::connect(&cfg.database_url)
         .await

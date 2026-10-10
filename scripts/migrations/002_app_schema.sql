@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Separate from users. A company can have multiple users.
 -- Attributes like address/phone live here, not on the user.
 -- =============================================================
-CREATE TABLE companies (
+CREATE TABLE IF NOT EXISTS companies (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT UNIQUE NOT NULL,
     contact_email   TEXT,
@@ -25,7 +25,7 @@ CREATE TABLE companies (
 -- Owned by Better Auth — do not manage passwords here.
 -- We extend with company_id and role.
 -- =============================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id              TEXT PRIMARY KEY,         -- Better Auth issues string UUIDs
     company_id      UUID REFERENCES companies(id) ON DELETE SET NULL,
     email           TEXT UNIQUE NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE users (
 -- ALLERGENS
 -- Master list of allergens (gluten, dairy, nuts, etc.)
 -- =============================================================
-CREATE TABLE allergens (
+CREATE TABLE IF NOT EXISTS allergens (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT UNIQUE NOT NULL
 );
@@ -45,14 +45,14 @@ CREATE TABLE allergens (
 -- =============================================================
 -- INGREDIENTS
 -- =============================================================
-CREATE TABLE ingredients (
+CREATE TABLE IF NOT EXISTS ingredients (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT UNIQUE NOT NULL,
     active          BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 -- Many-to-many: ingredients <-> allergens
-CREATE TABLE ingredient_allergens (
+CREATE TABLE IF NOT EXISTS ingredient_allergens (
     ingredient_id   UUID NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
     allergen_id     UUID NOT NULL REFERENCES allergens(id) ON DELETE CASCADE,
     PRIMARY KEY (ingredient_id, allergen_id)
@@ -63,7 +63,7 @@ CREATE TABLE ingredient_allergens (
 -- Soft-delete via active flag — never hard delete a recipe
 -- that may be referenced by historical orders.
 -- =============================================================
-CREATE TABLE recipes (
+CREATE TABLE IF NOT EXISTS recipes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT UNIQUE NOT NULL,
     active          BOOLEAN NOT NULL DEFAULT TRUE,
@@ -72,7 +72,7 @@ CREATE TABLE recipes (
 );
 
 -- Many-to-many: recipes <-> ingredients (with amount/unit)
-CREATE TABLE recipe_ingredients (
+CREATE TABLE IF NOT EXISTS recipe_ingredients (
     recipe_id       UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
     ingredient_id   UUID NOT NULL REFERENCES ingredients(id) ON DELETE RESTRICT,
     amount          NUMERIC(10, 3) NOT NULL CHECK (amount > 0),
@@ -85,7 +85,7 @@ CREATE TABLE recipe_ingredients (
 -- A menu is active for a date range and cycles every 4 weeks.
 -- Updated roughly every 6 months.
 -- =============================================================
-CREATE TABLE menus (
+CREATE TABLE IF NOT EXISTS menus (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT UNIQUE NOT NULL,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
@@ -99,7 +99,7 @@ CREATE TABLE menus (
 -- cycle_week: 1–4
 -- day_of_week: 'monday'–'friday'
 -- meal_category: e.g. 'breakfast', 'lunch', 'dinner'
-CREATE TABLE menu_recipes (
+CREATE TABLE IF NOT EXISTS menu_recipes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     menu_id         UUID NOT NULL REFERENCES menus(id) ON DELETE CASCADE,
     recipe_id       UUID NOT NULL REFERENCES recipes(id) ON DELETE RESTRICT,
@@ -114,7 +114,7 @@ CREATE TABLE menu_recipes (
 -- PERSONS
 -- Individual people tracked per company (for headcount/allergens).
 -- =============================================================
-CREATE TABLE persons (
+CREATE TABLE IF NOT EXISTS persons (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id      UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     name            TEXT NOT NULL,
@@ -122,14 +122,14 @@ CREATE TABLE persons (
 );
 
 -- Many-to-many: persons <-> allergens
-CREATE TABLE person_allergens (
+CREATE TABLE IF NOT EXISTS person_allergens (
     person_id       UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
     allergen_id     UUID NOT NULL REFERENCES allergens(id) ON DELETE CASCADE,
     PRIMARY KEY (person_id, allergen_id)
 );
 
 -- Attendance per person per serving date
-CREATE TABLE attendance (
+CREATE TABLE IF NOT EXISTS attendance (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     person_id       UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
     serving_date    DATE NOT NULL,
@@ -143,7 +143,7 @@ CREATE TABLE attendance (
 -- order_source tracks how the order was created.
 -- recipe_id is RESTRICT — soft-delete recipes instead.
 -- =============================================================
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id          UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     recipe_id           UUID REFERENCES recipes(id) ON DELETE RESTRICT,
@@ -167,10 +167,10 @@ CREATE TABLE orders (
 -- =============================================================
 -- INDEXES
 -- =============================================================
-CREATE INDEX idx_orders_company_id     ON orders(company_id);
-CREATE INDEX idx_orders_serving_date   ON orders(serving_date);
-CREATE INDEX idx_orders_shipment_date  ON orders(shipment_date);
-CREATE INDEX idx_orders_recipe_id      ON orders(recipe_id);
-CREATE INDEX idx_menu_recipes_menu_id  ON menu_recipes(menu_id);
-CREATE INDEX idx_attendance_date       ON attendance(serving_date);
-CREATE INDEX idx_persons_company_id    ON persons(company_id);
+CREATE INDEX IF NOT EXISTS idx_orders_company_id     ON orders(company_id);
+CREATE INDEX IF NOT EXISTS idx_orders_serving_date   ON orders(serving_date);
+CREATE INDEX IF NOT EXISTS idx_orders_shipment_date  ON orders(shipment_date);
+CREATE INDEX IF NOT EXISTS idx_orders_recipe_id      ON orders(recipe_id);
+CREATE INDEX IF NOT EXISTS idx_menu_recipes_menu_id  ON menu_recipes(menu_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_date       ON attendance(serving_date);
+CREATE INDEX IF NOT EXISTS idx_persons_company_id    ON persons(company_id);

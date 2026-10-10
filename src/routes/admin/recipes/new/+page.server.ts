@@ -104,6 +104,7 @@ export const actions: Actions = {
       const res = await internalFetch(endpoint, caller, {
         method: 'POST',
         body: forward,
+        requestId: locals.requestId,
       });
 
       // 422: row-level validation failures (both endpoints).
@@ -166,7 +167,7 @@ export const actions: Actions = {
         const commitRes = await internalFetch(
           '/api/recipe-imports/commit',
           caller,
-          { method: 'POST', body: commitForward },
+          { method: 'POST', body: commitForward, requestId: locals.requestId },
         );
         if (!commitRes.ok) {
           const body = (await commitRes.json().catch(() => null)) as

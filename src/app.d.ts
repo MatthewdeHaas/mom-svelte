@@ -21,6 +21,11 @@ declare global {
     interface Locals {
       user?: AuthUser | null;
       session?: Session | null;
+      // Request correlation id — minted or echoed by `handleRequestId`
+      // in src/hooks.server.ts. Forwarded as `x-request-id` into the
+      // Rust service via `internalFetch({ requestId })` so a single id
+      // threads SvelteKit → Rust → logs end-to-end.
+      requestId: string;
     }
 
     // interface Error {}

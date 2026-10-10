@@ -26,7 +26,9 @@ export const load: PageServerLoad = async ({ locals }) => {
   // the endpoint 403s and we surface 404 — a disabled surface should
   // read like one that never shipped.
   try {
-    const drift = await internalJson<DriftResponse>('/api/flags/drift', caller);
+    const drift = await internalJson<DriftResponse>('/api/flags/drift', caller, {
+      requestId: locals.requestId,
+    });
     return { drift };
   } catch (e) {
     if (e instanceof InternalApiError && (e.status === 403 || e.status === 503)) {

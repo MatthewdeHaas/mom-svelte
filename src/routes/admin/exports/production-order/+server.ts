@@ -25,6 +25,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const upstream = await internalFetch(
 		`/api/exports/production-order?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
 		caller,
+		{ requestId: locals.requestId },
 	);
 	if (!upstream.ok) {
 		const body = await upstream.text().catch(() => 'export failed');

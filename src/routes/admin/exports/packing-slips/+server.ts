@@ -29,6 +29,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const upstream = await internalFetch(
 		`/api/exports/packing-slips?date=${encodeURIComponent(date)}`,
 		caller,
+		{ requestId: locals.requestId },
 	);
 	if (!upstream.ok) {
 		const body = await upstream.text().catch(() => 'export failed');

@@ -68,6 +68,7 @@ export const actions: Actions = {
       const res = await internalFetch('/api/import/commit', caller, {
         method: 'POST',
         body: forward,
+        requestId: locals.requestId,
       });
 
       if (!res.ok) {

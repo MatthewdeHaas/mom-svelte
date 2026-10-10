@@ -25,7 +25,7 @@ async function forward(
 	errorKey: string,
 ): Promise<Response | ReturnType<typeof fail>> {
 	const caller = callerFromLocals(locals);
-	const upstream = await internalFetch(path, caller);
+	const upstream = await internalFetch(path, caller, { requestId: locals.requestId });
 	if (!upstream.ok) {
 		const message = await upstream.text().catch(() => 'export failed');
 		return fail(upstream.status, { [errorKey]: message });

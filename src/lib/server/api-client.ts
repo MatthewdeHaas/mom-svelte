@@ -23,6 +23,18 @@ export interface InternalCaller {
 
 export interface InternalFetchOptions extends Omit<RequestInit, 'headers'> {
 	headers?: Record<string, string>;
+	/**
+	 * Correlation id forwarded to the Rust service as the
+	 * `X-Request-Id` header. Deliberately NOT part of the HMAC
+	 * signature payload — the id is a logging aid, not an auth
+	 * input, so a reverse-proxy that rewrites it (or an incoming
+	 * `X-Request-Id` echoed from a load generator) does not
+	 * invalidate the request.
+	 *
+	 * Pass `locals.requestId` here from every SvelteKit route that
+	 * holds a `locals`; the hook minted it in `hooks.server.ts`.
+	 */
+	requestId?: string;
 }
 
 export class InternalApiError extends Error {
@@ -103,6 +115,14 @@ export async function internalFetch(
 		'x-internal-nonce': nonce,
 		'x-internal-auth': signature
 	};
+
+	// Forward the per-request correlation id as a plain header. Deliberately
+	// set AFTER the HMAC payload is computed so the id is not part of the
+	// signature — a reverse-proxy rewriting it (or an echoed value from an
+	// upstream probe) must not invalidate the request.
+	if (opts.requestId) {
+		headers['x-request-id'] = opts.requestId;
+	}
 
 	// Only set content-type for bodied requests when the caller hasn't
 	// already provided one AND the body isn't a shape that owns its own

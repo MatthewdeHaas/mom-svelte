@@ -69,7 +69,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// establish. Belt and braces: route check + handler check.
 	await internalJson(`/api/users/${locals.user.id}/assign-company`, caller, {
 		method: 'POST',
-		body: JSON.stringify({ company_id: invite.company_id })
+		body: JSON.stringify({ company_id: invite.company_id }),
+		requestId: locals.requestId
 	});
 	// Atomic consume: verifies unused+unexpired and stamps used_at in
 	// one SQL statement. 404 here means the invite raced (another tab,

@@ -183,6 +183,7 @@ export const actions: Actions = {
       existing = await internalJson<{ id: string }>(
         `/api/users/by-email${filtersToQueryString({ email })}`,
         caller,
+        { requestId: locals.requestId },
       );
     } catch (err) {
       if (!(isInternalApiError(err) && err.status === 404)) throw err;
@@ -225,7 +226,11 @@ export const actions: Actions = {
     await internalJson<{ id: string; company_id: string | null }>(
       `/api/users/${created.id}/assign-company`,
       caller,
-      { method: 'POST', body: JSON.stringify({ company_id: params.id }) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ company_id: params.id }),
+        requestId: locals.requestId,
+      },
     );
 
     return {
@@ -259,6 +264,7 @@ export const actions: Actions = {
       owned = await internalJson<{ id: string; email: string }>(
         `/api/users/${parsed.data.user_id}${filtersToQueryString({ company_id: params.id })}`,
         caller,
+        { requestId: locals.requestId },
       );
     } catch (err) {
       if (!(isInternalApiError(err) && err.status === 404)) throw err;
