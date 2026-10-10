@@ -29,6 +29,12 @@
             # macros that type-check against `.sqlx/` in CI with
             # SQLX_OFFLINE=1; this is how we populate / refresh it.
             pkgs.sqlx-cli
+            # Deploy + secrets CLIs for Track 4a. `railway` targets
+            # the two-service Railway deploy; `infisical` is the
+            # single writer the GHA workflow authenticates against,
+            # and devs can `infisical run -- pnpm dev` locally.
+            pkgs.railway
+            pkgs.infisical
           ];
 
           shellHook = ''
@@ -36,6 +42,8 @@
             echo "Rust $(rustc --version | cut -d' ' -f2) 🦀"
             echo "Node $(node --version) 🟢"
             echo "sqlx-cli $(sqlx --version 2>/dev/null | cut -d' ' -f2 || echo missing)"
+            echo "railway  $(railway --version 2>/dev/null | awk '{print $NF}' || echo missing) 🚂"
+            echo "infisical $(infisical --version 2>/dev/null | head -1 || echo missing) 🔐"
           '';
         };
       });
