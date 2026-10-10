@@ -150,6 +150,17 @@ jobs:
       - name: Sync migrations into Rust crate
         run: pnpm run rust:sync-migrations
 
+      # Node migrations must run BEFORE the sqlx gate: `cargo sqlx
+      # prepare --check` re-runs every query macro against a LIVE DB
+      # and diffs the result against the committed `.sqlx/` cache.
+      # `SQLX_OFFLINE=true` only affects compile-time macro
+      # expansion, not the prepare subcommand itself. An empty DB
+      # here surfaces as "relation X does not exist" from inside the
+      # cache check, which looks like a cache problem but is really
+      # a step-ordering problem.
+      - name: Run Node migrations (seeds schema for Rust tests)
+        run: pnpm run migrate
+
       - name: sqlx offline cache check (fatal gate)
         run: pnpm run rust:prepare-check
 
@@ -160,9 +171,6 @@ jobs:
       - name: cargo clippy -D warnings
         working-directory: admin-operations-rust
         run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Run Node migrations (seeds schema for Rust tests)
-        run: pnpm run migrate
 
       - name: cargo test --workspace
         working-directory: admin-operations-rust
