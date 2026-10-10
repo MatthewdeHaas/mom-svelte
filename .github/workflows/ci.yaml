@@ -116,7 +116,10 @@ jobs:
           cache-workspaces: admin-operations-rust
 
       - name: Install sqlx-cli
-        run: cargo install sqlx-cli --version 0.8 --no-default-features --features native-tls,postgres --locked
+        # Pin to a concrete patch — newer cargo rejects bare `0.8`
+        # ("unexpected end of input while parsing minor version"). Match
+        # the flake's sqlx-cli 0.8.6 so CI and local resolve the same tool.
+        run: cargo install sqlx-cli --version 0.8.6 --no-default-features --features native-tls,postgres --locked
 
       - name: Setup Node
         uses: actions/setup-node@v6
