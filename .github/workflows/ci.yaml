@@ -250,6 +250,16 @@ jobs:
       - name: Run migrations
         run: pnpm run migrate
 
+      # Pre-build the Rust API binary. Playwright's `webServer` block in
+      # `playwright.config.ts` spawns `./admin-operations-rust/target/release/api`
+      # directly, and Playwright starts webServers BEFORE running globalSetup —
+      # so the binary must exist on disk when the webServer command fires.
+      # `global-setup.ts` also runs `cargo build --release -p api` for local
+      # first-run ergonomics; in CI that call becomes a cheap cache hit.
+      - name: Build Rust API (release)
+        working-directory: admin-operations-rust
+        run: cargo build --release -p api
+
       - name: Run E2E tests
         run: pnpm run test:e2e
 
