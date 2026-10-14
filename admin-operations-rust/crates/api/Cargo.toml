@@ -39,6 +39,12 @@ chrono.workspace = true
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# File-based log sink gated by `RUST_LOG_FILE` env var. Local dev
+# leaves the var unset → behaviour unchanged (stdout only); CI sets
+# it to `/tmp/rust-api.log` so the full tracing stream survives
+# Playwright's `sh -c` stdio capture and can be uploaded as a GHA
+# artifact on E2E failure. See `init_tracing` in `src/main.rs`.
+tracing-appender = "0.2"
 
 # DB (just for the pool type on AppState)
 sqlx.workspace = true

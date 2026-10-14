@@ -104,9 +104,44 @@ impl Config {
 fn init_tracing() {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info,sqlx::query=warn"));
+
+    // Stdout layer is always on — local dev reads it directly, CI
+    // captures it via Playwright's `[WebServer]`-prefixed stream (when
+    // the stream survives the `sh -c` spawn, which it sometimes
+    // doesn't; hence the file layer below).
+    let stdout_layer = tracing_subscriber::fmt::layer().with_target(true);
+
+    // Optional file sink: when `RUST_LOG_FILE` is set, append every
+    // event to that path in addition to stdout. CI sets this in the
+    // Playwright `webServer.env` block so the full tracing stream
+    // survives the native-binary stdio-capture gap; the GHA workflow
+    // uploads the file as an artifact on E2E failure. Local dev
+    // leaves it unset → behaviour unchanged.
+    //
+    // `tracing_appender::rolling::never` is a no-rotation file writer;
+    // non_blocking wraps it so logging never stalls the request path.
+    // The `WorkerGuard` must outlive `main` — `mem::forget` is the
+    // documented pattern for the "log for the whole process lifetime"
+    // case (see tracing_appender's docs).
+    let file_layer = std::env::var("RUST_LOG_FILE").ok().map(|path| {
+        let path = std::path::PathBuf::from(path);
+        let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let name = path
+            .file_name()
+            .expect("RUST_LOG_FILE must include a filename");
+        let appender = tracing_appender::rolling::never(dir, name);
+        let (writer, guard) = tracing_appender::non_blocking(appender);
+        std::mem::forget(guard);
+        tracing_subscriber::fmt::layer()
+            .with_target(true)
+            .with_ansi(false)
+            .with_writer(writer)
+    });
+
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_target(true))
+        .with(stdout_layer)
+        .with(file_layer)
         .init();
 }
 

@@ -77,6 +77,14 @@ export default defineConfig({
         // actually says when the E2E suite is red. Dial back to
         // `warn` once the import flow is green again.
         RUST_LOG: 'debug',
+        // File sink: the full tracing stream also writes here, so the
+        // GHA workflow can upload it as an artifact when E2E fails.
+        // Playwright's `sh -c` spawn of the native binary swallows
+        // stdout under some reporters; the file sink closes that gap.
+        // Local dev gets the file too — harmless, and useful when a
+        // suite flakes on your machine. See `init_tracing` in
+        // `admin-operations-rust/crates/api/src/main.rs`.
+        RUST_LOG_FILE: '/tmp/rust-api.log',
       },
     },
     {

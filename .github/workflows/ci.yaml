@@ -309,3 +309,18 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+      # Rust tracing file sink — written by the api binary when
+      # `RUST_LOG_FILE` is set (see `playwright.config.ts` webServer
+      # env). Closes the stdio-capture gap: Playwright's `sh -c` spawn
+      # of a native binary swallows stdout under some reporters, so
+      # the only reliable way to see what the Rust import handler
+      # actually did during a failed E2E run is to read it off disk.
+      - name: Upload Rust API log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-api-log
+          path: /tmp/rust-api.log
+          retention-days: 7
+          if-no-files-found: warn
