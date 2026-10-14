@@ -225,8 +225,14 @@ jobs:
       POSTGRES_DB: meals_test
       POSTGRES_HOST: localhost
       BETTER_AUTH_SECRET: ci-secret-not-used-in-prod
-      BETTER_AUTH_URL: http://localhost:5173
-      PLAYWRIGHT_BASE_URL: http://localhost:5173
+      # Must match Vite's bind port in playwright.config.ts (5174). The
+      # Vite webServer command passes `--port 5174` explicitly; if these
+      # env vars disagree, Playwright polls one port while Vite listens
+      # on another and the webServer wait times out at 180s. Better Auth
+      # also reads BETTER_AUTH_URL for its origin check — a mismatch
+      # here fails every SSR load with a CSRF error.
+      BETTER_AUTH_URL: http://localhost:5174
+      PLAYWRIGHT_BASE_URL: http://localhost:5174
       ADMIN_EMAIL: admin@test.com
       RESEND_API_KEY: re_placeholder
       EMAIL_FROM: "Meals on the Move <noreply@test.internal>"
