@@ -24,7 +24,7 @@ use domain::{ImportRowError, ImportWarning};
 use serde_json::json;
 use sqlx::PgPool;
 
-use crate::headers::{analyse, HeaderAnalysis, F_RECIPE};
+use crate::headers::{analyse, HeaderAnalysis, F_COMPANY, F_RECIPE};
 use crate::normalise::normalise_row;
 use crate::parse::{parse_workbook, Cell, ParsedWorkbook};
 use crate::validate::{validate_row, ParsedRow};
@@ -98,8 +98,18 @@ pub async fn plan_import(
     // relative to the DB round-trip we save by batching, and keeping
     // the pure entry point self-contained is worth more than
     // threading a parsed workbook through.
+    //
+    // `collect_distinct_names` MUST consult the same header alias
+    // layer (`COLUMN_MAP`) the normaliser uses — otherwise sheets
+    // whose company column is "company" / "Customer" / etc. silently
+    // produce an empty prefetch list, every lookup misses, and every
+    // row surfaces as "Company X not found in the system". The
+    // single-name path (`get_by_name` in `plan_import_pure` via the
+    // resolver) uses the normalised value regardless, so the mismatch
+    // is strictly in the batch path.
     let workbook = parse_workbook(bytes)?;
-    let (co_names, re_names) = collect_distinct_names(&workbook);
+    let analysis = analyse(&workbook.headers);
+    let (co_names, re_names) = collect_distinct_names(&workbook, &analysis);
 
     let companies_map = companies::get_many_by_name(pool, &co_names).await?;
     let recipes_map = recipes::get_many_by_name_active(pool, &re_names).await?;
@@ -111,7 +121,16 @@ pub async fn plan_import(
     plan_import_pure(bytes, created_by, &resolver)
 }
 
-/// Collect the distinct values of the Customer and Recipe columns.
+/// Collect the distinct values of the company and recipe columns.
+///
+/// The headers to read are discovered from `analysis.header_to_field`
+/// — the SAME alias layer `normalise_row` uses — so every header the
+/// normaliser accepts for F_COMPANY / F_RECIPE (`Customer`, `customer`,
+/// `company`, `Company`, …) contributes to the prefetch. Hardcoding
+/// `["Customer", "customer"]` here silently returned an empty prefetch
+/// for any sheet whose header was `company`, causing every row to
+/// surface as "Company X not found" — bypassing the resolver entirely.
+///
 /// Values are passed through verbatim (NOT trimmed) because the
 /// validator doesn't trim either — the single-name path was
 /// `get_by_name(pool, &p.company)` where `p.company` is whatever the
@@ -120,14 +139,30 @@ pub async fn plan_import(
 /// sheets with sloppy cells (see `real-client-week-3.xlsx`'s "Tuna
 /// Salad " rows). Dedup is case-insensitive via `.to_lowercase()`
 /// since the SQL `LOWER(name) = ANY($1)` filter is too.
-fn collect_distinct_names(workbook: &ParsedWorkbook) -> (Vec<String>, Vec<String>) {
+fn collect_distinct_names(
+    workbook: &ParsedWorkbook,
+    analysis: &HeaderAnalysis,
+) -> (Vec<String>, Vec<String>) {
+    // Headers (as they appear in the sheet, verbatim) whose canonical
+    // field is company / recipe. Collected once, reused per row.
+    let company_headers: Vec<&str> = analysis
+        .header_to_field
+        .iter()
+        .filter_map(|(h, f)| (*f == F_COMPANY).then_some(h.as_str()))
+        .collect();
+    let recipe_headers: Vec<&str> = analysis
+        .header_to_field
+        .iter()
+        .filter_map(|(h, f)| (*f == F_RECIPE).then_some(h.as_str()))
+        .collect();
+
     // Keyed by lowercased form, holding the first-seen raw value so
     // we send the SQL exactly what the validator will later ask for.
     let mut companies: HashMap<String, String> = HashMap::new();
     let mut recipes: HashMap<String, String> = HashMap::new();
     for row in &workbook.rows {
-        for key in ["Customer", "customer"] {
-            if let Some(Cell::String(s)) = row.get(key) {
+        for key in &company_headers {
+            if let Some(Cell::String(s)) = row.get(*key) {
                 if !s.is_empty() {
                     companies
                         .entry(s.to_lowercase())
@@ -135,8 +170,8 @@ fn collect_distinct_names(workbook: &ParsedWorkbook) -> (Vec<String>, Vec<String
                 }
             }
         }
-        for key in ["Recipe", "recipe"] {
-            if let Some(Cell::String(s)) = row.get(key) {
+        for key in &recipe_headers {
+            if let Some(Cell::String(s)) = row.get(*key) {
                 if !s.is_empty() {
                     recipes.entry(s.to_lowercase()).or_insert_with(|| s.clone());
                 }
