@@ -47,6 +47,27 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli@3
 
+      # Diagnostic: print what Railway's own CLI thinks of the token.
+      # `whoami` is a cheap no-op API call that either prints the
+      # authenticated account/project or exits with a specific error.
+      # Also prints the token's length + first/last 4 chars so we can
+      # tell paste corruption from token-type mismatch without ever
+      # logging the value itself. Remove this step once the deploy
+      # pipeline is green.
+      - name: Diagnose Railway token
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "token length: ${#RAILWAY_TOKEN}"
+          echo "first 4: ${RAILWAY_TOKEN:0:4}"
+          echo "last  4: ${RAILWAY_TOKEN: -4}"
+          echo "---"
+          echo "railway whoami:"
+          railway whoami || echo "whoami exit: $?"
+          echo "---"
+          echo "railway status (needs a linked project, may fail):"
+          railway status || echo "status exit: $?"
+
       # Project tokens in Railway CLI v3 are scoped to a SPECIFIC
       # ENVIRONMENT within a project. `railway up` defaults
       # --environment to the "linked environment" — which is empty in
