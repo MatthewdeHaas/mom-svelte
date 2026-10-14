@@ -45,42 +45,19 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Railway CLI
-        # v4 handles the newer project-token format that v3.23.0 rejects
-        # with `Unauthorized` even on freshly-minted, production-scoped
-        # tokens. Confirmed via `railway whoami` returning 401 on three
-        # separate mints in diagnostic runs 38654624233 / 38654901700 /
-        # 38655162310. The CLI change is backward-compatible for
-        # `railway up`; same flags, same `RAILWAY_TOKEN` env var.
+        # Pin v4 — v3.23.0 silently rejects the current project-token
+        # format Railway's dashboard mints, returning `Unauthorized`
+        # from `railway whoami` on freshly-minted production-scoped
+        # tokens with no useful error. v4 accepts the same tokens and
+        # the same `RAILWAY_TOKEN` env var; `railway up` flags are
+        # unchanged. Confirmed via diagnostic deploy runs
+        # 38654624233 / 38654901700 / 38655162310 (v3, all 401) vs
+        # 38655329385 (v4, both services uploaded successfully).
         run: npm install -g @railway/cli@4
 
-      # Diagnostic: print what Railway's own CLI thinks of the token.
-      # `whoami` is a cheap no-op API call that either prints the
-      # authenticated account/project or exits with a specific error.
-      # Also prints the token's length + first/last 4 chars so we can
-      # tell paste corruption from token-type mismatch without ever
-      # logging the value itself. Remove this step once the deploy
-      # pipeline is green.
-      - name: Diagnose Railway token
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          echo "token length: ${#RAILWAY_TOKEN}"
-          echo "first 4: ${RAILWAY_TOKEN:0:4}"
-          echo "last  4: ${RAILWAY_TOKEN: -4}"
-          echo "---"
-          echo "railway whoami:"
-          railway whoami || echo "whoami exit: $?"
-          echo "---"
-          echo "railway status (needs a linked project, may fail):"
-          railway status || echo "status exit: $?"
-
-      # Project tokens in Railway CLI v3 are scoped to a SPECIFIC
-      # ENVIRONMENT within a project. `railway up` defaults
-      # --environment to the "linked environment" — which is empty in
-      # CI (no `.railway/project.json` written by `railway link`), so
-      # the CLI rejects the request with "Unauthorized" even when the
-      # token itself is valid. Explicitly naming the environment
-      # closes that gap; same token, no additional secrets.
+      # `railway up` defaults --environment to the token's linked
+      # environment, which may not match in CI — passing it explicitly
+      # closes that gap. Same token, no additional secrets.
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
