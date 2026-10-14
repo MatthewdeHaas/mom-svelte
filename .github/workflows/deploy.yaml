@@ -47,10 +47,18 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli@3
 
+      # Project tokens in Railway CLI v3 are scoped to a SPECIFIC
+      # ENVIRONMENT within a project. `railway up` defaults
+      # --environment to the "linked environment" — which is empty in
+      # CI (no `.railway/project.json` written by `railway link`), so
+      # the CLI rejects the request with "Unauthorized" even when the
+      # token itself is valid. Explicitly naming the environment
+      # closes that gap; same token, no additional secrets.
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           railway up \
             --service "${{ matrix.service }}" \
+            --environment production \
             --detach
