@@ -34,7 +34,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? 'github' : 'list',
+  // `list` on both local and CI. The `github` reporter emits only
+  // `::error::` / `::notice::` annotations and silently drops
+  // webServer stdout/stderr — which hid every Rust tracing line
+  // during the import regression. The `list` reporter prefixes every
+  // webServer line with `[WebServer]` and preserves it in the job
+  // log. CI noise is a non-issue; we need the signal.
+  reporter: 'list',
 
   use: {
     baseURL: BASE_URL,
