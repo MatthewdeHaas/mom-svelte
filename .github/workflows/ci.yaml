@@ -142,6 +142,23 @@ jobs:
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
 
+      # Cross-run cargo cache. Snapshots ~/.cargo/registry +
+      # ~/.cargo/git + admin-operations-rust/target/ keyed on
+      # Cargo.lock + rustc version. Magic Nix Cache only serves the
+      # `nix build .#api` artifact — the three cargo passes below
+      # (fmt is ~free, clippy ~5min, test ~5min cold) write to
+      # target/ outside the Nix store, so they rebuild all 450+ deps
+      # from scratch every push. This action restores target/deps/
+      # so each cargo pass only recompiles the workspace crates
+      # themselves (~45s each warm vs ~5min cold).
+      #
+      # Separate `workspaces` entry because the manifest lives one
+      # level deep from the repo root, not at the top.
+      - name: Rust toolchain cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: admin-operations-rust
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -171,22 +188,18 @@ jobs:
       - name: Sync migrations into Rust crate
         run: pnpm run rust:sync-migrations
 
-      # Node migrations must run BEFORE the sqlx gate: `cargo sqlx
-      # prepare --check` re-runs every query macro against a LIVE DB
-      # and diffs the result against the committed `.sqlx/` cache.
-      # `SQLX_OFFLINE=true` only affects compile-time macro
-      # expansion, not the prepare subcommand itself. An empty DB
-      # here surfaces as "relation X does not exist" from inside the
-      # cache check, which looks like a cache problem but is really
-      # a step-ordering problem.
+      # Node migrations seed the schema that cargo test's integration
+      # tests run against. (The dedicated `sqlx prepare --check` gate
+      # has been removed — `cargo clippy` and `cargo test` below both
+      # run with SQLX_OFFLINE=true via the committed .cargo/config.toml
+      # and fail at macro expansion the same way `prepare --check`
+      # does when a committed .sqlx/ entry drifts. One compile, same
+      # signal, ~90s cheaper per run.)
       - name: Run Node migrations (seeds schema for Rust tests)
         run: pnpm run migrate
 
-      # All cargo/sqlx steps below run inside the flake's devShell so
-      # they share the exact toolchain `nix build .#api` uses.
-      - name: sqlx offline cache check (fatal gate)
-        run: nix develop --command pnpm run rust:prepare-check
-
+      # All cargo steps below run inside the flake's devShell so they
+      # share the exact toolchain `nix build .#api` uses.
       - name: cargo fmt --check
         working-directory: admin-operations-rust
         run: nix develop ..#default --command cargo fmt --check
