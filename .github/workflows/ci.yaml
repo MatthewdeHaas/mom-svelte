@@ -110,17 +110,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-          cache-workspaces: admin-operations-rust
+      # Nix Tier 2: the flake is the single source of toolchain truth
+      # for Rust (rustc, cargo, clippy, rustfmt) and sqlx-cli. No more
+      # `actions-rust-lang/setup-rust-toolchain` + `cargo install sqlx-cli`
+      # drift between local and CI.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
 
-      - name: Install sqlx-cli
-        # Pin to a concrete patch — newer cargo rejects bare `0.8`
-        # ("unexpected end of input while parsing minor version"). Match
-        # the flake's sqlx-cli 0.8.6 so CI and local resolve the same tool.
-        run: cargo install sqlx-cli --version 0.8.6 --no-default-features --features native-tls,postgres --locked
+      # Free, zero-config GHA cache for Nix store paths. First run builds
+      # cold (~5–6 min for the Rust dep layer); subsequent runs on the
+      # same lockfile hit the cache in seconds.
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -162,20 +163,22 @@ jobs:
       - name: Run Node migrations (seeds schema for Rust tests)
         run: pnpm run migrate
 
+      # All cargo/sqlx steps below run inside the flake's devShell so
+      # they share the exact toolchain `nix build .#api` uses.
       - name: sqlx offline cache check (fatal gate)
-        run: pnpm run rust:prepare-check
+        run: nix develop --command pnpm run rust:prepare-check
 
       - name: cargo fmt --check
         working-directory: admin-operations-rust
-        run: cargo fmt --check
+        run: nix develop ..#default --command cargo fmt --check
 
       - name: cargo clippy -D warnings
         working-directory: admin-operations-rust
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: nix develop ..#default --command cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo test --workspace
         working-directory: admin-operations-rust
-        run: cargo test --workspace
+        run: nix develop ..#default --command cargo test --workspace
 
   e2e:
     name: E2E Tests
@@ -224,11 +227,15 @@ jobs:
           version: 10
           run_install: false
 
-      - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-          cache-workspaces: admin-operations-rust
+      # Nix Tier 2: build the Rust API via `nix build .#api` instead of
+      # `cargo build --release`. The flake pins toolchain, deps,
+      # sqlx-cli — all the knobs that previously drifted between a
+      # local dev loop and this runner.
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Get pnpm store directory
         id: pnpm-cache
@@ -276,15 +283,21 @@ jobs:
       - name: Stamp sqlx migration ledger
         run: pnpm run migrate:backfill-sqlx
 
-      # Pre-build the Rust API binary. Playwright's `webServer` block in
-      # `playwright.config.ts` spawns `./admin-operations-rust/target/release/api`
-      # directly, and Playwright starts webServers BEFORE running globalSetup —
-      # so the binary must exist on disk when the webServer command fires.
-      # `global-setup.ts` also runs `cargo build --release -p api` for local
-      # first-run ergonomics; in CI that call becomes a cheap cache hit.
-      - name: Build Rust API (release)
-        working-directory: admin-operations-rust
-        run: cargo build --release -p api
+      # Build the Rust API via Nix, then copy the result into the path
+      # Playwright's `webServer` block in `playwright.config.ts` expects
+      # (`./admin-operations-rust/target/release/api`). Playwright starts
+      # webServers BEFORE globalSetup — the binary must exist on disk
+      # when the webServer command fires.
+      #
+      # The copy is cheap (one 12 MB file) and keeps the Playwright
+      # config path-stable, so local dev (`cargo build --release`) and
+      # CI (`nix build`) land the binary in the same place.
+      - name: Build Rust API via Nix
+        run: |
+          nix build .#api --print-build-logs
+          mkdir -p admin-operations-rust/target/release
+          cp result/bin/api admin-operations-rust/target/release/api
+          chmod +w admin-operations-rust/target/release/api
 
       - name: Run E2E tests
         run: pnpm run test:e2e
