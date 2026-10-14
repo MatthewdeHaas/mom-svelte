@@ -110,6 +110,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # ubuntu-latest ships with ~14 GB free. The Nix store (dep layer
+      # ~5–6 GB) + the cargo test `target/` dir (~4–5 GB with every
+      # workspace test binary in debug mode) + apt caches blow past
+      # that on first cold run — the runner's own worker fails to
+      # write its diagnostic log and the job dies before step logs
+      # upload (seen in run 38630081642). This step removes dotnet,
+      # Haskell, Android SDK, hostedtoolcache (~30 GB reclaimed in
+      # ~60s). Required until the Nix cache is warm enough that we
+      # don't need both deps-in-store AND deps-in-target coexisting.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+
       # Nix Tier 2: the flake is the single source of toolchain truth
       # for Rust (rustc, cargo, clippy, rustfmt) and sqlx-cli. No more
       # `actions-rust-lang/setup-rust-toolchain` + `cargo install sqlx-cli`
@@ -215,6 +234,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      # Same disk reclamation as `rust-ci` — Nix store + release target
+      # + Playwright browser cache + pnpm store together exceed the
+      # ~14 GB free `ubuntu-latest` ships with.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
 
       - name: Setup Node
         uses: actions/setup-node@v6
