@@ -1,31 +1,12 @@
 services:
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    restart: unless-stopped
-    ports:
-      - "5173:5173"
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: http://localhost:5173
-      RUST_API_URL: http://rust-api:8080
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
-    volumes:
-      - .:/app
-      - /app/node_modules
-    depends_on:
-      db:
-        condition: service_healthy
-      rust-api:
-        condition: service_started
-
   # Rust API — see admin-operations-rust/README.md.
   # Build context is the repo root so the Dockerfile can COPY the
   # canonical `scripts/migrations/` directory into the crate.
+  #
+  # SvelteKit runs on the host via `pnpm dev`, mirroring CI (which also
+  # runs `pnpm dev` on the GHA runner, not in a container). The former
+  # `web` container has been removed — docker-compose exists only to
+  # back the Rust API + Postgres, so local and CI shapes match.
   rust-api:
     build:
       context: .
@@ -43,7 +24,7 @@ services:
         condition: service_healthy
 
   db:
-    image: postgres:17
+    image: postgres:18
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -52,7 +33,12 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # postgres:18+ stores data under /var/lib/postgresql/<major>/docker/,
+      # not /var/lib/postgresql/data as 17 and earlier did. Mount the
+      # parent directory so the image's own layout logic owns the
+      # version-specific subdir — this is also what the postgres image
+      # docs recommend for pg_upgrade --link to work across majors later.
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s

@@ -80,10 +80,20 @@ export default defineConfig({
       },
     },
     {
-      command: 'pnpm run dev -- --port 5174',
+      // Invoke vite directly: `pnpm run dev -- --port 5174` expands to
+      // `vite dev -- --port 5174`, where the `--` makes `--port 5174`
+      // positional args that Vite silently ignores — it then binds the
+      // default 5173 and Playwright waits on 5174 forever. Going through
+      // `pnpm exec` bypasses the script layer so flags reach Vite.
+      command: 'pnpm exec vite dev --port 5174',
       url: BASE_URL,
       reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      // 180s: Vite's cold start on a Mac with a loaded dev loop (editor,
+      // daemons, pnpm cache miss) can exceed 60s, especially when port
+      // 5174 is briefly contested and Vite falls through to 5175. CI
+      // runners are fresh VMs so this never bites there — but a shared
+      // ceiling that works for both envs beats splitting the config.
+      timeout: 180_000,
       env: {
         // Forward the same env vars the integration tests use
         POSTGRES_USER,
