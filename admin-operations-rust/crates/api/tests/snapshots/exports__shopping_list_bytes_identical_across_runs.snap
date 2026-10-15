@@ -1,0 +1,5 @@
+---
+source: crates/api/tests/exports.rs
+expression: sha256_hex(&a)
+---
+959f58d6edf41655c73b3d3e1477df6f2fdd0cf3006afafae754bab6842a7276

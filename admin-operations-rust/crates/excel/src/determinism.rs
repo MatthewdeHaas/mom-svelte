@@ -134,6 +134,40 @@ mod tests {
         assert_eq!(a, b, "pinned xlsx bytes must be byte-identical");
     }
 
+    /// Structural snapshot of the pinned ZIP — sorted
+    /// `(name, size, crc32)` tuples. The hard byte-equality assert in
+    /// `pins_bytes_across_runs` fails first on any drift; this
+    /// snapshot runs after it and gives a reviewable diff of what
+    /// structurally changed (new entry? different compressed size?
+    /// crc flipped?) instead of an unreadable byte-array dump. Run
+    /// `cargo insta review` to accept intentional changes.
+    #[test]
+    fn snapshot_pinned_zip_structure() {
+        let mut seed: Vec<u8> = Vec::new();
+        {
+            let cursor = Cursor::new(&mut seed);
+            let mut w = ZipWriter::new(cursor);
+            let opts: FileOptions = FileOptions::default()
+                .compression_method(CompressionMethod::Deflated)
+                .compression_level(Some(6))
+                .last_modified_time(DateTime::from_date_and_time(2024, 6, 1, 12, 0, 0).unwrap());
+            w.start_file("hello.txt", opts).unwrap();
+            w.write_all(b"world").unwrap();
+            w.finish().unwrap();
+        }
+
+        let pinned = pin_xlsx_bytes(seed).unwrap();
+        let mut archive = ZipArchive::new(Cursor::new(pinned)).unwrap();
+        let mut entries: Vec<(String, u64, u32)> = (0..archive.len())
+            .map(|i| {
+                let e = archive.by_index(i).unwrap();
+                (e.name().to_string(), e.size(), e.crc32())
+            })
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        insta::assert_yaml_snapshot!(entries);
+    }
+
     /// Scrubs the "Unknown" strings when they land in `docProps/core.xml`.
     #[test]
     fn scrubs_unknown_in_core_xml() {

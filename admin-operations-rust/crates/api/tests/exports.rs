@@ -275,6 +275,11 @@ async fn production_order_bytes_identical_across_runs(pool: PgPool) {
         sha256_hex(&b),
         "production-order bytes must be identical across runs"
     );
+    // Pin the exact digest so a change-of-content (new column, header
+    // tweak, number format shift) shows up as a reviewable diff
+    // rather than a silent pass of the within-run equality above.
+    // `cargo insta review` to accept.
+    insta::assert_snapshot!(sha256_hex(&a));
 
     server.stop().await;
 }
@@ -356,6 +361,7 @@ async fn shopping_list_bytes_identical_across_runs(pool: PgPool) {
         sha256_hex(&b),
         "shopping-list bytes must be identical across runs"
     );
+    insta::assert_snapshot!(sha256_hex(&a));
 
     server.stop().await;
 }
@@ -515,6 +521,7 @@ async fn packing_slips_single_bytes_identical_across_runs(pool: PgPool) {
         sha256_hex(&b),
         "single-slip pdf bytes must be identical across runs"
     );
+    insta::assert_snapshot!(sha256_hex(&a));
 
     server.stop().await;
 }
@@ -537,6 +544,7 @@ async fn packing_slips_multi_bytes_identical_across_runs(pool: PgPool) {
         sha256_hex(&b),
         "multi-slip zip bytes must be identical across runs"
     );
+    insta::assert_snapshot!(sha256_hex(&a));
 
     server.stop().await;
 }
