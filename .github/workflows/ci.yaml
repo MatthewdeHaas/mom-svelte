@@ -431,19 +431,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # Same disk reclamation as `rust-ci` — Nix store + release target
-      # + Playwright browser cache + pnpm store together exceed the
-      # ~14 GB free `ubuntu-latest` ships with.
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: false
-          swap-storage: false
-
+      # Previously ran `jlumbroso/free-disk-space@main` here (~1m54s) to
+      # make room for a local `nix build .#api`. Since `build-api` now
+      # produces the binary as a 12 MB GHA artifact that this job
+      # downloads, the headroom isn't needed — pnpm store + Playwright
+      # browsers + Postgres service fit comfortably in `ubuntu-latest`'s
+      # default ~14 GB free.
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
