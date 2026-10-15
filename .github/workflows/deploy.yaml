@@ -1,19 +1,26 @@
 name: Deploy
 
-# Two-service Railway deploy, triggered after CI succeeds on main.
+# Two-service Railway deploy. Triggered after CI (which includes the
+# GHCR publish jobs on main) succeeds.
 #
-# Secrets live in Railway's dashboard (per-service). Edit them there.
-# This workflow does NOT push secrets — it only triggers builds. A
-# secret set on `mom-svelte` is natively invisible to `Rust-API` and
-# vice versa, so Railway's per-service env is the blast-radius bound.
+# How this works post-GHCR migration:
+#   1. CI builds + verifies both services.
+#   2. On push to main, CI's `build-rust-image` and `build-svelte-image`
+#      jobs push `:latest` + `:<sha>` to GHCR.
+#   3. This workflow fires on the completed CI run, authenticates to
+#      Railway with a project-scoped token, and asks Railway to
+#      re-pull the `:latest` image for each service.
+#
+# Railway services are configured (per-service dashboard) to pull from:
+#   - mom-svelte  -> ghcr.io/matthewdehaas/mom-svelte:latest
+#   - Rust-API    -> ghcr.io/matthewdehaas/mom-rust-api:latest
+#
+# No `railway up` / build-from-source anywhere in prod. The exact
+# binary CI verified is the one that runs. Rollback = flip the service
+# to pull `:<previous-sha>` from the dashboard, or push a revert PR.
 #
 # Required GitHub secrets:
-#   - RAILWAY_TOKEN  project-scoped Railway token
-#
-# (We previously fetched secrets from Infisical here and pushed them
-#  via `railway variables --set`. Removed 2026-10-09 — one deployer,
-#  one env, nine secrets; the coupling wasn't worth the moving part.
-#  See docs/track-4a-summary.md for the historical note.)
+#   - RAILWAY_TOKEN  project-scoped Railway token (v4 CLI format)
 
 on:
   workflow_run:
@@ -41,28 +48,22 @@ jobs:
         service: [mom-svelte, Rust-API]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
       - name: Install Railway CLI
         # Pin v4 — v3.23.0 silently rejects the current project-token
         # format Railway's dashboard mints, returning `Unauthorized`
-        # from `railway whoami` on freshly-minted production-scoped
-        # tokens with no useful error. v4 accepts the same tokens and
-        # the same `RAILWAY_TOKEN` env var; `railway up` flags are
-        # unchanged. Confirmed via diagnostic deploy runs
-        # 38654624233 / 38654901700 / 38655162310 (v3, all 401) vs
-        # 38655329385 (v4, both services uploaded successfully).
+        # from `railway whoami` with no useful error. v4 accepts the
+        # same `RAILWAY_TOKEN` env var and supports `redeploy`.
         run: npm install -g @railway/cli@4
 
-      # `railway up` defaults --environment to the token's linked
-      # environment, which may not match in CI — passing it explicitly
-      # closes that gap. Same token, no additional secrets.
-      - name: Deploy to Railway
+      # `railway redeploy` tells Railway to re-pull the configured
+      # image for the service. No source upload, no build on Railway's
+      # side — just "fetch the latest tag and swap the running
+      # container". The GHCR tag is set in the Railway dashboard.
+      - name: Trigger Railway redeploy
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          railway up \
+          railway redeploy \
             --service "${{ matrix.service }}" \
             --environment production \
-            --detach
+            --yes

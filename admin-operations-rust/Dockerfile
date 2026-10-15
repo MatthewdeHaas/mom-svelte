@@ -1,60 +1,37 @@
-# Multi-stage build for the Rust API service.
+# Runtime-only Dockerfile for the Rust API.
 #
-# Stage 1 builds a release binary against the full workspace. Stage 2
-# ships a thin Debian base with just the binary and the shared libs it
-# needs (openssl is replaced by rustls, so we only need libgcc/libssl's
-# tls transitive — which Debian slim already has).
+# No builder stage. The binary is produced by `nix build .#api` in CI
+# (see `.github/workflows/ci.yaml::build-rust-image`) and copied into
+# the build context before `docker build` runs. This file's job is to
+# wrap that single binary in a minimal Debian base with the libs it
+# links against, a non-root user, and the right env defaults.
 #
-# Migrations are COPIED (not symlinked) into the crate's `migrations/`
-# directory *before* `cargo build` so `sqlx::migrate!` embeds them at
-# compile time. A symlink pointing out of the build context would make
-# the macro see an empty directory and emit a no-op migrator.
+# Why no builder stage: toolchain drift between Railway's Docker
+# builder (previously `rust:1.80-slim-bookworm`) and the flake
+# (`rust-bin.stable.latest`) silently produced different binaries,
+# including sqlx offline-cache mismatches. GHCR-as-artifact-of-record
+# means the exact binary CI verified is the one Railway runs.
+#
+# Expected build context: repo root. Expected pre-copied artifact:
+# `./admin-operations-rust/target/release/api` (populated by CI from
+# `result/bin/api`).
 
-# ---------- Builder ----------
-FROM rust:1.80-slim-bookworm AS builder
+FROM debian:bookworm-slim
 
-WORKDIR /app
-
-# Native deps the crates need to build:
-# - pkg-config for calamine/printpdf transitive feature probes
-# - libssl-dev is unused at runtime (we pick rustls) but a few build
-#   scripts still probe for it; keeping it avoids future surprises
+# ca-certificates for outbound HTTPS (Resend, S3, etc.); libgcc +
+# libstdc++ come with the base image. The Nix-built binary is
+# dynamically linked against glibc — bookworm-slim matches the
+# nixpkgs-unstable glibc ABI the flake builds against.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        pkg-config \
-        libssl-dev \
-        ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy manifests first so changing a .rs file doesn't bust the
-# dependency-build layer.
-COPY admin-operations-rust/Cargo.toml admin-operations-rust/rust-toolchain.toml ./
-COPY admin-operations-rust/crates ./crates
-
-# Real copy of migrations into the crate so `sqlx::migrate!` finds them.
-# `scripts/migrations/` is the source of truth; `.gitignore` excludes
-# the destination so the two never two-way-diff.
-COPY scripts/migrations ./migrations
-
-# Build the release binary. `--locked` would be ideal but we don't
-# commit Cargo.lock during scaffold; add once the lockfile stabilises.
-RUN cargo build --release --bin api
-
-# ---------- Runtime ----------
-FROM debian:bookworm-slim AS runtime
 
 # Non-root user — Railway doesn't require it, but a stray `rm -rf /`
 # in a bug is cheaper to shrug off as uid 1000.
 RUN groupadd --system app && useradd --system --gid app --uid 1000 app
 
-# ca-certificates for outbound HTTPS (if we ever call Resend / S3);
-# libgcc / libstdc++ come with the base image.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates bash \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
-COPY --from=builder /app/target/release/api /usr/local/bin/api
+COPY admin-operations-rust/target/release/api /usr/local/bin/api
 
 USER app
 

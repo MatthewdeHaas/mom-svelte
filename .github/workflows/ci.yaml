@@ -3,8 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+    # Deploy-only changes (deploy.yaml, handoff docs) don't need the
+    # full CI pipeline — deploy.yaml itself is validated by GitHub's
+    # workflow parser on push, and the handoff doc is prose. Keeps a
+    # pure deploy-step tweak from costing a 20+ min CI cycle. CI is
+    # still exhaustive on any code or workflow-logic change.
+    paths-ignore:
+      - '.github/workflows/deploy.yaml'
+      - 'docs/**'
+      - '**.md'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '.github/workflows/deploy.yaml'
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 jobs:
@@ -375,3 +388,140 @@ jobs:
           path: /tmp/rust-api.log
           retention-days: 7
           if-no-files-found: warn
+
+  # ---------------------------------------------------------------
+  # GHCR publish jobs.
+  #
+  # Both run only on push to main, after their respective gates are
+  # green. The result is two tags per service:
+  #   - :latest   — moved on every main push
+  #   - :<sha>    — immutable, for rollback via `railway redeploy`
+  #
+  # Railway is configured (dashboard, per service) to pull from
+  # ghcr.io/matthewdehaas/<name>:latest. `deploy.yaml` just kicks
+  # Railway to re-pull after the push lands.
+  #
+  # Retention: GHCR free tier caps storage; we keep the 10 most
+  # recent SHA-tagged versions per package and prune the rest. The
+  # `:latest` tag is preserved because `actions/delete-package-versions`
+  # with `delete-only-untagged-versions: false` + `min-versions-to-keep`
+  # keeps the newest N regardless of tag — `:latest` always points at
+  # the most recent push, so it survives.
+  # ---------------------------------------------------------------
+
+  build-rust-image:
+    name: Build & push Rust API image
+    runs-on: ubuntu-latest
+    needs: [rust-ci, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # Reproduce the exact binary CI's `e2e` job verified.
+      - name: Build Rust API via Nix
+        run: |
+          nix build .#api --print-build-logs
+          mkdir -p admin-operations-rust/target/release
+          cp result/bin/api admin-operations-rust/target/release/api
+          chmod +w admin-operations-rust/target/release/api
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: admin-operations-rust/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/matthewdehaas/mom-rust-api:latest
+            ghcr.io/matthewdehaas/mom-rust-api:${{ github.sha }}
+          # Workflow-scoped buildx cache. Dockerfile is already
+          # runtime-only (one COPY of a pre-built binary) so warm
+          # builds are seconds; this just keeps the base image layers
+          # pinned between runs.
+          cache-from: type=gha,scope=rust-image
+          cache-to: type=gha,mode=max,scope=rust-image
+
+      # Keep the newest 10 versions of this package; delete the rest.
+      # :latest moved to the just-pushed version in the step above, so
+      # it's always among the kept 10. Older :<sha> tags fall off.
+      - name: Prune old GHCR versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: mom-rust-api
+          package-type: container
+          min-versions-to-keep: 10
+          delete-only-untagged-versions: false
+
+  build-svelte-image:
+    name: Build & push SvelteKit image
+    runs-on: ubuntu-latest
+    needs: [ci]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ghcr.io/matthewdehaas/mom-svelte:latest
+            ghcr.io/matthewdehaas/mom-svelte:${{ github.sha }}
+          cache-from: type=gha,scope=svelte-image
+          cache-to: type=gha,mode=max,scope=svelte-image
+
+      - name: Prune old GHCR versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: mom-svelte
+          package-type: container
+          min-versions-to-keep: 10
+          delete-only-untagged-versions: false

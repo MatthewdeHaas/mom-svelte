@@ -1,12 +1,20 @@
-[build]
-builder = "nixpacks"
+# Railway service config for `mom-svelte`.
+#
+# The image is pulled from GHCR, not built on Railway. See
+# `.github/workflows/ci.yaml::build-svelte-image` for the publish job
+# and `.github/workflows/deploy.yaml` for the redeploy trigger.
+#
+# NOTE: Railway's dashboard "Source" setting must be set to
+# `ghcr.io/matthewdehaas/mom-svelte:latest` for this file to take
+# effect. Without that flip, Railway falls back to its default source
+# (nixpacks) and silently ignores a missing [build] section.
 
 [deploy]
-# Track 4a: `/` returns 200 even when the DB is down; `/healthz`
-# runs a 500ms `SELECT 1` and 503s on failure. See
-# src/routes/healthz/+server.ts. `/healthz/deep` is deliberately
-# NOT the probe target — coupling liveness to the Rust service
-# would cause cascading restarts whenever Rust cycles.
+# `/` returns 200 even when the DB is down; `/healthz` runs a 500ms
+# `SELECT 1` and 503s on failure. See src/routes/healthz/+server.ts.
+# `/healthz/deep` is deliberately NOT the probe target — coupling
+# liveness to the Rust service would cause cascading restarts
+# whenever Rust cycles.
 healthcheckPath = "/healthz"
 healthcheckTimeout = 120
 restartPolicyType = "on_failure"
