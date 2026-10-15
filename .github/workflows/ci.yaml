@@ -568,7 +568,7 @@ jobs:
   build-rust-image:
     name: Build & push Rust API image
     runs-on: ubuntu-latest
-    needs: [rust-ci, e2e]
+    needs: [rust-ci, e2e, build-api]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
@@ -578,29 +578,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
+      # Consume the exact binary that `build-api` produced and `e2e`
+      # verified — same bytes end-to-end. The Dockerfile is runtime-only
+      # (single COPY of a pre-built binary); it expects the binary at
+      # `admin-operations-rust/target/release/api`.
+      #
+      # Previously this job ran its own `nix build .#api`, duplicating
+      # the ~5min cold compile that `build-api` already pays. Switching
+      # to the artifact removes that duplication and — more importantly —
+      # guarantees the GHCR image bytes are byte-identical to what
+      # `e2e` ran against. If e2e passes but the deployed container
+      # fails, we no longer have "which binary?" as a possible answer.
+      - name: Download Rust API binary
+        uses: actions/download-artifact@v4
         with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: false
-          swap-storage: false
+          name: rust-api-binary
+          path: admin-operations-rust/target/release
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
-
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
-
-      # Reproduce the exact binary CI's `e2e` job verified.
-      - name: Build Rust API via Nix
-        run: |
-          nix build .#api --print-build-logs
-          mkdir -p admin-operations-rust/target/release
-          cp result/bin/api admin-operations-rust/target/release/api
-          chmod +w admin-operations-rust/target/release/api
+      - name: Make binary executable
+        run: chmod +x admin-operations-rust/target/release/api
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
