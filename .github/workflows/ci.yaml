@@ -261,8 +261,17 @@ jobs:
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Build Rust API via Nix
-        run: nix build .#api --print-build-logs
+      # Build the static-musl variant (`.#api-static`), not the
+      # default glibc variant. The glibc build links against Nix's
+      # own ld-linux loader via an ELF interpreter path pointing
+      # into `/nix/store/...`; that path doesn't exist on stock
+      # ubuntu-latest, so Playwright's webServer exec of the binary
+      # ENOENTs with exit 127 ("not found") during E2E. The static
+      # variant has no interpreter and runs anywhere. The Rust side
+      # is already pure-rustls (sqlx `tls-rustls`, reqwest
+      # `rustls-tls`), so musl is safe — no runtime openssl needed.
+      - name: Build Rust API (static-musl) via Nix
+        run: nix build .#api-static --print-build-logs
 
       # `result/bin/api` is a symlink into the Nix store. upload-artifact
       # follows symlinks when `path:` points at the file directly, but
@@ -323,13 +332,58 @@ jobs:
           shared-key: unit
           cache-on-failure: true
 
-      - name: cargo test --lib (pure crates)
-        working-directory: admin-operations-rust
-        run: nix develop ..#default --command cargo test -p excel -p pdf -p domain --lib
+      # `crates/db` uses `sqlx::migrate!("./../../migrations")`, a
+      # compile-time macro that canonicalizes the directory at macro
+      # expansion. Even though these pure unit tests never touch the
+      # DB, `cargo test -p excel` compiles the `db` crate as a
+      # transitive dep (via `domain` → `db`), so the macro fires and
+      # fails without the migrations directory present. The sync
+      # script copies `scripts/migrations/*` into
+      # `admin-operations-rust/migrations/` (gitignored). Mirrors the
+      # Node + pnpm + install + sync-migrations block `rust-ci` uses.
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
 
-      - name: cargo test --test emit (flags-tui pure integration)
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync migrations into Rust crate
+        run: pnpm run rust:sync-migrations
+
+      # `cargo nextest run` instead of `cargo test`: parallel execution
+      # and far more readable failure output. Byte-equality asserts in
+      # `determinism.rs` previously dumped unreadable `Vec<u8>` under
+      # `cargo test` — nextest formats them, groups per-test, and
+      # surfaces timing. Skips doctests by design; the pure crates
+      # have none, so no coverage loss. `cargo-nextest` is provided by
+      # the flake's devShell.
+      - name: cargo nextest (pure crates)
         working-directory: admin-operations-rust
-        run: nix develop ..#default --command cargo test -p flags-tui --test emit
+        run: nix develop ..#default --command cargo nextest run -p excel -p pdf -p domain --lib
+
+      - name: cargo nextest --test emit (flags-tui pure integration)
+        working-directory: admin-operations-rust
+        run: nix develop ..#default --command cargo nextest run -p flags-tui --test emit
 
   e2e:
     name: E2E Tests
