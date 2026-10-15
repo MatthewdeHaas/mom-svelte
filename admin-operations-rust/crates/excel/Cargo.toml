@@ -62,3 +62,9 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # (targets `plan_import_pure` with a HashMap resolver), so no sqlx
 # dev-dep required here.
 proptest.workspace = true
+
+# Snapshot test for the determinism pass. The byte-equality assert in
+# `pins_bytes_across_runs` fails with unreadable byte-array diffs; the
+# sibling snapshot test logs the ZIP's structural shape (sorted
+# name/size/crc32 tuples) so a drift explains itself.
+insta.workspace = true

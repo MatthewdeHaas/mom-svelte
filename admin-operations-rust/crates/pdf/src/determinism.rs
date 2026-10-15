@@ -156,11 +156,17 @@ mod tests {
         assert!(out.contains(&format!(
             "<xmpMM:InstanceID>uuid:{PINNED_INSTANCE_ID}</xmpMM:InstanceID>"
         )));
+        // Pin the full scrubbed output so a change to the pinning
+        // scheme (new placeholder, different tag shape) shows up as a
+        // reviewable diff rather than silently flipping the boolean
+        // assert above. `cargo insta review` to accept.
+        insta::assert_snapshot!(out);
     }
 
     #[test]
     fn scrub_is_a_noop_when_tag_absent() {
         let xml = "<some><other/></some>".to_string();
         assert_eq!(scrub_xmp_instance_id(&xml), xml);
+        insta::assert_snapshot!(scrub_xmp_instance_id(&xml));
     }
 }

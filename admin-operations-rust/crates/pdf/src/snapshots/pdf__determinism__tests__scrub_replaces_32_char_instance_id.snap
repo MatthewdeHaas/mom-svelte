@@ -1,0 +1,5 @@
+---
+source: crates/pdf/src/determinism.rs
+expression: out
+---
+<xmpMM:InstanceID>uuid:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</xmpMM:InstanceID>

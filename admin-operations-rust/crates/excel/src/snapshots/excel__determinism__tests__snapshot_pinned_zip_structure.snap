@@ -1,0 +1,7 @@
+---
+source: crates/excel/src/determinism.rs
+expression: entries
+---
+- - hello.txt
+  - 5
+  - 980881731

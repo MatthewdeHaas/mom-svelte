@@ -21,6 +21,28 @@
         };
         craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
+        # Static-musl toolchain for the GHA artifact. The default `api`
+        # derivation above is dynamically-linked against glibc AND
+        # against Nix's own ld-linux loader (ELF interpreter path points
+        # into `/nix/store/...`). That's fine for Docker images built
+        # FROM a Nix store (`build-rust-image`), but it blows up on
+        # stock `ubuntu-latest`: when Playwright's webServer exec's the
+        # binary, the kernel can't find the interpreter and returns
+        # ENOENT ("not found", exit 127) — exactly what the e2e failure
+        # on PR #2 saw. A fully-static musl build has NO interpreter
+        # (statically-linked ELFs skip the dynamic loader entirely) and
+        # runs on any Linux kernel.
+        #
+        # Safe because the whole Rust side is already pure-rustls — sqlx
+        # uses `tls-rustls`, reqwest uses `rustls-tls`, so no runtime
+        # openssl needed. musl's allocator is slower than glibc's; for
+        # a short-lived E2E webServer that's irrelevant.
+        rustToolchainStatic = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [ "rust-src" ];
+          targets = [ "x86_64-unknown-linux-musl" ];
+        };
+        craneLibStatic = (crane.mkLib pkgs).overrideToolchain rustToolchainStatic;
+
         # Build root: the Rust workspace staged ALONGSIDE the repo's
         # `static/` directory, because `crates/pdf/src/packing_slip.rs`
         # has `include_str!("../../../../static/mom-logo.svg")` — that's
@@ -123,10 +145,52 @@
           # which is a CI-step concern, not a build-step concern.
           doCheck = false;
         });
+
+        # Static-musl variant of commonArgs. Only the GHA artifact path
+        # needs it; `nix build .#api` on the Docker-image path keeps
+        # using the glibc variant because the final image is a Nix
+        # closure anyway (loader + libs come along).
+        commonArgsStatic = commonArgs // {
+          CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
+          # Fully-static: no dynamic linker reference in the ELF, no
+          # dependence on the host's libc. Required for the binary to
+          # run on stock ubuntu-latest where the Nix store doesn't
+          # exist (so Nix's `/nix/store/.../ld-linux-x86-64.so.2`
+          # interpreter path would ENOENT).
+          CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+          # `pkg-config + openssl` from commonArgs are only used for
+          # build.rs probes; nothing links against them at runtime
+          # (rustls everywhere). musl build still probes them, so
+          # keep the inputs.
+        };
+
+        cargoArtifactsStatic = craneLibStatic.buildDepsOnly (commonArgsStatic // {
+          pname = "mom-rust-deps-static";
+          cargoExtraArgs = "--workspace --locked";
+        });
+
+        api-static = craneLibStatic.buildPackage (commonArgsStatic // {
+          cargoArtifacts = cargoArtifactsStatic;
+          pname = "api-static";
+          cargoExtraArgs = "-p api --locked";
+          doCheck = false;
+          # When CARGO_BUILD_TARGET is set, cargo writes the binary to
+          # `target/x86_64-unknown-linux-musl/release/api` instead of
+          # the usual `target/release/api`. Crane's default install
+          # step reads from `target/release`; override to grab the
+          # musl path. Produces `$out/bin/api` just like the glibc
+          # variant, so consumers don't need to know which flavour
+          # they got.
+          installPhaseCommand = ''
+            mkdir -p $out/bin
+            cp target/x86_64-unknown-linux-musl/release/api $out/bin/api
+          '';
+        });
       in
       {
         packages = {
           api = api;
+          api-static = api-static;
           default = api;
         };
 
@@ -151,6 +215,12 @@
             # Railway's per-service dashboard (no vault — see
             # docs/ops.md § Secrets).
             pkgs.railway
+            # Parallel test runner used by `cargo nextest run` in the
+            # rust-unit CI job (and locally). Nicer failure output than
+            # `cargo test` for the byte-equality asserts in
+            # `determinism.rs`. Keeps `cargo test` available for the
+            # doctest path and for anyone preferring it.
+            pkgs.cargo-nextest
           ];
 
           shellHook = ''

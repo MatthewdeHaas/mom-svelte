@@ -1,0 +1,5 @@
+---
+source: crates/pdf/src/determinism.rs
+expression: scrub_xmp_instance_id(&xml)
+---
+<some><other/></some>
