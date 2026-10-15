@@ -1,11 +1,14 @@
-[build]
-builder = "dockerfile"
-# Build context is the repo root (one level up) so the Dockerfile
-# can `COPY scripts/migrations ./migrations` — sqlx::migrate! embeds
-# the migration bytes at compile time, so the directory must exist
-# inside the build context, not as a symlink out of it.
-buildContext = ".."
-dockerfilePath = "admin-operations-rust/Dockerfile"
+# Railway service config for `Rust-API`.
+#
+# The image is pulled from GHCR, not built on Railway. See
+# `.github/workflows/ci.yaml::build-rust-image` for the publish job
+# and `.github/workflows/deploy.yaml` for the redeploy trigger.
+#
+# NOTE: Railway's dashboard "Source" setting must be set to
+# `ghcr.io/matthewdehaas/mom-rust-api:latest` for this file to take
+# effect. Without that flip, Railway falls back to building the local
+# Dockerfile — which produced the toolchain-drift class of bugs
+# (sqlx offline-cache mismatches) that this migration eliminates.
 
 [deploy]
 # Rust `/healthz` runs a 500ms DB ping (see
