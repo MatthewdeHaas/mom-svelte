@@ -1,0 +1,27 @@
+name: Probe Railway
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Try `me` query
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "=== me query ==="
+          curl -sS -X POST https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"{ me { id email teams { edges { node { id name projects { edges { node { id name services { edges { node { id name } } } environments { edges { node { id name } } } } } } } } } projects { edges { node { id name services { edges { node { id name } } } environments { edges { node { id name } } } } } } } }"}' \
+            | jq '.'
+
+          echo "=== projects query (direct) ==="
+          curl -sS -X POST https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"query":"{ projects { edges { node { id name services { edges { node { id name } } } environments { edges { node { id name } } } } } } }"}' \
+            | jq '.'
