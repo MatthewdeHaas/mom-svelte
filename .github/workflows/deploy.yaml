@@ -7,20 +7,35 @@ name: Deploy
 #   1. CI builds + verifies both services.
 #   2. On push to main, CI's `build-rust-image` and `build-svelte-image`
 #      jobs push `:latest` + `:<sha>` to GHCR.
-#   3. This workflow fires on the completed CI run, authenticates to
-#      Railway with a project-scoped token, and asks Railway to
-#      re-pull the `:latest` image for each service.
+#   3. This workflow fires on the completed CI run. It then:
+#      a. Queries Railway's GraphQL API with the project-scoped token
+#         to resolve the service ID and verify / force-set the
+#         service's source to the GHCR image URL. This bypasses
+#         Railway's dashboard-state entirely — the mutation is the
+#         source of truth for what gets pulled.
+#      b. Calls `railway redeploy` to trigger the actual swap.
 #
-# Railway services are configured (per-service dashboard) to pull from:
-#   - mom-svelte  -> ghcr.io/matthewdehaas/mom-svelte:latest
-#   - Rust-API    -> ghcr.io/matthewdehaas/mom-rust-api:latest
+# Why force-set source via GraphQL on every deploy:
+#   Railway's dashboard-only wiring kept failing with "unable to
+#   connect to the registry" even after the Source field was manually
+#   flipped to the ghcr.io URL and the GHCR package was verified
+#   public (anonymous Bearer-token manifest fetch works). The
+#   hypothesis was that the dashboard save wasn't persisting the
+#   source config, OR Railway's pull-cache held a stale credential
+#   reference from the pre-flip Dockerfile source. Calling
+#   `serviceInstanceUpdate` with the image URL on every deploy makes
+#   the source config idempotent — the YAML in this repo is now the
+#   source of truth, and dashboard drift can't accumulate.
 #
 # No `railway up` / build-from-source anywhere in prod. The exact
-# binary CI verified is the one that runs. Rollback = flip the service
-# to pull `:<previous-sha>` from the dashboard, or push a revert PR.
+# binary CI verified is the one that runs. Rollback = push a revert
+# PR (CI republishes :latest from the reverted commit).
 #
 # Required GitHub secrets:
-#   - RAILWAY_TOKEN  project-scoped Railway token (v4 CLI format)
+#   - RAILWAY_TOKEN  project-scoped Railway token (v4 CLI format).
+#                    The token identifies both the project and the
+#                    environment it was minted for — the GraphQL step
+#                    uses `projectToken` to self-resolve those.
 
 on:
   workflow_run:
@@ -45,7 +60,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [mom-svelte, Rust-API]
+        include:
+          - service: mom-svelte
+            image: ghcr.io/matthewdehaas/mom-svelte:latest
+          - service: Rust-API
+            image: ghcr.io/matthewdehaas/mom-rust-api:latest
 
     steps:
       - name: Install Railway CLI
@@ -55,10 +74,101 @@ jobs:
         # same `RAILWAY_TOKEN` env var and supports `redeploy`.
         run: npm install -g @railway/cli@4
 
+      # Resolve the service ID for this matrix entry via Railway's
+      # GraphQL API. The project token self-identifies project +
+      # environment; we query the project's service list and match
+      # by `name`. Two outputs: `service_id` + `environment_id`.
+      #
+      # Never echo RAILWAY_TOKEN — pass it only via header env, no
+      # `set -x`, mask any accidental payload leakage with jq -r.
+      - name: Resolve Railway service + environment IDs
+        id: resolve
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_NAME: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          query='{"query":"{ projectToken { projectId environmentId project { services { edges { node { id name } } } } } }"}'
+          resp=$(curl -sS -X POST https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$query")
+          # Fail loudly if the response has `errors` — don't let a
+          # downstream mutation run against a null service_id.
+          if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "GraphQL error resolving project token:"
+            echo "$resp" | jq '.errors'
+            exit 1
+          fi
+          env_id=$(echo "$resp" | jq -r '.data.projectToken.environmentId')
+          svc_id=$(echo "$resp" | jq -r --arg name "$SERVICE_NAME" \
+            '.data.projectToken.project.services.edges[] | select(.node.name == $name) | .node.id')
+          if [ -z "$svc_id" ] || [ "$svc_id" = "null" ]; then
+            echo "Could not resolve service id for name=$SERVICE_NAME"
+            echo "Available services:"
+            echo "$resp" | jq -r '.data.projectToken.project.services.edges[].node.name'
+            exit 1
+          fi
+          echo "service_id=$svc_id" >> "$GITHUB_OUTPUT"
+          echo "environment_id=$env_id" >> "$GITHUB_OUTPUT"
+          echo "Resolved $SERVICE_NAME -> service_id=$svc_id env_id=$env_id"
+
+      # Introspect current source state. This step is diagnostic —
+      # if we're already pointed at the right GHCR image, the next
+      # mutation is a no-op; if the source is still a Dockerfile or
+      # a stale image URL, this surfaces that in the log so the next
+      # Deploy run has an audit trail.
+      - name: Inspect current service source
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_ID: ${{ steps.resolve.outputs.service_id }}
+          ENV_ID: ${{ steps.resolve.outputs.environment_id }}
+        run: |
+          set -euo pipefail
+          query=$(jq -nc --arg sid "$SERVICE_ID" --arg eid "$ENV_ID" \
+            '{query: "query($sid: String!, $eid: String!) { service(id: $sid) { id name serviceInstances { edges { node { environmentId source { image repo } } } } } }", variables: {sid: $sid, eid: $eid}}')
+          resp=$(curl -sS -X POST https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$query")
+          echo "Current service state:"
+          echo "$resp" | jq '.data.service | {name, instances: [.serviceInstances.edges[].node | {environmentId, source}]}'
+          # Non-fatal if introspection fails — proceed to the mutation
+          # which is the actual fix. Just surface errors in the log.
+          if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "Note: introspection returned errors (continuing anyway):"
+            echo "$resp" | jq '.errors'
+          fi
+
+      # Force-set the service source to the GHCR image URL. Idempotent:
+      # if the source is already correct this is a no-op; if dashboard
+      # drift happened or the source still points at a Dockerfile, this
+      # fixes it before the redeploy fires.
+      - name: Force-set service source to GHCR image
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_ID: ${{ steps.resolve.outputs.service_id }}
+          ENV_ID: ${{ steps.resolve.outputs.environment_id }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          mutation=$(jq -nc --arg sid "$SERVICE_ID" --arg eid "$ENV_ID" --arg img "$IMAGE" \
+            '{query: "mutation($sid: String!, $eid: String!, $img: String!) { serviceInstanceUpdate(serviceId: $sid, environmentId: $eid, input: { source: { image: $img } }) }", variables: {sid: $sid, eid: $eid, img: $img}}')
+          resp=$(curl -sS -X POST https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$mutation")
+          if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "serviceInstanceUpdate failed:"
+            echo "$resp" | jq '.errors'
+            exit 1
+          fi
+          echo "Source set to $IMAGE for service $SERVICE_ID"
+
       # `railway redeploy` tells Railway to re-pull the configured
-      # image for the service. No source upload, no build on Railway's
-      # side — just "fetch the latest tag and swap the running
-      # container". The GHCR tag is set in the Railway dashboard.
+      # image for the service. The source is now guaranteed-correct
+      # from the mutation above, so Railway's pull hits the GHCR URL
+      # we just wrote, not whatever stale state the dashboard held.
       - name: Trigger Railway redeploy
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
