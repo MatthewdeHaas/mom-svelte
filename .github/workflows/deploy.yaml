@@ -79,6 +79,16 @@ jobs:
       # environment; we query the project's service list and match
       # by `name`. Two outputs: `service_id` + `environment_id`.
       #
+      # Auth header is `Project-Access-Token`, NOT `Authorization: Bearer`.
+      # Railway's GraphQL endpoint distinguishes token flavors by header:
+      # Bearer is for account tokens; project tokens use their own header
+      # name. Sending Bearer with a project token resolves to no project
+      # context and `projectToken` returns "Project Token not found"
+      # (verified in probe commit d27e90f4). The CLI uses the same
+      # Project-Access-Token header internally, which is why `railway
+      # redeploy` works with the same RAILWAY_TOKEN that fails under
+      # Bearer.
+      #
       # Never echo RAILWAY_TOKEN — pass it only via header env, no
       # `set -x`, mask any accidental payload leakage with jq -r.
       - name: Resolve Railway service + environment IDs
@@ -90,7 +100,7 @@ jobs:
           set -euo pipefail
           query='{"query":"{ projectToken { projectId environmentId project { services { edges { node { id name } } } } } }"}'
           resp=$(curl -sS -X POST https://backboard.railway.com/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Project-Access-Token: $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$query")
           # Fail loudly if the response has `errors` — don't let a
@@ -128,7 +138,7 @@ jobs:
           query=$(jq -nc --arg sid "$SERVICE_ID" --arg eid "$ENV_ID" \
             '{query: "query($sid: String!, $eid: String!) { service(id: $sid) { id name serviceInstances { edges { node { environmentId source { image repo } } } } } }", variables: {sid: $sid, eid: $eid}}')
           resp=$(curl -sS -X POST https://backboard.railway.com/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Project-Access-Token: $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$query")
           echo "Current service state:"
@@ -155,7 +165,7 @@ jobs:
           mutation=$(jq -nc --arg sid "$SERVICE_ID" --arg eid "$ENV_ID" --arg img "$IMAGE" \
             '{query: "mutation($sid: String!, $eid: String!, $img: String!) { serviceInstanceUpdate(serviceId: $sid, environmentId: $eid, input: { source: { image: $img } }) }", variables: {sid: $sid, eid: $eid, img: $img}}')
           resp=$(curl -sS -X POST https://backboard.railway.com/graphql/v2 \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Project-Access-Token: $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$mutation")
           if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
