@@ -128,27 +128,39 @@ jobs:
       # mutation is a no-op; if the source is still a Dockerfile or
       # a stale image URL, this surfaces that in the log so the next
       # Deploy run has an audit trail.
+      #
+      # Query must traverse through `projectToken.project.services` —
+      # project tokens can't call `service(id:)` at the root (returns
+      # null, not an error). Filter by service id in jq to pull just
+      # the one we care about.
+      #
+      # `set +e` on jq so introspection failure doesn't skip the
+      # mutation below (the mutation is the actual fix; this step is
+      # diagnostic only).
       - name: Inspect current service source
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SERVICE_ID: ${{ steps.resolve.outputs.service_id }}
-          ENV_ID: ${{ steps.resolve.outputs.environment_id }}
         run: |
-          set -euo pipefail
-          query=$(jq -nc --arg sid "$SERVICE_ID" --arg eid "$ENV_ID" \
-            '{query: "query($sid: String!, $eid: String!) { service(id: $sid) { id name serviceInstances { edges { node { environmentId source { image repo } } } } } }", variables: {sid: $sid, eid: $eid}}')
+          set -uo pipefail
+          query='{"query":"{ projectToken { project { services { edges { node { id name serviceInstances { edges { node { environmentId source { image repo } } } } } } } } } }"}'
           resp=$(curl -sS -X POST https://backboard.railway.com/graphql/v2 \
             -H "Project-Access-Token: $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$query")
-          echo "Current service state:"
-          echo "$resp" | jq '.data.service | {name, instances: [.serviceInstances.edges[].node | {environmentId, source}]}'
-          # Non-fatal if introspection fails — proceed to the mutation
-          # which is the actual fix. Just surface errors in the log.
           if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
             echo "Note: introspection returned errors (continuing anyway):"
-            echo "$resp" | jq '.errors'
+            echo "$resp" | jq '.errors' || true
+          else
+            echo "Current source for service $SERVICE_ID:"
+            echo "$resp" | jq --arg sid "$SERVICE_ID" \
+              '.data.projectToken.project.services.edges[].node
+               | select(.id == $sid)
+               | {name, instances: [.serviceInstances.edges[].node | {environmentId, source}]}' \
+              || echo "(jq filter failed — payload above)"
           fi
+          # Always return 0; this step is diagnostic.
+          exit 0
 
       # Force-set the service source to the GHCR image URL. Idempotent:
       # if the source is already correct this is a no-op; if dashboard
