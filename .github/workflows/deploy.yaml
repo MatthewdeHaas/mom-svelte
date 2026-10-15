@@ -62,9 +62,29 @@ jobs:
       matrix:
         include:
           - service: mom-svelte
-            image: ghcr.io/matthewdehaas/mom-svelte:latest
+            image_repo: ghcr.io/matthewdehaas/mom-svelte
           - service: Rust-API
-            image: ghcr.io/matthewdehaas/mom-rust-api:latest
+            image_repo: ghcr.io/matthewdehaas/mom-rust-api
+    # Pin to the exact commit SHA that CI just built, not `:latest`.
+    # `:latest` is a moving tag — if we trigger a redeploy an hour
+    # later, Railway can pull a different image than the one CI
+    # verified. Pinning to `:${sha}` makes rollbacks reproducible
+    # (revert PR → CI republishes :${revert_sha} → Deploy pins to it)
+    # and makes "which image is this deployment?" answerable from the
+    # workflow log alone.
+    #
+    # Source of the SHA:
+    #   - workflow_run trigger: `github.event.workflow_run.head_sha`
+    #     is the commit CI just ran against (the one build-rust-image
+    #     tagged as :${sha}).
+    #   - workflow_dispatch: fall back to `github.sha` (the ref the
+    #     manual run was dispatched against). Note: manual re-deploys
+    #     of an older commit need that older commit's :${sha} tag to
+    #     still exist in GHCR — retention is `min-versions-to-keep: 10`
+    #     on the publish side, so the last 10 pushes are always
+    #     reachable.
+    env:
+      IMAGE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - name: Install Railway CLI
@@ -171,7 +191,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SERVICE_ID: ${{ steps.resolve.outputs.service_id }}
           ENV_ID: ${{ steps.resolve.outputs.environment_id }}
-          IMAGE: ${{ matrix.image }}
+          IMAGE: ${{ matrix.image_repo }}:${{ env.IMAGE_SHA }}
         run: |
           set -euo pipefail
           mutation=$(jq -nc --arg sid "$SERVICE_ID" --arg eid "$ENV_ID" --arg img "$IMAGE" \

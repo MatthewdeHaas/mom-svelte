@@ -37,6 +37,49 @@ async function injectSession(page: Page, token: string) {
 }
 
 /**
+ * Override `page.goto` so every navigation in a test fixture waits for the
+ * client to finish hydrating before the test body touches it.
+ *
+ * Playwright's default `waitUntil: 'load'` fires on the browser's `load`
+ * event, which the Vite dev server reaches well before SvelteKit's ESM
+ * client graph (`@sveltejs/kit/.../app/forms.js` + the generated
+ * `nodes/*.js` + the route `+page.svelte` module) has been fetched and
+ * executed. A trace of the previously-flaky `portal.spec.ts :124` showed
+ * `page.goto` resolving at `[24077]` while the SvelteKit `forms.js`
+ * module (which exports `enhance`) wasn't requested until `[24182]` —
+ * 105 ms later. The subsequent `fill` + `click` on an `use:enhance` form
+ * then raced hydration: the click sometimes fired before the submit
+ * listener was attached, the browser's default submit handler called
+ * `preventDefault()` on an SSR-only form with no server-side action
+ * wiring, and no POST ever hit the wire. Zero POSTs in the network
+ * trace, click reports "navigations have finished" in 7 ms, URL never
+ * changes, `toHaveURL` times out.
+ *
+ * Position-dependence (first test in the file passes, 2nd/3rd fail,
+ * 4th sometimes passes) is Vite's dep-optimizer warming: on the first
+ * `goto('/client/roster')` of a worker, the optimizer streams the
+ * whole module graph on-demand and the heading-only assertion
+ * incidentally waits past hydration; subsequent `goto`s skip the
+ * optimizer discovery pass but each new page still re-fetches and
+ * re-parses the ESM graph from scratch, extending the window where
+ * `fill`/`click` can beat `use:enhance`.
+ *
+ * `networkidle` is the robust signal: Vite dev stops streaming after
+ * the hydration graph is in, so by the time it resolves Svelte's
+ * `$effect` queue has drained and `enhance` is attached. Already used
+ * at 18 other call sites in the suite — this just promotes it to the
+ * fixture layer so every authenticated test gets the same guarantee
+ * without per-spec plumbing.
+ */
+async function enforceHydrationWait(page: Page) {
+  const originalGoto = page.goto.bind(page);
+  page.goto = async (url, options) => {
+    const response = await originalGoto(url, { waitUntil: 'networkidle', ...options });
+    return response;
+  };
+}
+
+/**
  * Prevent Vite dev-server full-reload events from triggering page reloads.
  *
  * In Vite dev mode the dependency optimizer discovers new packages when a
@@ -135,18 +178,21 @@ export const test = base.extend<Fixtures>({
 
   adminPage: async ({ page }, use) => {
     await suppressViteFullReload(page);
+    await enforceHydrationWait(page);
     await injectSession(page, loadState().adminToken);
     await use(page);
   },
 
   clientPage: async ({ page }, use) => {
     await suppressViteFullReload(page);
+    await enforceHydrationWait(page);
     await injectSession(page, loadState().clientToken);
     await use(page);
   },
 
   pendingPage: async ({ page }, use) => {
     await suppressViteFullReload(page);
+    await enforceHydrationWait(page);
     await injectSession(page, loadState().pendingToken);
     await use(page);
   },
