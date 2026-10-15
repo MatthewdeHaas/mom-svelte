@@ -3,8 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+    # Deploy-only changes (deploy.yaml, handoff docs) don't need the
+    # full CI pipeline — deploy.yaml itself is validated by GitHub's
+    # workflow parser on push, and the handoff doc is prose. Keeps a
+    # pure deploy-step tweak from costing a 20+ min CI cycle. CI is
+    # still exhaustive on any code or workflow-logic change.
+    paths-ignore:
+      - '.github/workflows/deploy.yaml'
+      - 'docs/**'
+      - '**.md'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '.github/workflows/deploy.yaml'
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 jobs:
