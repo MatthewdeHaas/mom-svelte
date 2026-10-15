@@ -225,10 +225,120 @@ jobs:
         working-directory: admin-operations-rust
         run: nix develop ..#default --command cargo test --workspace
 
+  # Build the Rust API binary once per push and share it as a GHA
+  # artifact. Both `e2e` (webServer boot) and `build-rust-image` (GHCR
+  # Docker image) consume the same artifact — guarantees the three
+  # places that need "the API binary" all see the exact same bytes,
+  # and shaves ~4-5 min cold from the E2E critical path (which
+  # previously ran its own `nix build .#api`).
+  #
+  # Artifact-scoped vs cache-scoped: artifacts are keyed by run_id, so
+  # downstream jobs in the same run always consume the binary this job
+  # just produced — zero stale-cache risk. Retention is 1 day because
+  # the artifact is only useful within its own run; once e2e + the
+  # image build consume it, nothing else references it.
+  build-api:
+    name: Build Rust API binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build Rust API via Nix
+        run: nix build .#api --print-build-logs
+
+      # `result/bin/api` is a symlink into the Nix store. upload-artifact
+      # follows symlinks when `path:` points at the file directly, but
+      # we copy to a plain file first to make the artifact self-describing
+      # regardless of consumer behaviour.
+      - name: Stage binary for upload
+        run: |
+          mkdir -p artifact
+          cp result/bin/api artifact/api
+          chmod +w artifact/api
+
+      - name: Upload Rust API binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-api-binary
+          path: artifact/api
+          retention-days: 1
+          if-no-files-found: error
+
+  # Fast-feedback job for the pure-logic crates. No Postgres, no
+  # migrations, no DB env — just `cargo test --lib` across the crates
+  # whose tests touch zero sqlx. Catches a broken formatter / fuzzy
+  # matcher / ISO-date regex / XMP scrub in ~45s warm, without waiting
+  # on `rust-ci`'s full DB-test matrix.
+  #
+  # Covers (zero `sqlx::test` in any of these):
+  #   - excel  (determinism, boilerplate, fuzzy, parse, headers,
+  #             meals, recipes, validate, normalise)
+  #   - pdf    (determinism)
+  #   - domain (import, recipes)
+  #   - flags-tui (emit render body — integration test, no DB)
+  #
+  # Duplication vs `rust-ci --workspace`: intentional. `rust-unit` is
+  # the fast signal; `rust-ci` is the coverage gate. Deduplicating
+  # would need per-crate `cargo test` lines in `rust-ci` for ~2s saved.
+  rust-unit:
+    name: Rust unit tests (no DB)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Magic Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # Distinct `shared-key` so this job's cache doesn't collide with
+      # `rust-ci`'s. Both key on Cargo.lock + rustc, but the target/
+      # dirs differ (test deps vs workspace deps) and sharing one key
+      # thrashes the restore step.
+      - name: Rust toolchain cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: admin-operations-rust
+          shared-key: unit
+          cache-on-failure: true
+
+      - name: cargo test --lib (pure crates)
+        working-directory: admin-operations-rust
+        run: nix develop ..#default --command cargo test -p excel -p pdf -p domain --lib
+
+      - name: cargo test --test emit (flags-tui pure integration)
+        working-directory: admin-operations-rust
+        run: nix develop ..#default --command cargo test -p flags-tui --test emit
+
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [ci, rust-ci]
+    needs: [ci, rust-ci, build-api]
+    # Previously built the Rust API in-job via `nix build .#api`; now
+    # consumes the `rust-api-binary` artifact uploaded by `build-api`.
+    # Keeps `ci` + `rust-ci` as gates (both lanes must be green before
+    # we spend minutes on E2E).
 
     services:
       postgres:
@@ -291,16 +401,6 @@ jobs:
           version: 10
           run_install: false
 
-      # Nix Tier 2: build the Rust API via `nix build .#api` instead of
-      # `cargo build --release`. The flake pins toolchain, deps,
-      # sqlx-cli — all the knobs that previously drifted between a
-      # local dev loop and this runner.
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
-
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
-
       - name: Get pnpm store directory
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
@@ -347,21 +447,23 @@ jobs:
       - name: Stamp sqlx migration ledger
         run: pnpm run migrate:backfill-sqlx
 
-      # Build the Rust API via Nix, then copy the result into the path
-      # Playwright's `webServer` block in `playwright.config.ts` expects
-      # (`./admin-operations-rust/target/release/api`). Playwright starts
-      # webServers BEFORE globalSetup — the binary must exist on disk
-      # when the webServer command fires.
+      # Pull the Rust API binary built once by the `build-api` job
+      # into the path Playwright's `webServer` block expects
+      # (`./admin-operations-rust/target/release/api`). Playwright
+      # starts webServers BEFORE globalSetup — the binary must exist
+      # on disk when the webServer command fires.
       #
-      # The copy is cheap (one 12 MB file) and keeps the Playwright
-      # config path-stable, so local dev (`cargo build --release`) and
-      # CI (`nix build`) land the binary in the same place.
-      - name: Build Rust API via Nix
-        run: |
-          nix build .#api --print-build-logs
-          mkdir -p admin-operations-rust/target/release
-          cp result/bin/api admin-operations-rust/target/release/api
-          chmod +w admin-operations-rust/target/release/api
+      # Previously this job ran its own `nix build .#api`; promoting it
+      # to a shared GHA artifact removes a 4-5min cold Rust compile
+      # from the E2E critical path (and from `build-rust-image` once
+      # PR #1 merges).
+      - name: Download Rust API binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-api-binary
+          path: admin-operations-rust/target/release
+      - name: Make binary executable
+        run: chmod +x admin-operations-rust/target/release/api
 
       - name: Run E2E tests
         run: pnpm run test:e2e
