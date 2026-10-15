@@ -187,15 +187,40 @@ jobs:
           fi
           echo "Source set to $IMAGE for service $SERVICE_ID"
 
-      # `railway redeploy` tells Railway to re-pull the configured
-      # image for the service. The source is now guaranteed-correct
-      # from the mutation above, so Railway's pull hits the GHCR URL
-      # we just wrote, not whatever stale state the dashboard held.
-      - name: Trigger Railway redeploy
+      # Trigger a fresh deployment using the source config we just
+      # wrote above.
+      #
+      # Why `serviceInstanceDeployV2` instead of `railway redeploy`:
+      #   `railway redeploy` replays the *last deployment record*.
+      #   After `serviceInstanceUpdate` changes the source, that old
+      #   record is marked "removed" (Railway's model: the previous
+      #   deployment was built from a different source, so it's not
+      #   the same deployment anymore). `redeploy` then errors with
+      #   "The latest deployment for service X cannot be redeployed.
+      #   This may be because it's currently building, deploying, or
+      #   was removed." — exactly what we saw in run 38678378297.
+      #
+      #   `serviceInstanceDeployV2(serviceId, environmentId)` creates
+      #   a *new* deployment from the current source config. It's
+      #   what the dashboard "Deploy" button calls. No prior record
+      #   required.
+      - name: Trigger fresh deployment
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_ID: ${{ steps.resolve.outputs.service_id }}
+          ENV_ID: ${{ steps.resolve.outputs.environment_id }}
         run: |
-          railway redeploy \
-            --service "${{ matrix.service }}" \
-            --environment production \
-            --yes
+          set -euo pipefail
+          mutation=$(jq -nc --arg sid "$SERVICE_ID" --arg eid "$ENV_ID" \
+            '{query: "mutation($sid: String!, $eid: String!) { serviceInstanceDeployV2(serviceId: $sid, environmentId: $eid) }", variables: {sid: $sid, eid: $eid}}')
+          resp=$(curl -sS -X POST https://backboard.railway.com/graphql/v2 \
+            -H "Project-Access-Token: $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$mutation")
+          if echo "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "serviceInstanceDeployV2 failed:"
+            echo "$resp" | jq '.errors'
+            exit 1
+          fi
+          echo "Fresh deployment triggered for $SERVICE_ID in env $ENV_ID"
+          echo "$resp" | jq '.'
