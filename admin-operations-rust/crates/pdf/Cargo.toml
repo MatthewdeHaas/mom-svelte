@@ -29,3 +29,10 @@ uuid.workspace = true
 serde.workspace = true
 
 thiserror.workspace = true
+
+[dev-dependencies]
+# Snapshot assertions for `determinism.rs::scrub_xmp_instance_id` — the
+# existing #[test]s check behaviour; the snapshot pins the exact
+# scrubbed output so a future change to the pinned-id scheme shows up
+# as a reviewable diff instead of a boolean test flip.
+insta.workspace = true

@@ -81,6 +81,16 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 # never panics, valid rows round-trip, one bad field aborts cleanly).
 proptest = "1"
 
+# Snapshot testing — used by the determinism tests (excel, pdf) and
+# the exports integration tests (api) to produce human-readable
+# diagnostics when byte-identity drifts. The existing hard byte /
+# digest asserts stay as the gate; `insta` is additive, so a drift
+# fails the byte assert first and the reviewer runs `cargo insta
+# review` to see what structurally changed. yaml feature enables
+# `assert_yaml_snapshot!` for structured snapshots (the ZIP entry
+# list in the excel determinism test).
+insta = { version = "1", features = ["yaml"] }
+
 [profile.release]
 # Thin LTO strikes a reasonable balance between compile time and binary
 # size for a web service. Flip to "fat" if cold-start matters more than

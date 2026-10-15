@@ -87,3 +87,8 @@ rust_xlsxwriter.workspace = true
 # Harness installs a tracing subscriber so handler-side error logs land
 # in captured test output (without one, 500s look opaque).
 tracing-subscriber.workspace = true
+# Snapshot assertions on the exports digest. The hard sha256-equality
+# across two requests stays as the determinism gate; the snapshot pins
+# the expected digest so a change-of-content (not just a drift) shows up
+# as a reviewable diff. sha2/hex come in via `[dependencies]` above.
+insta.workspace = true
