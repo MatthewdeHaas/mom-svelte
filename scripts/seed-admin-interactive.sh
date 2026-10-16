@@ -131,20 +131,15 @@ while true; do
   # through Railway's TCP proxy) and also the private DATABASE_URL
   # (`postgres.railway.internal:...`, unreachable from outside Railway).
   #
-  # Two pools get created in this process:
-  #   1. scripts/seed-admin.ts's own pg Pool — reads DATABASE_URL.
-  #   2. src/lib/server/db/index.ts (loaded via auth.ts) — builds its
-  #      connection string from POSTGRES_HOST/USER/PASSWORD/DB and
-  #      IGNORES DATABASE_URL entirely.
+  # Two pools get created in this process; both now read DATABASE_URL:
+  #   1. scripts/seed-admin.ts's own pg Pool — always has.
+  #   2. src/lib/server/db/index.ts (loaded via auth.ts) — falls back
+  #      to DATABASE_URL when discrete POSTGRES_* vars aren't set.
   #
-  # Both pools must be redirected to the public proxy, so we parse
-  # DATABASE_PUBLIC_URL inside the child shell and set every variable
-  # either pool reads:
-  #   DATABASE_URL              ← PUBLIC URL             (pool #1)
-  #   POSTGRES_HOST/USER/...    ← parsed from PUBLIC URL (pool #2)
-  #   BETTER_AUTH_URL           ← harmless placeholder   (silences warn)
-  #
-  # The internal DATABASE_URL stays set in env but is never read.
+  # Overriding DATABASE_URL to the public proxy URL redirects both.
+  # BETTER_AUTH_URL/SECRET are harmless placeholders — Better Auth
+  # warns on startup without them but doesn't need either to hash a
+  # password and write a credential row.
   if ADMIN_EMAIL="$email" ADMIN_INITIAL_PASSWORD="$pw1" \
        railway run --service "$DB_SERVICE" -- \
        bash -c '
@@ -155,33 +150,7 @@ while true; do
            exit 1
          fi
 
-         # Parse the proxy URL into components. Node resolves this one-
-         # liner safely: WHATWG URL constructor rejects anything that is
-         # not a valid absolute URL. Values flow back as a KEY=VALUE
-         # block that we eval into the current shell.
-         #
-         # Why not shell regex: the password may contain any URL-safe
-         # character including %-encoded ones; letting Node unescape
-         # avoids a class of parsing bugs.
-         creds=$(node -e "
-           const u = new URL(process.env.DATABASE_PUBLIC_URL);
-           const q = s => \"\x27\" + s.replace(/\x27/g, \"\x27\\\\\x27\x27\") + \"\x27\";
-           process.stdout.write(
-             \"PGHOST=\"     + q(u.hostname)                 + \"\n\" +
-             \"PGPORT=\"     + q(u.port || \"5432\")         + \"\n\" +
-             \"PGUSER=\"     + q(decodeURIComponent(u.username)) + \"\n\" +
-             \"PGPASSWORD=\" + q(decodeURIComponent(u.password)) + \"\n\" +
-             \"PGDATABASE=\" + q(u.pathname.replace(/^\\//, \"\"))
-           );
-         ")
-         eval "$creds"
-
          DATABASE_URL="$DATABASE_PUBLIC_URL" \
-           POSTGRES_HOST="$PGHOST" \
-           POSTGRES_PORT="$PGPORT" \
-           POSTGRES_USER="$PGUSER" \
-           POSTGRES_PASSWORD="$PGPASSWORD" \
-           POSTGRES_DB="$PGDATABASE" \
            BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://localhost}" \
            BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-seed-admin-placeholder-not-used-at-login}" \
            ADMIN_EMAIL="$ADMIN_EMAIL" \
