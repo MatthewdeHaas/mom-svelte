@@ -82,7 +82,12 @@ if ! docker compose ps db --format '{{.Status}}' 2>/dev/null | grep -q 'Up'; the
 fi
 
 echo "rust-sqlx-prepare: applying migrations"
-pnpm run migrate
+# Rust is the sole migrator (see project_migration_architecture).
+# Use sqlx-cli directly rather than the api binary — this script's
+# whole purpose is to prep the api binary's sqlx offline cache, so
+# depending on a compiled binary here would be a bootstrap
+# chicken-and-egg. sqlx-cli is PATH-guarded at the top of this file.
+(cd admin-operations-rust && sqlx migrate run --source migrations)
 
 echo "rust-sqlx-prepare: regenerating .sqlx/ cache"
 # `--workspace` walks every crate; `-- --tests` includes query
