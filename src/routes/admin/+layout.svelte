@@ -19,7 +19,6 @@
     Download,
     BarChart3,
     DollarSign,
-    Flag,
     Menu,
     LogOut,
     ChevronRight,
@@ -66,13 +65,6 @@
         { label: 'Insights',    href: '/admin/insights',    icon: BarChart3 },
         { label: 'Financials',  href: '/admin/financials',  icon: DollarSign },
         { label: 'Exports',     href: '/admin/exports',     icon: Download },
-        // Read-only drift mirror; the Rust endpoint behind it 403s for
-        // everyone except the operator user id, so for every other admin
-        // this surface returns 404 and the sidebar link dead-ends on a
-        // Not Found page. That's intentional — flipping flags is a
-        // local-TUI-plus-migration workflow, not something to expose in
-        // the web admin. See `docs/feature-flags.md`.
-        { label: 'Feature flags', href: '/admin/flags',     icon: Flag },
       ],
     },
   ];
@@ -85,11 +77,6 @@
     // Dashboard exact match; others prefix match
     if (href === '/admin/dashboard') return $page.url.pathname === href;
     return $page.url.pathname.startsWith(href);
-  }
-
-  async function handleLogout() {
-    await fetch('/logout', { method: 'POST' });
-    await goto('/');
   }
 
   import type { Snippet } from 'svelte';
@@ -403,10 +390,19 @@
     </nav>
 
     <div class="sidebar-footer">
-      <button class="logout-btn" onclick={handleLogout}>
-        <LogOut />
-        Sign out
-      </button>
+      <!--
+        Form POST (not fetch) so the server-side form action receives
+        application/x-www-form-urlencoded. A bare fetch with no body
+        returns 415 Unsupported Media Type. Matches /client's pattern
+        and keeps no-JS fallback working. Server action already issues
+        a 302 redirect to /login — no client-side goto needed.
+      -->
+      <form method="POST" action="/logout">
+        <button type="submit" class="logout-btn">
+          <LogOut />
+          Sign out
+        </button>
+      </form>
     </div>
   </aside>
 
