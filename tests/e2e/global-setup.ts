@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
-import { randomBytes, randomUUID, createHmac, createHash } from 'crypto';
+import { randomBytes, randomUUID, createHmac } from 'crypto';
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 /**
@@ -117,101 +117,6 @@ function buildRustApi() {
   });
 }
 
-/**
- * Reconcile the two migration ledgers before the Rust API starts up.
- *
- * The TS side (`scripts/migrate.ts`) tracks applied files in a hand-rolled
- * `migrations` table; sqlx tracks them in `_sqlx_migrations`. Both migrators
- * run the same files, but neither knows about the other's ledger. In e2e
- * the DB is pre-migrated by `pnpm run migrate`, so sqlx on startup sees an
- * empty `_sqlx_migrations` and tries to re-run everything — the very first
- * statement (`CREATE TABLE "user"`) explodes because the table already
- * exists.
- *
- * Fix: stamp `_sqlx_migrations` with the checksum sqlx would compute for
- * each file. For files the TS migrator already applied, we only stamp
- * (schema is already there). For files it hasn't (currently just 024, a
- * Rust-only `DELETE FROM feature_flag` cleanup), execute the SQL first,
- * then stamp — in a single transaction so a crash doesn't leave the ledger
- * out of sync with the schema.
- *
- * Idempotent: `ON CONFLICT (version) DO NOTHING` so re-running
- * `pnpm test:e2e` is safe. sqlx's checksum algorithm is SHA-384 over the
- * raw bytes of each `.sql` file (see sqlx-core's `migrate/migration.rs`).
- *
- * In production there is only one migrator (sqlx), so none of this runs —
- * this is strictly a dev/e2e-side bridge for the two-ledger period.
- */
-async function backfillSqlxLedger(pool: Pool) {
-  const migrationsDir = join(process.cwd(), 'admin-operations-rust/migrations');
-  if (!existsSync(migrationsDir)) {
-    throw new Error(
-      `globalSetup: ${migrationsDir} not found — did cargo build sync the migrations?`
-    );
-  }
-
-  const files = readdirSync(migrationsDir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort(); // lexicographic — relies on 001_, 002_ prefixes
-
-  // Which files has the TS migrator already applied?
-  // The table may not exist on a brand-new DB; treat the absence as "none applied".
-  let appliedByTs = new Set<string>();
-  try {
-    const res = await pool.query<{ filename: string }>(
-      'SELECT filename FROM migrations'
-    );
-    appliedByTs = new Set(res.rows.map((r) => r.filename));
-  } catch {
-    // `migrations` table doesn't exist yet — fine, we'll execute everything.
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    for (const filename of files) {
-      // "024_drop_use_rust_backend_exports.sql" → version 24, "drop use rust backend exports"
-      const match = /^(\d+)_(.+)\.sql$/.exec(filename);
-      if (!match) continue;
-      const version = Number.parseInt(match[1], 10);
-      const description = match[2].replace(/_/g, ' ');
-
-      // Skip the stamp if this version is already recorded.
-      const existing = await client.query<{ version: string }>(
-        'SELECT version FROM _sqlx_migrations WHERE version = $1',
-        [version]
-      );
-      if (existing.rowCount && existing.rowCount > 0) continue;
-
-      const sql = readFileSync(join(migrationsDir, filename), 'utf8');
-      // sqlx uses SHA-384 of the file bytes.
-      const checksum = createHash('sha384').update(sql, 'utf8').digest();
-
-      // If the TS migrator hasn't applied this file, we need to actually
-      // execute it before stamping — otherwise the schema and the ledger
-      // disagree and the next real migration will act on stale state.
-      if (!appliedByTs.has(filename)) {
-        console.log(`[globalSetup] executing TS-skipped migration ${filename}`);
-        await client.query(sql);
-      }
-
-      await client.query(
-        `INSERT INTO _sqlx_migrations
-           (version, description, installed_on, success, checksum, execution_time)
-         VALUES ($1, $2, now(), true, $3, 0)
-         ON CONFLICT (version) DO NOTHING`,
-        [version, description, checksum]
-      );
-    }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
 export default async function globalSetup() {
   // Pre-build the Rust API binary before Playwright spawns webServers.
   // Playwright awaits globalSetup fully before launching webServers, so the
@@ -222,11 +127,10 @@ export default async function globalSetup() {
   const pool = makePool();
 
   try {
-    // Reconcile the two migration ledgers so Rust's `db::migrate` is a
-    // no-op on startup. See `backfillSqlxLedger` for the full story.
-    await backfillSqlxLedger(pool);
-
-    // Clean up any leftover state from a previous interrupted run
+    // Clean up any leftover state from a previous interrupted run.
+    // Migrations are applied by CI (`./api migrate` step) and
+    // re-applied idempotently on Rust webServer boot — nothing for
+    // globalSetup to reconcile now that Rust is the sole migrator.
     await cleanup(pool);
 
     // --- Company ---

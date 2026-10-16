@@ -12,8 +12,33 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 use api::{router, AppState};
 
+/// Entry point. Dispatches on the first positional argument:
+///
+/// - no args → **serve path**. Prod/Railway's `CMD ["/usr/local/bin/api"]`
+///   lands here. Runs migrations on startup (idempotent), then listens.
+/// - `migrate` → **migration-only path**. Runs the sqlx migrator and
+///   exits 0. Used by dev scripts + CI so dev/CI/prod all share one
+///   migration codepath — Rust is the sole prod migrator as of the
+///   dual-ledger collapse (see `project_migration_architecture`).
+/// - anything else → usage error, exit 2.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    match std::env::args().nth(1).as_deref() {
+        None => serve().await,
+        Some("migrate") => migrate_only().await,
+        Some(other) => {
+            eprintln!(
+                "unknown subcommand: {other}\nusage: api               # serve\n       api migrate       # run migrations and exit",
+            );
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Load config + open the pool. Shared by `serve` and `migrate_only`
+/// so `DATABASE_URL`/`INTERNAL_AUTH_SECRET` validation stays in one
+/// place and both paths log the same startup diagnostics.
+async fn init() -> anyhow::Result<(Config, sqlx::PgPool)> {
     init_tracing();
 
     let cfg = Config::from_env()?;
@@ -31,10 +56,32 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("open Postgres pool")?;
 
+    Ok((cfg, pool))
+}
+
+/// `api migrate` — run migrations and exit. For dev scripts (`pnpm
+/// db:reset-test`, `rust-sqlx-prepare.sh`) and the CI `Run migrations`
+/// steps that previously called `pnpm run migrate` (the deleted Node
+/// migrator). Identical codepath to `serve`'s startup migration, so
+/// what dev sees is what prod runs.
+async fn migrate_only() -> anyhow::Result<()> {
+    let (_, pool) = init().await?;
+    db::migrate(&pool).await.context("run migrations")?;
+    tracing::info!("migrations complete");
+    Ok(())
+}
+
+/// Default no-arg path — serve HTTP. Preserves current Railway
+/// behaviour: migrate on boot, then listen. The migrate call is
+/// idempotent so a prior `api migrate` in CI followed by a `serve` in
+/// the same container is safe.
+async fn serve() -> anyhow::Result<()> {
+    let (cfg, pool) = init().await?;
+
     // Migrations run on startup. Idempotent — the sqlx migrator skips
-    // anything already applied by the Node side. See `db/src/lib.rs`
-    // for why we embed from `./migrations` and sync from
-    // `../scripts/migrations` at build time.
+    // anything already applied. See `db/src/lib.rs` for why we embed
+    // from `./migrations` and sync from `../scripts/migrations` at
+    // build time.
     db::migrate(&pool).await.context("run migrations")?;
 
     let state = AppState::new(pool, cfg.internal_auth_secret.clone())

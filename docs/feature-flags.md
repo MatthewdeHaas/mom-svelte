@@ -38,7 +38,7 @@ Three steps, in order:
    appear — the emitter detects "in catalog, not in DB".
 
 3. **Commit the emitted migration file.** PR, merge, Railway redeploys,
-   `pnpm run migrate` + `sqlx::migrate!` both pick it up.
+   `sqlx::migrate!` picks it up on Rust API startup.
 
 ## 2. Toggling an existing flag
 
@@ -169,8 +169,7 @@ DELETE FROM feature_flag_company
 ```
 
 Commit the file, open a PR, merge → Railway redeploys →
-`pnpm run migrate` (SvelteKit side) + `sqlx::migrate!` (Rust side)
-both pick it up.
+`sqlx::migrate!` picks it up when the Rust API binary starts.
 
 ## 5. Drift mirror at `/admin/flags`
 

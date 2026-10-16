@@ -110,9 +110,8 @@ bash scripts/dev-up.sh          # brings it back up, migrates, seeds admin
 
 | Script | File | Notes |
 |---|---|---|
-| `dev-up.sh` | `scripts/dev-up.sh` | Full dev environment bootstrap |
-| `reset-test-db.sh` | `scripts/reset-test-db.sh` | Wipe + rebuild `meals_test` |
-| `migrate.ts` | `scripts/migrate.ts` | Hash-checked idempotent runner |
+| `dev-up.sh` | `scripts/dev-up.sh` | Boots docker-compose (db + rust-api); Rust API migrates on its own startup |
+| `reset-test-db.sh` | `scripts/reset-test-db.sh` | Wipe + rebuild `meals_test` (runs `sqlx migrate run` internally) |
 | `seed-admin.ts` | `scripts/seed-admin.ts` | Upsert admin user from `ADMIN_EMAIL` |
 
 ---

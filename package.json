@@ -18,8 +18,6 @@
 		"test:all": "pnpm run test && pnpm run test:e2e",
 		"db:reset-test": "bash scripts/reset-test-db.sh",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes",
-		"migrate": "tsx scripts/migrate.ts",
-		"migrate:backfill-sqlx": "tsx scripts/backfill-dev-sqlx.ts",
 		"lint:migrations": "tsx scripts/lint-migrations.ts",
 		"rust:sync-migrations": "bash scripts/sync-rust-migrations.sh",
 		"rust:check": "pnpm run rust:sync-migrations && SQLX_OFFLINE=true cargo check --manifest-path admin-operations-rust/Cargo.toml --workspace",

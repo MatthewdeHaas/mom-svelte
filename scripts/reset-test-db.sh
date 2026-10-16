@@ -40,6 +40,11 @@ run_psql "${DB_URL}/postgres" -c "DROP DATABASE IF EXISTS ${POSTGRES_DB};"
 run_psql "${DB_URL}/postgres" -c "CREATE DATABASE ${POSTGRES_DB};"
 
 echo "[db:reset-test] Running migrations..."
-pnpm run migrate
+# Rust is the sole migrator (see project_migration_architecture).
+# Use sqlx-cli directly rather than the api binary so this script
+# doesn't require a compiled release binary — sqlx-cli is in the
+# flake devShell and uses the same `_sqlx_migrations` ledger.
+export DATABASE_URL="${DB_URL}/${POSTGRES_DB}"
+(cd admin-operations-rust && sqlx migrate run --source migrations)
 
 echo "[db:reset-test] Done — ${POSTGRES_DB} is ready."
