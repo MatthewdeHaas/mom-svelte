@@ -18,6 +18,12 @@ jobs:
   ci:
     name: Typecheck & Test
     runs-on: ubuntu-latest
+    # Gates behind `build-api` so we can migrate via the Rust API binary
+    # (sole prod migrator — see `project_migration_architecture`). The
+    # Node migrator is gone; pulling in the Nix toolchain just to run
+    # sqlx-cli here would double this lane's wall-clock, so instead we
+    # download the artifact `build-api` already produced for `e2e`.
+    needs: [build-api]
 
     services:
       postgres:
@@ -39,6 +45,8 @@ jobs:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: meals_test
       POSTGRES_HOST: localhost
+      DATABASE_URL: postgres://test:test@localhost:5432/meals_test
+      INTERNAL_AUTH_SECRET: ci-internal-auth-secret-32-bytes-min
       BETTER_AUTH_SECRET: ci-secret-not-used-in-prod
       BETTER_AUTH_URL: http://localhost:5173
       ADMIN_EMAIL: admin@test.com
@@ -78,8 +86,19 @@ jobs:
       - name: Lint migrations
         run: pnpm run lint:migrations
 
+      # Pull the Rust API binary (built once by `build-api`) and use it
+      # as the sole migrator. Same binary runs in prod → what passes
+      # here is what runs on Railway.
+      - name: Download Rust API binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-api-binary
+          path: admin-operations-rust/target/release
+      - name: Make binary executable
+        run: chmod +x admin-operations-rust/target/release/api
+
       - name: Run migrations
-        run: pnpm run migrate
+        run: ./admin-operations-rust/target/release/api migrate
 
       - name: Typecheck
         run: pnpm run check
@@ -195,15 +214,20 @@ jobs:
       - name: Sync migrations into Rust crate
         run: pnpm run rust:sync-migrations
 
-      # Node migrations seed the schema that cargo test's integration
-      # tests run against. (The dedicated `sqlx prepare --check` gate
-      # has been removed — `cargo clippy` and `cargo test` below both
-      # run with SQLX_OFFLINE=true via the committed .cargo/config.toml
-      # and fail at macro expansion the same way `prepare --check`
-      # does when a committed .sqlx/ entry drifts. One compile, same
+      # Seed the schema that cargo test's integration tests run
+      # against. Uses `sqlx migrate run` directly (sqlx-cli is in the
+      # flake devShell) rather than compiling the api binary, which
+      # this job doesn't otherwise need. Same `_sqlx_migrations`
+      # ledger the Rust API uses at startup, so no reconciliation.
+      # (The dedicated `sqlx prepare --check` gate has been removed —
+      # `cargo clippy` and `cargo test` below both run with
+      # SQLX_OFFLINE=true via the committed .cargo/config.toml and
+      # fail at macro expansion the same way `prepare --check` does
+      # when a committed .sqlx/ entry drifts. One compile, same
       # signal, ~90s cheaper per run.)
-      - name: Run Node migrations (seeds schema for Rust tests)
-        run: pnpm run migrate
+      - name: Run migrations (seeds schema for Rust tests)
+        working-directory: admin-operations-rust
+        run: nix develop ..#default --command sqlx migrate run --source migrations
 
       # All cargo steps below run inside the flake's devShell so they
       # share the exact toolchain `nix build .#api` uses.
@@ -460,33 +484,15 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install chromium --with-deps
 
-      - name: Run migrations
-        run: pnpm run migrate
-
       # `crates/db` uses `sqlx::migrate!("./../../migrations")` which
       # resolves to `admin-operations-rust/migrations/` — a gitignored
       # directory populated at build time by this sync script. Without
       # it, `cargo build` fails at macro-expansion with "error
       # canonicalizing migration directory". The `rust-ci` job runs
-      # this sync too; e2e needs its own copy before the release build.
-      # Must come before the ledger stamp (which reads this directory).
+      # this sync too; e2e needs its own copy before the api binary
+      # runs.
       - name: Sync migrations into Rust crate
         run: pnpm run rust:sync-migrations
-
-      # Stamp `_sqlx_migrations` so the Rust API's startup migrator is
-      # a no-op. The TS migrator just applied all 24 files but tracks
-      # them in `migrations` (sha256); sqlx tracks them in
-      # `_sqlx_migrations` (SHA-384). Without this stamp, the Rust
-      # binary spawned by Playwright's `webServer` sees an empty sqlx
-      # ledger and tries to re-run everything — migration 4 fails with
-      # "cannot drop table users because other objects depend on it"
-      # because migrations 1-3 already created users + FKs to it.
-      #
-      # `tests/e2e/global-setup.ts::backfillSqlxLedger` also does this,
-      # but Playwright runs globalSetup AFTER starting webServers — too
-      # late. Stamp from CI before the Rust server comes up.
-      - name: Stamp sqlx migration ledger
-        run: pnpm run migrate:backfill-sqlx
 
       # Pull the Rust API binary built once by the `build-api` job
       # into the path Playwright's `webServer` block expects
@@ -505,6 +511,16 @@ jobs:
           path: admin-operations-rust/target/release
       - name: Make binary executable
         run: chmod +x admin-operations-rust/target/release/api
+
+      # Run migrations via the api binary — same codepath as prod.
+      # Idempotent with the webServer-boot migrate; running it here
+      # makes CI logs crisp about who migrated when, and gates on real
+      # migrator success before Playwright spawns the server.
+      - name: Run migrations
+        env:
+          INTERNAL_AUTH_SECRET: ci-internal-auth-secret-32-bytes-min
+          DATABASE_URL: postgres://test:test@localhost:5432/meals_test
+        run: ./admin-operations-rust/target/release/api migrate
 
       - name: Run E2E tests
         run: pnpm run test:e2e
