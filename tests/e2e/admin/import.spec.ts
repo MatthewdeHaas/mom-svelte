@@ -97,7 +97,11 @@ async function uploadImportFile(
     buffer: xlsx,
   });
 
-  await adminPage.locator('button[type="submit"]').click();
+  // Scope to the upload form — the admin sidebar now contains its own
+  // `<form method="POST" action="/logout"><button type="submit">` for
+  // the Sign Out button, so a bare `button[type="submit"]` selector hits
+  // two elements and fails strict mode.
+  await adminPage.locator('form:has(input[name="file"]) button[type="submit"]').click();
   await adminPage.waitForLoadState('networkidle');
 }
 
