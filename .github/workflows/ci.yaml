@@ -74,6 +74,16 @@ jobs:
       EMAIL_FROM: "Meals on the Move <noreply@test.internal>"
 
     steps:
+      # Local composite actions need the repo on disk before GitHub can
+      # load `action.yml`. The gate's own `fetch-depth: 0` checkout only
+      # runs after the action is resolved, so we do a shallow one here
+      # first. Idempotent: the gate's checkout overwrites with the full
+      # history it needs for base..head diffing.
+      - name: Checkout (shallow, so path-gate action is on disk)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
       - name: Path gate
         id: gate
         uses: ./.github/actions/path-gate
@@ -167,6 +177,11 @@ jobs:
       DATABASE_URL: postgres://test:test@localhost:5432/meals_test
 
     steps:
+      - name: Checkout (shallow, so path-gate action is on disk)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
       - name: Path gate
         id: gate
         uses: ./.github/actions/path-gate
@@ -311,6 +326,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout (shallow, so path-gate action is on disk)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
       # build-api gets the narrowest skip pattern (universal only).
       # Dependents (`ci`, `e2e`) have broader skip patterns, so if this
       # job runs, their artifact download is guaranteed to find the
@@ -395,6 +415,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout (shallow, so path-gate action is on disk)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
       - name: Path gate
         id: gate
         uses: ./.github/actions/path-gate
@@ -525,6 +550,11 @@ jobs:
       EMAIL_FROM: "Meals on the Move <noreply@test.internal>"
 
     steps:
+      - name: Checkout (shallow, so path-gate action is on disk)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
       # E2E spans both services. Any code change needs it exercised, so
       # only universal ignorables (docs/workflow-only) can skip it.
       - name: Path gate
