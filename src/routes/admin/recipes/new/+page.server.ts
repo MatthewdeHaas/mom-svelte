@@ -48,7 +48,13 @@ export const actions: Actions = {
       }
       throw err;
     }
-    redirect(303, `/admin/recipes/${recipe.id}/ingredients`);
+    // Detail page `/admin/recipes/[id]` is where ingredients are managed —
+    // the add/remove-ingredient forms live there. There is no separate
+    // `/ingredients` subroute (there was in an earlier draft, hence the
+    // button label "Create and add ingredients →"). Prior to this fix,
+    // `createRecipe` succeeded but the redirect 404'd — the row persisted,
+    // the user saw an error page.
+    redirect(303, `/admin/recipes/${recipe.id}`);
   },
 
   // ── Excel bulk import ────────────────────────────────────────────────────────
