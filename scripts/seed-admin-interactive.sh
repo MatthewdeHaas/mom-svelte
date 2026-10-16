@@ -128,21 +128,62 @@ while true; do
   # Pass creds as env vars (not argv) so they don't appear in `ps`.
   # `railway run --service Postgres` injects the Postgres service's own
   # env, which includes DATABASE_PUBLIC_URL (reachable from this laptop
-  # through Railway's TCP proxy). We remap it to DATABASE_URL inside
-  # the child shell because that's the var seed-admin.ts reads.
+  # through Railway's TCP proxy) and also the private DATABASE_URL
+  # (`postgres.railway.internal:...`, unreachable from outside Railway).
   #
-  # The private DATABASE_URL that Postgres also exposes
-  # (`postgres.railway.internal:...`) stays unused: pg's connect would
-  # ENOTFOUND trying to resolve the internal DNS zone outside Railway.
+  # Two pools get created in this process:
+  #   1. scripts/seed-admin.ts's own pg Pool — reads DATABASE_URL.
+  #   2. src/lib/server/db/index.ts (loaded via auth.ts) — builds its
+  #      connection string from POSTGRES_HOST/USER/PASSWORD/DB and
+  #      IGNORES DATABASE_URL entirely.
+  #
+  # Both pools must be redirected to the public proxy, so we parse
+  # DATABASE_PUBLIC_URL inside the child shell and set every variable
+  # either pool reads:
+  #   DATABASE_URL              ← PUBLIC URL             (pool #1)
+  #   POSTGRES_HOST/USER/...    ← parsed from PUBLIC URL (pool #2)
+  #   BETTER_AUTH_URL           ← harmless placeholder   (silences warn)
+  #
+  # The internal DATABASE_URL stays set in env but is never read.
   if ADMIN_EMAIL="$email" ADMIN_INITIAL_PASSWORD="$pw1" \
        railway run --service "$DB_SERVICE" -- \
        bash -c '
+         set -euo pipefail
          if [ -z "${DATABASE_PUBLIC_URL:-}" ]; then
            echo "error: Postgres service does not expose DATABASE_PUBLIC_URL" >&2
            echo "  check the service in the Railway dashboard: Networking → public TCP proxy must be ON" >&2
            exit 1
          fi
+
+         # Parse the proxy URL into components. Node resolves this one-
+         # liner safely: WHATWG URL constructor rejects anything that is
+         # not a valid absolute URL. Values flow back as a KEY=VALUE
+         # block that we eval into the current shell.
+         #
+         # Why not shell regex: the password may contain any URL-safe
+         # character including %-encoded ones; letting Node unescape
+         # avoids a class of parsing bugs.
+         creds=$(node -e "
+           const u = new URL(process.env.DATABASE_PUBLIC_URL);
+           const q = s => \"\x27\" + s.replace(/\x27/g, \"\x27\\\\\x27\x27\") + \"\x27\";
+           process.stdout.write(
+             \"PGHOST=\"     + q(u.hostname)                 + \"\n\" +
+             \"PGPORT=\"     + q(u.port || \"5432\")         + \"\n\" +
+             \"PGUSER=\"     + q(decodeURIComponent(u.username)) + \"\n\" +
+             \"PGPASSWORD=\" + q(decodeURIComponent(u.password)) + \"\n\" +
+             \"PGDATABASE=\" + q(u.pathname.replace(/^\\//, \"\"))
+           );
+         ")
+         eval "$creds"
+
          DATABASE_URL="$DATABASE_PUBLIC_URL" \
+           POSTGRES_HOST="$PGHOST" \
+           POSTGRES_PORT="$PGPORT" \
+           POSTGRES_USER="$PGUSER" \
+           POSTGRES_PASSWORD="$PGPASSWORD" \
+           POSTGRES_DB="$PGDATABASE" \
+           BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://localhost}" \
+           BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-seed-admin-placeholder-not-used-at-login}" \
            ADMIN_EMAIL="$ADMIN_EMAIL" \
            ADMIN_INITIAL_PASSWORD="$ADMIN_INITIAL_PASSWORD" \
            pnpm --silent seed:admin
