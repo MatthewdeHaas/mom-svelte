@@ -122,16 +122,26 @@ jobs:
           cache-from: type=gha,scope=rust-image
           cache-to: type=gha,mode=max,scope=rust-image
 
-      # Keep the newest 10 versions of this package; delete the rest.
-      # :latest moved to the just-pushed version in the step above, so
-      # it's always among the kept 10. Older :<sha> tags fall off.
+      # Delete only untagged (orphaned) versions. We previously ran
+      # with `delete-only-untagged-versions: false` + `min-versions-to-keep: 10`,
+      # which deleted tagged versions too — relying on "newest 10 by
+      # creation keeps :latest and the fresh :<sha>." That assumption
+      # broke on 2026-10-16: the just-pushed version for
+      # 75491cf535542d4125aa1d953520ae1545b2ea65 was pruned seconds
+      # after push, and Deploy 404'd pulling the image. Likely cause:
+      # when GHCR indexes a just-pushed version, its `created_at` can
+      # momentarily lag older versions, so "newest N by creation" can
+      # exclude the fresh push. Switching to tagged-safe prune: tagged
+      # versions are kept forever; only orphan untagged layer-manifests
+      # get collected. GHCR storage grows linearly with pushes — fine
+      # for this 2-service repo for the foreseeable future.
       - name: Prune old GHCR versions
         uses: actions/delete-package-versions@v5
         with:
           package-name: mom-rust-api
           package-type: container
           min-versions-to-keep: 10
-          delete-only-untagged-versions: false
+          delete-only-untagged-versions: true
 
   build-svelte-image:
     name: Build & push SvelteKit image
@@ -166,10 +176,11 @@ jobs:
           cache-from: type=gha,scope=svelte-image
           cache-to: type=gha,mode=max,scope=svelte-image
 
+      # Tagged-safe prune — see build-rust-image's prune step for why.
       - name: Prune old GHCR versions
         uses: actions/delete-package-versions@v5
         with:
           package-name: mom-svelte
           package-type: container
           min-versions-to-keep: 10
-          delete-only-untagged-versions: false
+          delete-only-untagged-versions: true
