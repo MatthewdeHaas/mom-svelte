@@ -5,14 +5,34 @@ on:
   # push-to-main. Merging a PR no longer re-runs the test suite on
   # identical code — branch protection (`main-protection` ruleset)
   # ensures only PR-tested commits can reach main.
+  #
+  # NOTE: no `paths-ignore`. Branch protection requires 5 named checks,
+  # and `paths-ignore` would skip the workflow entirely → required
+  # checks never show up to be marked SUCCESS → PR permanently BLOCKED.
+  # Instead, each job calls the `.github/actions/path-gate` composite
+  # at the top and short-circuits real work on docs/workflow-only diffs.
+  # The job still reports SUCCESS, so branch protection is satisfied
+  # and the merge button unblocks. See `path-gate/action.yml`.
   pull_request:
     branches: [main]
-    # No paths-ignore. Branch protection requires 5 named checks; if
-    # paths-ignore skips them for a given diff, the PR is permanently
-    # BLOCKED (checks never show up to be marked SUCCESS). Pay the ~15min
-    # CI cycle on doc / workflow-only edits rather than lose the gate.
-    # See PR #7 for the failure mode.
   workflow_dispatch:
+
+# Skip patterns shared across jobs. Keep anchored at line-start.
+# Everything NOT in these patterns is "real work; must exercise":
+#   scripts/**, migrations/**, nix/**, flake.*, Dockerfile*,
+#   docker-compose*, railway.toml, .github/workflows/ci.yaml (self),
+#   .github/actions/** (gate logic itself).
+env:
+  # Behaviour-neutral: docs, repo-meta, deploy/release workflow files.
+  # Safe to skip on every required job.
+  SKIP_UNIVERSAL: '^(docs/|.*\.md$|\.github/workflows/(deploy|release)\.yaml$|LICENSE$|\.gitignore$|\.editorconfig$|\.github/CODEOWNERS$|\.github/ISSUE_TEMPLATE/|\.github/PULL_REQUEST_TEMPLATE\.md$)'
+  # Universal + Node-only paths. Lets Rust jobs skip on Node-only PRs.
+  SKIP_FOR_RUST: '^(docs/|.*\.md$|\.github/workflows/(deploy|release)\.yaml$|LICENSE$|\.gitignore$|\.editorconfig$|\.github/CODEOWNERS$|\.github/ISSUE_TEMPLATE/|\.github/PULL_REQUEST_TEMPLATE\.md$|src/|tests/|static/|package\.json$|pnpm-lock\.yaml$|svelte\.config\.js$|vite\.config\.ts$|playwright\.config\.ts$|tsconfig\.json$|tailwind\.config\.(js|ts|cjs)$|postcss\.config\.(js|ts|cjs)$)'
+  # Universal + Rust-only paths. Lets the Node `ci` job skip on
+  # Rust-only PRs. The Rust tree is self-contained — anything outside
+  # it that affects Rust (migrations, scripts) also legitimately needs
+  # Node exercising, so this is a safe superset.
+  SKIP_FOR_NODE: '^(docs/|.*\.md$|\.github/workflows/(deploy|release)\.yaml$|LICENSE$|\.gitignore$|\.editorconfig$|\.github/CODEOWNERS$|\.github/ISSUE_TEMPLATE/|\.github/PULL_REQUEST_TEMPLATE\.md$|admin-operations-rust/)'
 
 jobs:
   ci:
@@ -54,25 +74,32 @@ jobs:
       EMAIL_FROM: "Meals on the Move <noreply@test.internal>"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Path gate
+        id: gate
+        uses: ./.github/actions/path-gate
+        with:
+          skip-pattern: ${{ env.SKIP_FOR_NODE }}
 
       - name: Setup Node
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Setup pnpm
+        if: steps.gate.outputs.run == 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10
           run_install: false
 
       - name: Get pnpm store directory
+        if: steps.gate.outputs.run == 'true'
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm store
+        if: steps.gate.outputs.run == 'true'
         uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
@@ -81,29 +108,36 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Lint migrations
+        if: steps.gate.outputs.run == 'true'
         run: pnpm run lint:migrations
 
       # Pull the Rust API binary (built once by `build-api`) and use it
       # as the sole migrator. Same binary runs in prod → what passes
       # here is what runs on Railway.
       - name: Download Rust API binary
+        if: steps.gate.outputs.run == 'true'
         uses: actions/download-artifact@v4
         with:
           name: rust-api-binary
           path: admin-operations-rust/target/release
       - name: Make binary executable
+        if: steps.gate.outputs.run == 'true'
         run: chmod +x admin-operations-rust/target/release/api
 
       - name: Run migrations
+        if: steps.gate.outputs.run == 'true'
         run: ./admin-operations-rust/target/release/api migrate
 
       - name: Typecheck
+        if: steps.gate.outputs.run == 'true'
         run: pnpm run check
 
       - name: Test
+        if: steps.gate.outputs.run == 'true'
         run: pnpm run test
 
   rust-ci:
@@ -133,8 +167,11 @@ jobs:
       DATABASE_URL: postgres://test:test@localhost:5432/meals_test
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Path gate
+        id: gate
+        uses: ./.github/actions/path-gate
+        with:
+          skip-pattern: ${{ env.SKIP_FOR_RUST }}
 
       # ubuntu-latest ships with ~14 GB free. The Nix store (dep layer
       # ~5–6 GB) + the cargo test `target/` dir (~4–5 GB with every
@@ -146,6 +183,7 @@ jobs:
       # ~60s). Required until the Nix cache is warm enough that we
       # don't need both deps-in-store AND deps-in-target coexisting.
       - name: Free disk space
+        if: steps.gate.outputs.run == 'true'
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -160,12 +198,14 @@ jobs:
       # `actions-rust-lang/setup-rust-toolchain` + `cargo install sqlx-cli`
       # drift between local and CI.
       - name: Install Nix
+        if: steps.gate.outputs.run == 'true'
         uses: DeterminateSystems/nix-installer-action@main
 
       # Free, zero-config GHA cache for Nix store paths. First run builds
       # cold (~5–6 min for the Rust dep layer); subsequent runs on the
       # same lockfile hit the cache in seconds.
       - name: Magic Nix Cache
+        if: steps.gate.outputs.run == 'true'
         uses: DeterminateSystems/magic-nix-cache-action@main
 
       # Cross-run cargo cache. Snapshots ~/.cargo/registry +
@@ -181,26 +221,31 @@ jobs:
       # Separate `workspaces` entry because the manifest lives one
       # level deep from the repo root, not at the top.
       - name: Rust toolchain cache
+        if: steps.gate.outputs.run == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: admin-operations-rust
 
       - name: Setup Node
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Setup pnpm
+        if: steps.gate.outputs.run == 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10
           run_install: false
 
       - name: Get pnpm store directory
+        if: steps.gate.outputs.run == 'true'
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm store
+        if: steps.gate.outputs.run == 'true'
         uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
@@ -209,9 +254,11 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Sync migrations into Rust crate
+        if: steps.gate.outputs.run == 'true'
         run: pnpm run rust:sync-migrations
 
       # Seed the schema that cargo test's integration tests run
@@ -226,20 +273,24 @@ jobs:
       # when a committed .sqlx/ entry drifts. One compile, same
       # signal, ~90s cheaper per run.)
       - name: Run migrations (seeds schema for Rust tests)
+        if: steps.gate.outputs.run == 'true'
         working-directory: admin-operations-rust
         run: nix develop ..#default --command sqlx migrate run --source migrations
 
       # All cargo steps below run inside the flake's devShell so they
       # share the exact toolchain `nix build .#api` uses.
       - name: cargo fmt --check
+        if: steps.gate.outputs.run == 'true'
         working-directory: admin-operations-rust
         run: nix develop ..#default --command cargo fmt --check
 
       - name: cargo clippy -D warnings
+        if: steps.gate.outputs.run == 'true'
         working-directory: admin-operations-rust
         run: nix develop ..#default --command cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo test --workspace
+        if: steps.gate.outputs.run == 'true'
         working-directory: admin-operations-rust
         run: nix develop ..#default --command cargo test --workspace
 
@@ -260,10 +311,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      # build-api gets the narrowest skip pattern (universal only).
+      # Dependents (`ci`, `e2e`) have broader skip patterns, so if this
+      # job runs, their artifact download is guaranteed to find the
+      # binary; if this job skips, the diff is docs-only and the
+      # dependents also skip (their own gates match too).
+      - name: Path gate
+        id: gate
+        uses: ./.github/actions/path-gate
+        with:
+          skip-pattern: ${{ env.SKIP_UNIVERSAL }}
 
       - name: Free disk space
+        if: steps.gate.outputs.run == 'true'
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -274,9 +334,11 @@ jobs:
           swap-storage: false
 
       - name: Install Nix
+        if: steps.gate.outputs.run == 'true'
         uses: DeterminateSystems/nix-installer-action@main
 
       - name: Magic Nix Cache
+        if: steps.gate.outputs.run == 'true'
         uses: DeterminateSystems/magic-nix-cache-action@main
 
       # Build the static-musl variant (`.#api-static`), not the
@@ -289,6 +351,7 @@ jobs:
       # is already pure-rustls (sqlx `tls-rustls`, reqwest
       # `rustls-tls`), so musl is safe — no runtime openssl needed.
       - name: Build Rust API (static-musl) via Nix
+        if: steps.gate.outputs.run == 'true'
         run: nix build .#api-static --print-build-logs
 
       # `result/bin/api` is a symlink into the Nix store. upload-artifact
@@ -296,12 +359,14 @@ jobs:
       # we copy to a plain file first to make the artifact self-describing
       # regardless of consumer behaviour.
       - name: Stage binary for upload
+        if: steps.gate.outputs.run == 'true'
         run: |
           mkdir -p artifact
           cp result/bin/api artifact/api
           chmod +w artifact/api
 
       - name: Upload Rust API binary
+        if: steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: rust-api-binary
@@ -330,13 +395,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Path gate
+        id: gate
+        uses: ./.github/actions/path-gate
+        with:
+          skip-pattern: ${{ env.SKIP_FOR_RUST }}
 
       - name: Install Nix
+        if: steps.gate.outputs.run == 'true'
         uses: DeterminateSystems/nix-installer-action@main
 
       - name: Magic Nix Cache
+        if: steps.gate.outputs.run == 'true'
         uses: DeterminateSystems/magic-nix-cache-action@main
 
       # Distinct `shared-key` so this job's cache doesn't collide with
@@ -344,6 +414,7 @@ jobs:
       # dirs differ (test deps vs workspace deps) and sharing one key
       # thrashes the restore step.
       - name: Rust toolchain cache
+        if: steps.gate.outputs.run == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: admin-operations-rust
@@ -360,21 +431,25 @@ jobs:
       # `admin-operations-rust/migrations/` (gitignored). Mirrors the
       # Node + pnpm + install + sync-migrations block `rust-ci` uses.
       - name: Setup Node
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Setup pnpm
+        if: steps.gate.outputs.run == 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10
           run_install: false
 
       - name: Get pnpm store directory
+        if: steps.gate.outputs.run == 'true'
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm store
+        if: steps.gate.outputs.run == 'true'
         uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
@@ -383,9 +458,11 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Sync migrations into Rust crate
+        if: steps.gate.outputs.run == 'true'
         run: pnpm run rust:sync-migrations
 
       # `cargo nextest run` instead of `cargo test`: parallel execution
@@ -396,10 +473,12 @@ jobs:
       # have none, so no coverage loss. `cargo-nextest` is provided by
       # the flake's devShell.
       - name: cargo nextest (pure crates)
+        if: steps.gate.outputs.run == 'true'
         working-directory: admin-operations-rust
         run: nix develop ..#default --command cargo nextest run -p excel -p pdf -p domain --lib
 
       - name: cargo nextest --test emit (flags-tui pure integration)
+        if: steps.gate.outputs.run == 'true'
         working-directory: admin-operations-rust
         run: nix develop ..#default --command cargo nextest run -p flags-tui --test emit
 
@@ -446,8 +525,13 @@ jobs:
       EMAIL_FROM: "Meals on the Move <noreply@test.internal>"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      # E2E spans both services. Any code change needs it exercised, so
+      # only universal ignorables (docs/workflow-only) can skip it.
+      - name: Path gate
+        id: gate
+        uses: ./.github/actions/path-gate
+        with:
+          skip-pattern: ${{ env.SKIP_UNIVERSAL }}
 
       # Previously ran `jlumbroso/free-disk-space@main` here (~1m54s) to
       # make room for a local `nix build .#api`. Since `build-api` now
@@ -456,21 +540,25 @@ jobs:
       # browsers + Postgres service fit comfortably in `ubuntu-latest`'s
       # default ~14 GB free.
       - name: Setup Node
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Setup pnpm
+        if: steps.gate.outputs.run == 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10
           run_install: false
 
       - name: Get pnpm store directory
+        if: steps.gate.outputs.run == 'true'
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm store
+        if: steps.gate.outputs.run == 'true'
         uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
@@ -479,9 +567,11 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
+        if: steps.gate.outputs.run == 'true'
         run: pnpm exec playwright install chromium --with-deps
 
       # `crates/db` uses `sqlx::migrate!("./../../migrations")` which
@@ -492,6 +582,7 @@ jobs:
       # this sync too; e2e needs its own copy before the api binary
       # runs.
       - name: Sync migrations into Rust crate
+        if: steps.gate.outputs.run == 'true'
         run: pnpm run rust:sync-migrations
 
       # Pull the Rust API binary built once by the `build-api` job
@@ -505,11 +596,13 @@ jobs:
       # from the E2E critical path (and from `build-rust-image` once
       # PR #1 merges).
       - name: Download Rust API binary
+        if: steps.gate.outputs.run == 'true'
         uses: actions/download-artifact@v4
         with:
           name: rust-api-binary
           path: admin-operations-rust/target/release
       - name: Make binary executable
+        if: steps.gate.outputs.run == 'true'
         run: chmod +x admin-operations-rust/target/release/api
 
       # Run migrations via the api binary — same codepath as prod.
@@ -517,16 +610,18 @@ jobs:
       # makes CI logs crisp about who migrated when, and gates on real
       # migrator success before Playwright spawns the server.
       - name: Run migrations
+        if: steps.gate.outputs.run == 'true'
         env:
           INTERNAL_AUTH_SECRET: ci-internal-auth-secret-32-bytes-min
           DATABASE_URL: postgres://test:test@localhost:5432/meals_test
         run: ./admin-operations-rust/target/release/api migrate
 
       - name: Run E2E tests
+        if: steps.gate.outputs.run == 'true'
         run: pnpm run test:e2e
 
       - name: Upload Playwright report
-        if: failure()
+        if: failure() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
@@ -540,11 +635,10 @@ jobs:
       # the only reliable way to see what the Rust import handler
       # actually did during a failed E2E run is to read it off disk.
       - name: Upload Rust API log
-        if: failure()
+        if: failure() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: rust-api-log
           path: /tmp/rust-api.log
           retention-days: 7
           if-no-files-found: warn
-

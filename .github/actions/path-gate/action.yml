@@ -1,0 +1,104 @@
+name: Path gate
+description: >
+  Decide whether a required CI job needs to run real work for the current
+  PR's diff. Writes `run=true|false` to the step output. Consumers put
+  `if: steps.gate.outputs.run == 'true'` on every subsequent step.
+
+  Why this exists:
+    GitHub branch protection requires named checks by name, with no
+    path-based scoping. Using `paths-ignore` on `on.pull_request` skips
+    the workflow entirely, which means the required check never shows
+    up to be marked SUCCESS → the PR is permanently BLOCKED. The fix is
+    to let the workflow trigger on every PR but short-circuit real work
+    when the diff only touches paths that can't affect the job. The job
+    still reports SUCCESS, branch protection stays satisfied, and
+    docs/workflow-only PRs merge in ~30 seconds instead of ~15 minutes.
+
+  Behaviour:
+    - PR event: compare `pull_request.base.sha..pull_request.head.sha`.
+      If every changed path matches `skip-pattern`, `run=false`.
+      Otherwise `run=true`.
+    - workflow_dispatch (or any non-PR trigger): `run=true`. Manual
+      dispatch = user wants a full run.
+    - Empty diff (shouldn't happen on real PRs): `run=false`.
+
+  Pattern format: extended regex (grep -E), anchored at line-start.
+  Each line in the diff is `path/relative/to/repo-root`. The pattern
+  should match EVERY line we're willing to short-circuit on.
+
+inputs:
+  skip-pattern:
+    description: >
+      Extended regex. If every changed file matches this pattern, the
+      job short-circuits. Anchor patterns with `^` and quote shell
+      metacharacters.
+    required: true
+
+outputs:
+  run:
+    description: "'true' if real work must run; 'false' if the job can short-circuit."
+    value: ${{ steps.decide.outputs.run }}
+
+runs:
+  using: composite
+  steps:
+    # Full history so `git diff base..head` has both commits available.
+    # Shallow clones (fetch-depth: 1, the GHA default) only have HEAD,
+    # which makes the diff below return empty and we'd skip everything.
+    - name: Checkout (full history)
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Decide whether to run
+      id: decide
+      shell: bash
+      env:
+        SKIP_PATTERN: ${{ inputs.skip-pattern }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -uo pipefail
+
+        # Non-PR events (workflow_dispatch, push) always run real work.
+        # The gate only exists to let required checks pass fast on
+        # low-impact PRs; outside PR context there's no diff to filter.
+        if [ -z "${BASE_SHA}" ] || [ -z "${HEAD_SHA}" ]; then
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "Non-PR trigger (base=${BASE_SHA:-<empty>} head=${HEAD_SHA:-<empty>}); running."
+          exit 0
+        fi
+
+        # Ensure both refs are present locally. `fetch-depth: 0` above
+        # usually suffices, but PR-head commits occasionally land after
+        # checkout; a targeted fetch is cheap insurance.
+        git fetch --no-tags --depth=1 origin "${BASE_SHA}" 2>/dev/null || true
+        git fetch --no-tags --depth=1 origin "${HEAD_SHA}" 2>/dev/null || true
+
+        changed=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+        if [ -z "$changed" ]; then
+          echo "run=false" >> "$GITHUB_OUTPUT"
+          echo "✓ No files changed between base and head — short-circuiting."
+          exit 0
+        fi
+
+        # Files that do NOT match the skip pattern — i.e. real work to do.
+        # `|| true` because grep exits 1 when nothing matches, which
+        # would be masked as "nothing to skip" if we didn't suppress it.
+        non_ignorable=$(echo "$changed" | grep -Ev "$SKIP_PATTERN" || true)
+
+        echo "---- changed files ----"
+        echo "$changed"
+        echo "---- non-ignorable (not matched by skip-pattern) ----"
+        if [ -z "$non_ignorable" ]; then
+          echo "(none)"
+          echo "run=false" >> "$GITHUB_OUTPUT"
+          echo
+          echo "✓ Every changed file matches skip-pattern — short-circuiting."
+          echo "  Pattern: $SKIP_PATTERN"
+        else
+          echo "$non_ignorable"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo
+          echo "→ Non-ignorable changes present — running real work."
+        fi
