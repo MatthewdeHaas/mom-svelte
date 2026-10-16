@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { LayoutData } from './$types';
+  import type { Snippet } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { Separator } from '$lib/components/ui/separator';
@@ -79,9 +81,10 @@
     return $page.url.pathname.startsWith(href);
   }
 
-  import type { Snippet } from 'svelte';
-
-  let { children }: { children: Snippet } = $props();
+  // Layout data (user) + children snippet come from the server load.
+  // Single `$props()` call — email is read off `data.user` for the
+  // top-right identity chip (replaces the old static "Internal" badge).
+  const { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   let mobileOpen = $state(false);
 </script>
@@ -317,14 +320,36 @@
     align-items: center;
     gap: 12px;
   }
-  .env-badge {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 5px;
-    background: var(--motm-pink-light);
-    color: var(--motm-pink-dark);
-    letter-spacing: 0.04em;
+  /* Signed-in identity chip in the top-right. Muted neutral — reads
+     as "who am I" context, not an environment badge. Hover lifts the
+     background a touch; title attr carries the full email in case the
+     chip truncates on narrow viewports. */
+  .user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 3px 10px 3px 8px;
+    border-radius: 999px;
+    background: #F3F0EC;
+    border: 1px solid var(--motm-border);
+    color: var(--motm-text);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    transition: background 120ms;
+  }
+  .user-chip:hover { background: #EDE8E3; }
+  .user-chip-icon {
+    width: 13px;
+    height: 13px;
+    color: var(--motm-text-muted);
+    flex-shrink: 0;
+  }
+  .user-chip-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Mobile hamburger — hidden on desktop */
@@ -459,7 +484,14 @@
       </div>
 
       <div class="topbar-right">
-        <span class="env-badge">Internal</span>
+        {#if data.user?.email}
+          <span class="user-chip" title={data.user.email}>
+            <svg class="user-chip-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+            </svg>
+            <span class="user-chip-email">{data.user.email}</span>
+          </span>
+        {/if}
       </div>
     </header>
 
