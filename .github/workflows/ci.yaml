@@ -7,11 +7,11 @@ on:
   # ensures only PR-tested commits can reach main.
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '.github/workflows/deploy.yaml'
-      - '.github/workflows/release.yaml'
-      - 'docs/**'
-      - '**.md'
+    # No paths-ignore. Branch protection requires 5 named checks; if
+    # paths-ignore skips them for a given diff, the PR is permanently
+    # BLOCKED (checks never show up to be marked SUCCESS). Pay the ~15min
+    # CI cycle on doc / workflow-only edits rather than lose the gate.
+    # See PR #7 for the failure mode.
   workflow_dispatch:
 
 jobs:
