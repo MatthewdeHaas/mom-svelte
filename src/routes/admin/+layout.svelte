@@ -87,11 +87,6 @@
     return $page.url.pathname.startsWith(href);
   }
 
-  async function handleLogout() {
-    await fetch('/logout', { method: 'POST' });
-    await goto('/');
-  }
-
   import type { Snippet } from 'svelte';
 
   let { children }: { children: Snippet } = $props();
@@ -403,10 +398,19 @@
     </nav>
 
     <div class="sidebar-footer">
-      <button class="logout-btn" onclick={handleLogout}>
-        <LogOut />
-        Sign out
-      </button>
+      <!--
+        Form POST (not fetch) so the server-side form action receives
+        application/x-www-form-urlencoded. A bare fetch with no body
+        returns 415 Unsupported Media Type. Matches /client's pattern
+        and keeps no-JS fallback working. Server action already issues
+        a 302 redirect to /login — no client-side goto needed.
+      -->
+      <form method="POST" action="/logout">
+        <button type="submit" class="logout-btn">
+          <LogOut />
+          Sign out
+        </button>
+      </form>
     </div>
   </aside>
 
