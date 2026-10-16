@@ -41,9 +41,10 @@ response (`:237`) and discarded on refresh.
 
 `scripts/seed-admin.ts` creates the first admin from `ADMIN_EMAILS[0]`
 + `ADMIN_INITIAL_PASSWORD`. Idempotent. Runs on container start — see
-`Dockerfile:28` (`pnpm run migrate && pnpm run seed:admin && node build`).
-Rotate the password from the admin UI after first login; the env var
-can then be unset.
+`Dockerfile` (`pnpm run seed:admin && node build`; migrations run on
+the Rust service's own startup via `sqlx::migrate!`). Rotate the
+password from the admin UI after first login; the env var can then be
+unset.
 
 ## Client onboarding
 

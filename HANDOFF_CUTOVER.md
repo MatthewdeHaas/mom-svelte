@@ -170,7 +170,7 @@ Expected flag count: 13 or 14 (verify with `psql $DATABASE_URL -c "SELECT name F
 ## Phase 4 — Verification (run in order; stop on first failure)
 
 1. `docker compose up -d db` (ensure Postgres is up)
-2. `pnpm db:reset-test && pnpm run migrate` — confirm `psql $DATABASE_URL -c "SELECT name, enabled_global FROM feature_flag WHERE name LIKE 'use_rust_backend_%'"` shows all TRUE
+2. `pnpm db:reset-test` (reset-test-db.sh runs `sqlx migrate run` internally) — confirm `psql $DATABASE_URL -c "SELECT name, enabled_global FROM feature_flag WHERE name LIKE 'use_rust_backend_%'"` shows all TRUE
 3. `pnpm check` → **0 warnings** (this is the compile-time check that every call site has a caller — if it fails, a route is missing `callerFromLocals`)
 4. `pnpm test` → full green (baseline: 437/437)
 5. `pnpm test:e2e` → full green

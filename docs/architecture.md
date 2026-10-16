@@ -60,14 +60,12 @@ From `admin-operations-rust/Cargo.toml:3`:
 - **`api`** — axum router, HMAC middleware, handlers. Entry:
   `admin-operations-rust/crates/api/src/lib.rs:1`.
 
-## Migration ledgers (the one non-obvious trap)
+## Migration ledger (single-migrator architecture)
 
-Two migrators run against the same `scripts/migrations/` directory:
-
-- Node: `scripts/migrate.ts` → `migrations` table (sha256 hashes).
-- Rust: `sqlx::migrate!("./../../migrations")` at
-  `admin-operations-rust/crates/db/src/lib.rs:45` → `_sqlx_migrations`
-  table (SHA-384 checksums).
+Rust is the sole migrator. One source directory
+(`scripts/migrations/`), one ledger (`_sqlx_migrations`, SHA-384
+checksums), one codepath (`db::migrate` at
+`admin-operations-rust/crates/db/src/lib.rs:45`).
 
 The Rust side reads from a **copy**, not a symlink: locally via
 `scripts/sync-rust-migrations.sh`, in prod via `COPY scripts/migrations`
@@ -75,15 +73,17 @@ in `admin-operations-rust/Dockerfile`. `sqlx::migrate!` embeds bytes at
 compile time; a symlink out of the build context silently produces an
 empty migrator.
 
-In e2e the Node migrator pre-applies all files, so sqlx would try to
-re-run them and the first `CREATE TABLE "user"` would explode. The fix
-stamps `_sqlx_migrations` with SHA-384 checksums the Rust side would
-compute — see `backfillSqlxLedger` in `tests/e2e/global-setup.ts:145`.
+In production the Rust API runs `sqlx::migrate!` on binary startup
+(`admin-operations-rust/crates/api/src/main.rs` → `serve`'s call to
+`db::migrate`). In dev + CI the same binary is invoked as
+`./admin-operations-rust/target/release/api migrate` (or `sqlx migrate
+run --source migrations` inside the Rust workspace, which uses the
+same `_sqlx_migrations` ledger). Idempotent — second-mover skips.
 
-In production SvelteKit runs `pnpm run migrate` on container start (via
-`Dockerfile:28`) and Rust runs `sqlx::migrate!` on binary start
-(`admin-operations-rust/crates/api/src/main.rs:30`). Both are idempotent;
-first mover wins the lock, second skips.
+**History:** a Node migrator (`scripts/migrate.ts`, SHA-256 ledger)
+coexisted with the Rust migrator through 2026-10-16. The two ledgers
+drifted on prod and crashlooped the Rust API on boot. Collapsed to
+Rust-only; Node migrator deleted.
 
 ## Byte-identical exports
 

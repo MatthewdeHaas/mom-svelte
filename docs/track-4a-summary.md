@@ -33,7 +33,7 @@ scope.
 **CI (`.github/workflows/ci.yaml`)** — on every push to `main` and every
 PR:
 
-- `ci` job: migration lint → `pnpm run migrate` → `pnpm check` → `pnpm test`
+- `ci` job: migration lint → download Rust API binary (from `build-api`) → `./api migrate` → `pnpm check` → `pnpm test`
 - `rust-ci` job: sqlx offline cache check → `cargo fmt --check` → `cargo clippy -D warnings` → `cargo test --workspace` (534 tests)
 - `e2e` job: Playwright against SvelteKit + Rust running concurrently
 
