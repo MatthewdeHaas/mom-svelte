@@ -21,6 +21,7 @@
     Download,
     BarChart3,
     DollarSign,
+    HelpCircle,
     Menu,
     LogOut,
     ChevronRight,
@@ -67,6 +68,12 @@
         { label: 'Insights',    href: '/admin/insights',    icon: BarChart3 },
         { label: 'Financials',  href: '/admin/financials',  icon: DollarSign },
         { label: 'Exports',     href: '/admin/exports',     icon: Download },
+      ],
+    },
+    {
+      title: 'Reference',
+      items: [
+        { label: 'Help',        href: '/admin/help',        icon: HelpCircle },
       ],
     },
   ];
