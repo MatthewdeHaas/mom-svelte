@@ -74,15 +74,24 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RUST_LOG_PATH="$REPO_ROOT/admin-operations-rust/.rust-api.log"
 RUST_PID_PATH="$REPO_ROOT/admin-operations-rust/.rust-api.pid"
 
-# .env is the single source of truth for POSTGRES_* / INTERNAL_AUTH_SECRET
-# / ADMIN_*. Export it into this script so docker compose + rust.sh +
-# seed:admin all see the same values. Node scripts load .env via
-# dotenv themselves, so the export is for the shell + compose only.
+# Don't `source .env` — some values contain shell metacharacters
+# (angle-bracket email addresses, '!' in secrets, '$' in URLs) and
+# bash will parse them as redirects/history/variable-expansion. The
+# consumers that need .env already read it themselves:
+#   - docker compose      — reads .env natively from CWD
+#   - pnpm run seed:admin — Node scripts use dotenv
+# scripts/rust.sh only needs DATABASE_URL + INTERNAL_AUTH_SECRET, so
+# extract those two directly without shell interpretation.
+env_get() {
+  grep -E "^${1}=" "$REPO_ROOT/.env" | tail -n1 | cut -d= -f2- || true
+}
 if [ -f "$REPO_ROOT/.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . "$REPO_ROOT/.env"
-  set +a
+  POSTGRES_USER_V="$(env_get POSTGRES_USER)"
+  POSTGRES_PASSWORD_V="$(env_get POSTGRES_PASSWORD)"
+  POSTGRES_DB_V="$(env_get POSTGRES_DB)"
+  INTERNAL_AUTH_SECRET_V="$(env_get INTERNAL_AUTH_SECRET)"
+  export DATABASE_URL="postgresql://${POSTGRES_USER_V}:${POSTGRES_PASSWORD_V}@localhost:5432/${POSTGRES_DB_V}"
+  export INTERNAL_AUTH_SECRET="$INTERNAL_AUTH_SECRET_V"
 fi
 
 if [ "$FRESH" = true ]; then
