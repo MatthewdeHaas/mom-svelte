@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
+import { env } from '$env/dynamic/private';
 
 // Build the connection string from discrete POSTGRES_* env vars (SvelteKit
 // doesn't support variable interpolation in .env files; Docker does).
@@ -11,16 +12,20 @@ import { Pool, type PoolClient } from 'pg';
 // If the discrete vars aren't set but DATABASE_URL is, fall through to that —
 // matches the convention used by `scripts/seed-admin.ts`'s own pool and keeps
 // one-off tools (migrations, seeds) working with a single env var.
-const host = process.env.POSTGRES_HOST;
-const port = process.env.POSTGRES_PORT ?? '5432';
-const user = process.env.POSTGRES_USER;
-const password = process.env.POSTGRES_PASSWORD;
-const database = process.env.POSTGRES_DB;
+//
+// Env is sourced via `$env/dynamic/private` (SvelteKit's loader) rather than
+// `process.env` directly, so `pnpm dev` picks up `.env` natively — no
+// `set -a; source .env` incantation needed. See the top-level README.
+const host = env.POSTGRES_HOST;
+const port = env.POSTGRES_PORT ?? '5432';
+const user = env.POSTGRES_USER;
+const password = env.POSTGRES_PASSWORD;
+const database = env.POSTGRES_DB;
 
 const connectionString =
 	host && user && password && database
 		? `postgresql://${user}:${password}@${host}:${port}/${database}`
-		: process.env.DATABASE_URL;
+		: env.DATABASE_URL;
 
 export const pool = new Pool({ connectionString, max: 5 });
 

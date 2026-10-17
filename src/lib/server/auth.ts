@@ -1,11 +1,12 @@
 import { betterAuth } from 'better-auth';
 import { admin, magicLink } from 'better-auth/plugins';
 import { createAuthMiddleware, APIError } from 'better-auth/api';
+import { env } from '$env/dynamic/private';
 import { pool } from './db';
 import { isRateLimited } from './rate-limit';
 
 // Support both singular ADMIN_EMAIL and comma-separated ADMIN_EMAILS
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? process.env.ADMIN_EMAIL ?? '')
+const ADMIN_EMAILS = (env.ADMIN_EMAILS ?? env.ADMIN_EMAIL ?? '')
   .split(',')
   .map((e) => e.trim())
   .filter(Boolean);
@@ -14,10 +15,10 @@ export async function sendInviteEmail(email: string, inviteUrl: string): Promise
   if (isRateLimited('invite', email, 5, 60_000)) {
     throw new Error('Too many invite attempts. Please wait a minute.');
   }
-  const EMAIL_FROM = process.env.EMAIL_FROM;
+  const EMAIL_FROM = env.EMAIL_FROM;
   if (!EMAIL_FROM) throw new Error('EMAIL_FROM is not configured');
   const { Resend } = await import('resend');
-  const resend = new Resend(process.env.RESEND_API_KEY);
+  const resend = new Resend(env.RESEND_API_KEY);
   await resend.emails.send({
     from: EMAIL_FROM,
     to: email,
@@ -33,8 +34,8 @@ export async function sendInviteEmail(email: string, inviteUrl: string): Promise
 
 export const auth = betterAuth({
   database: pool,
-  secret: process.env.BETTER_AUTH_SECRET,
-  baseURL: process.env.BETTER_AUTH_URL,
+  secret: env.BETTER_AUTH_SECRET,
+  baseURL: env.BETTER_AUTH_URL,
   // Email+password is the customer-facing login path. Magic-link is kept
   // dormant below for future customer self-serve once a verified sending
   // domain is wired up.
@@ -89,7 +90,7 @@ export const auth = betterAuth({
         );
         if (!registered.rows[0]) return; // not registered — silently drop
 
-        const EMAIL_FROM = process.env.EMAIL_FROM;
+        const EMAIL_FROM = env.EMAIL_FROM;
         if (!EMAIL_FROM) {
           throw new Error(
             'EMAIL_FROM environment variable is required (e.g. "Meals on the Move <noreply@yourdomain.com>")'
@@ -97,7 +98,7 @@ export const auth = betterAuth({
         }
 
         const { Resend } = await import('resend');
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        const resend = new Resend(env.RESEND_API_KEY);
 
         const isAdmin = ADMIN_EMAILS.includes(email);
         await resend.emails.send({
