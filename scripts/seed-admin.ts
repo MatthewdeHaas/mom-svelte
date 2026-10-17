@@ -1,6 +1,18 @@
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
-import { auth } from '../src/lib/server/auth';
+import { betterAuth } from 'better-auth';
+
+// Deliberately NOT importing `../src/lib/server/auth` here. That module
+// reads config via `$env/dynamic/private` — a SvelteKit virtual module
+// that only resolves inside the Vite runtime. `tsx` running this script
+// outside Vite would fail with `ERR_MODULE_NOT_FOUND: '$env'`.
+//
+// We only need `auth.$context` for the password hasher + internalAdapter
+// (see `better-auth/dist/api/routes/password.mjs` for the officially-
+// supported shape). A minimal local `betterAuth()` built below gives us
+// that same context with zero SvelteKit coupling, reading env from
+// `process.env` (which `tsx --env-file=.env` already populates for
+// POSTGRES_*/ADMIN_* elsewhere in this file).
 
 const pool = new Pool({
   host:     process.env.POSTGRES_HOST     ?? process.env.PGHOST,
@@ -32,11 +44,32 @@ if (!ADMIN_INITIAL_PASSWORD) {
   );
 }
 
-// Better Auth exposes an officially-supported internal context via `auth.$context`
-// (used, e.g., by the password-reset route in `better-auth/dist/api/routes/password.mjs`).
-// This gives us the configured password hasher and the internal adapter without
-// requiring a session — essential for a seed script.
-const ctx = ADMIN_INITIAL_PASSWORD ? await auth.$context : null;
+// Build a minimal, seed-local Better Auth instance. We only need `$context`
+// (password hasher + internalAdapter), and the full `src/lib/server/auth.ts`
+// drags in `$env/dynamic/private` which doesn't resolve outside Vite.
+//
+// Match the hasher config of the real `auth.ts` so hashes produced here are
+// verifiable by production login: same `emailAndPassword` block, same
+// `minPasswordLength`. Everything else (magic-link, admin plugin, Resend,
+// rate-limit) is irrelevant to seeding and omitted.
+//
+// Secrets fall back to a placeholder when unset — `$context` only cares that
+// a secret exists (used for session JWT signing which this script never
+// invokes), not what it is. Real logins validate against hashes stored in
+// the DB, not against this secret.
+const ctx = ADMIN_INITIAL_PASSWORD
+  ? await betterAuth({
+      database: pool,
+      secret: process.env.BETTER_AUTH_SECRET ?? 'seed-admin-placeholder-secret',
+      baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:5173',
+      emailAndPassword: {
+        enabled: true,
+        requireEmailVerification: false,
+        minPasswordLength: 10,
+        autoSignIn: true,
+      },
+    }).$context
+  : null;
 
 for (const email of ADMIN_EMAILS) {
   console.log(`[seed:admin] Upserting admin for ${email}...`);
