@@ -24,8 +24,8 @@ use domain::{ImportRowError, ImportWarning};
 use serde_json::json;
 use sqlx::PgPool;
 
-use crate::headers::{analyse, HeaderAnalysis, F_COMPANY, F_RECIPE};
-use crate::normalise::normalise_row;
+use crate::headers::{analyse, HeaderAnalysis, F_AMOUNT, F_COMPANY, F_RECIPE};
+use crate::normalise::{normalise_row, NormalisedRow};
 use crate::parse::{parse_workbook, Cell, ParsedWorkbook};
 use crate::validate::{validate_row, ParsedRow};
 
@@ -248,25 +248,69 @@ pub fn plan_import_pure(
     emit_item_recipe_mismatches(&analysis, &data_rows, &mut warnings);
 
     // STEP 4 — per-row normalisation.
-    let normalised: Vec<_> = data_rows
-        .iter()
-        .enumerate()
-        .map(|(i, raw)| {
-            let (row, w) = normalise_row(raw, &analysis, (i as i64) + 2);
-            warnings.extend(w);
-            row
-        })
-        .collect();
+    //
+    // Rows are stored as `(row_number, NormalisedRow)` tuples rather
+    // than a bare vec so the sheet row number is computed once (at
+    // normalise time) and preserved across any subsequent filtering.
+    // Downstream code reads the stored row_number — never the loop
+    // index — so dropping a row during normalisation can't drift
+    // later error / warning row numbers off the sheet.
+    //
+    // Zero-amount filter: the admin workflow pre-populates the sheet
+    // with every active customer × recipe × day slot and leaves Amount
+    // at literal `0` for the ones NOT ordered this week. Treat these as
+    // placeholders — skip the row (don't push to `normalised`) and emit
+    // one `ZeroAmountRowSkipped` warning carrying the customer/recipe
+    // for the summary line. See D1 of
+    // `docs/handoff-recipes-importer.md` for the data behind this
+    // (87/87 placeholder rows on the real-client WS 26 sheet, uniformly
+    // literal `0`, clustered by customer × recipe). Predicate is WIDE
+    // — any row with amount == 0 is skipped regardless of other fields.
+    // `validate_row` still has the strict `> 0` check as defense in
+    // depth for anything that slips past this filter.
+    let mut normalised: Vec<(i64, NormalisedRow)> = Vec::with_capacity(data_rows.len());
+    for (i, raw) in data_rows.iter().enumerate() {
+        let row_number = (i as i64) + 2;
+        let (row, w) = normalise_row(raw, &analysis, row_number);
+        warnings.extend(w);
+
+        if is_zero_amount(&row) {
+            let (customer, recipe) = customer_recipe_from_raw(raw, &analysis);
+            warnings.push(ImportWarning::ZeroAmountRowSkipped {
+                row: Some(row_number),
+                message: format!(
+                    "Row {} skipped: Amount is 0 (placeholder for {} / {}).",
+                    row_number,
+                    if customer.is_empty() {
+                        "(no customer)"
+                    } else {
+                        customer.as_str()
+                    },
+                    if recipe.is_empty() {
+                        "(no recipe)"
+                    } else {
+                        recipe.as_str()
+                    },
+                ),
+                details: Some(json!({
+                    "customer": customer,
+                    "recipe": recipe,
+                })),
+            });
+            continue;
+        }
+
+        normalised.push((row_number, row));
+    }
 
     // STEP 5 — per-row validation (no DB calls yet).
-    let mut parsed: Vec<Option<ParsedRow>> = Vec::with_capacity(normalised.len());
-    for (i, row) in normalised.iter().enumerate() {
-        let row_number = (i as i64) + 2;
-        match validate_row(row, row_number) {
-            Ok(p) => parsed.push(Some(p)),
+    let mut parsed: Vec<(i64, Option<ParsedRow>)> = Vec::with_capacity(normalised.len());
+    for (row_number, row) in &normalised {
+        match validate_row(row, *row_number) {
+            Ok(p) => parsed.push((*row_number, Some(p))),
             Err(errs) => {
                 errors.extend(errs);
-                parsed.push(None);
+                parsed.push((*row_number, None));
             }
         }
     }
@@ -285,8 +329,7 @@ pub fn plan_import_pure(
     // lookups, which is a few hundred ms serial. If it ever matters,
     // swap to `futures::future::join_all` with a semaphore.
     let mut insert_orders: Vec<InsertOrder> = Vec::with_capacity(parsed.len());
-    for (i, p) in parsed.into_iter().enumerate() {
-        let row_number = (i as i64) + 2;
+    for (row_number, p) in parsed.into_iter() {
         let p = p.expect("validated rows are Some when errors is empty");
 
         let company = resolver.company(&p.company);
@@ -369,6 +412,51 @@ pub fn plan_import_pure(
         errors,
         row_count,
     })
+}
+
+/// True if the normalised row's amount field is literal numeric `0`.
+///
+/// Blank / missing / non-numeric cells fall through to `validate_row`'s
+/// "Amount is required" branch and surface as errors — this filter is
+/// deliberately narrow to `Number(0)`. See STEP 4 for the data behind
+/// the WIDE predicate (87/87 placeholder rows on the real-client sheet
+/// were uniformly literal `0`).
+fn is_zero_amount(row: &crate::normalise::NormalisedRow) -> bool {
+    match row.get(F_AMOUNT) {
+        Some(serde_json::Value::Number(n)) => n.as_f64() == Some(0.0),
+        _ => false,
+    }
+}
+
+/// Pull customer + recipe strings off the RAW row for the warning's
+/// details payload. The normalised row's company/recipe cells have
+/// already been coerced to `Value::String` but we want the operator-
+/// visible source text (no trim, no case change) for the summary line.
+/// Reverse-looks the headers off `analysis.header_to_field` — same
+/// alias layer every other importer stage uses.
+fn customer_recipe_from_raw(
+    raw: &HashMap<String, Cell>,
+    analysis: &HeaderAnalysis,
+) -> (String, String) {
+    let header_for = |field: &str| -> Option<&str> {
+        analysis
+            .header_to_field
+            .iter()
+            .find_map(|(h, f)| (*f == field).then_some(h.as_str()))
+    };
+    let read = |field: &str| -> String {
+        header_for(field)
+            .and_then(|h| raw.get(h))
+            .map(|c| match c {
+                Cell::String(s) => s.clone(),
+                Cell::Date(s) => s.clone(),
+                Cell::Bool(b) => b.to_string(),
+                Cell::Number(n) => n.to_string(),
+                Cell::Null => String::new(),
+            })
+            .unwrap_or_default()
+    };
+    (read(F_COMPANY), read(F_RECIPE))
 }
 
 /// Scan rows for the first boilerplate marker; return the slice before

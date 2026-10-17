@@ -673,7 +673,7 @@
                 <tr><td>Ingredient</td><td><span class="badge badge-opt">Optional</span></td><td>Leave blank for a recipe with no ingredients</td></tr>
                 <tr><td>Amount</td><td><span class="badge badge-opt">Optional</span></td><td>Positive decimal — required if Ingredient is set</td></tr>
                 <tr><td>Unit</td><td><span class="badge badge-opt">Optional</span></td><td>kg, g, ml — required if Ingredient is set</td></tr>
-                <tr><td>Allergens</td><td><span class="badge badge-opt">Optional</span></td><td>Comma-separated: <code>Dairy, Gluten</code></td></tr>
+                <tr><td>Allergens</td><td><span class="badge badge-opt">Optional</span></td><td>Comma-separated: <code>Dairy, Gluten</code>. You can also leave the Allergens column out entirely.</td></tr>
               </tbody>
             </table>
           </div>

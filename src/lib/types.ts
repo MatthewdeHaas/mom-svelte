@@ -352,7 +352,8 @@ export type ImportWarningCode =
   | 'storage_missing_defaulted_chilled'
   | 'meal_case_normalized'
   | 'boilerplate_row_stopped'
-  | 'extra_sheets_ignored';
+  | 'extra_sheets_ignored'
+  | 'zero_amount_row_skipped';
 
 export interface ImportWarning {
   code: ImportWarningCode;
