@@ -1,28 +1,14 @@
 services:
-  # Rust API — see admin-operations-rust/README.md.
-  # Build context is the repo root so the Dockerfile can COPY the
-  # canonical `scripts/migrations/` directory into the crate.
-  #
-  # SvelteKit runs on the host via `pnpm dev`, mirroring CI (which also
-  # runs `pnpm dev` on the GHA runner, not in a container). The former
-  # `web` container has been removed — docker-compose exists only to
-  # back the Rust API + Postgres, so local and CI shapes match.
-  rust-api:
-    build:
-      context: .
-      dockerfile: admin-operations-rust/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
-      PORT: 8080
-      RUST_LOG: info,sqlx::query=warn
-    depends_on:
-      db:
-        condition: service_healthy
-
+  # Compose runs Postgres only. The Rust API runs host-side via
+  # `scripts/rust.sh` (nix develop + cargo run) so dev uses the same
+  # toolchain CI pins (`rust-bin.stable.latest` from flake.nix) with
+  # no cross-arch Mach-O-into-Linux landmine from a stale
+  # `target/release/api`. The former `rust-api` service required a
+  # CI-produced Linux ELF at that path and crashloop'd with
+  # `exec format error` when a local `cargo build` populated it with
+  # a Mach-O instead. SvelteKit also runs on the host (`pnpm dev`),
+  # mirroring CI (which runs `pnpm dev` on the GHA runner, not in a
+  # container). docker-compose exists only to back Postgres.
   db:
     image: postgres:18
     restart: unless-stopped
