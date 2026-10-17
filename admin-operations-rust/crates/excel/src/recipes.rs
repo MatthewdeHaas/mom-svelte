@@ -154,7 +154,7 @@ fn parse_from_workbook(wb: &ParsedWorkbook) -> Result<ParseRecipesResult, ParseR
 
         let recipe = cell_text(raw.get(h_recipe));
         let ingredient = cell_text(raw.get(h_ingredient));
-        let amount = cell_number(raw.get(h_amount));
+        let amount_cell = cell_number(raw.get(h_amount));
         let unit = cell_text(raw.get(h_unit));
         // Allergens column is optional at the sheet level. When absent,
         // every row reports `None` here; when present-but-blank, the row
@@ -173,28 +173,72 @@ fn parse_from_workbook(wb: &ParsedWorkbook) -> Result<ParseRecipesResult, ParseR
         //
         // TS collects issues into `error.issues`, picks the first path
         // as `field`, and joins all messages with `"; "`. Replicate.
-        let mut issues: Vec<(&'static str, &'static str)> = Vec::new();
+        let mut issues: Vec<(&'static str, String)> = Vec::new();
 
         if recipe.is_none() {
-            issues.push(("recipe", "Recipe name is required"));
+            issues.push(("recipe", "Recipe name is required".to_string()));
         }
-        if let Some(a) = amount {
-            if !a.is_finite() || a <= 0.0 {
-                issues.push(("amount", "Amount must be greater than zero"));
+
+        // Amount validation branches on CellAmount's four variants:
+        //   Ok(n)             — must be positive; otherwise "greater than zero"
+        //   WithUnit(_, unit) — specific "contains a unit" error (D3)
+        //   NotANumber        — generic "not a number" error
+        //   Empty             — not an error here; the "amount required
+        //                       when ingredient is set" check below fires
+        //                       instead so the message stays identical
+        //                       to the TS behaviour.
+        let amount: Option<f64> = match &amount_cell {
+            CellAmount::Ok(n) => {
+                if !n.is_finite() || *n <= 0.0 {
+                    issues.push(("amount", "Amount must be greater than zero".to_string()));
+                    None
+                } else {
+                    Some(*n)
+                }
             }
-        }
+            CellAmount::WithUnit(_n, unit_text) => {
+                // D3: friendlier error for `"100g"` / `"1.00 ml"` /
+                // `"0.10 g"`-shaped cells. Points directly at the fix
+                // instead of letting the row trip the generic
+                // "amount and unit" message.
+                issues.push((
+                    "amount",
+                    format!(
+                        "Amount contains a unit (e.g. `100g`); split the number \
+                         into Amount and the unit (e.g. `{}`) into Unit.",
+                        unit_text
+                    ),
+                ));
+                None
+            }
+            CellAmount::NotANumber => {
+                issues.push(("amount", "Amount must be a number".to_string()));
+                None
+            }
+            CellAmount::Empty => None,
+        };
+
         if ingredient.is_some() {
             let has_amount = amount.is_some();
             let has_unit = unit.is_some();
             if !has_amount || !has_unit {
-                // TS attaches this to the root path (`""`) via custom
-                // issue; its `.path.join('.')` evaluates to `""`, which
-                // we represent as `"unknown"` to match the TS fallback
-                // `?? 'unknown'`. The TS code checks for a non-empty
-                // path first — the custom issue above has an empty path
-                // array, so the join is `""` and the `??` picks
-                // "unknown". We match that behaviour precisely.
-                issues.push(("", "Ingredient rows must have amount and unit"));
+                // Only emit the generic "amount and unit" message when
+                // the amount cell was `Empty` (truly missing) — if it
+                // was `WithUnit` or `NotANumber` the specific error
+                // above already fires and we'd double-report. Blank
+                // amount PLUS blank unit on an ingredient row still
+                // produces this message exactly as before.
+                let amount_specific = matches!(
+                    amount_cell,
+                    CellAmount::WithUnit(_, _) | CellAmount::NotANumber
+                );
+                if !amount_specific {
+                    // TS attaches this to the root path (`""`) via
+                    // custom issue; its `.path.join('.')` evaluates
+                    // to `""`, which we represent as `"unknown"` to
+                    // match the TS fallback `?? 'unknown'`.
+                    issues.push(("", "Ingredient rows must have amount and unit".to_string()));
+                }
             }
         }
 
@@ -210,7 +254,7 @@ fn parse_from_workbook(wb: &ParsedWorkbook) -> Result<ParseRecipesResult, ParseR
             };
             let message = issues
                 .iter()
-                .map(|(_, m)| *m)
+                .map(|(_, m)| m.as_str())
                 .collect::<Vec<_>>()
                 .join("; ");
             errors.push(ImportRowError {
@@ -250,28 +294,139 @@ fn cell_text(cell: Option<&Cell>) -> Option<String> {
     }
 }
 
-/// Parse a numeric cell. Numbers pass through; strings try `parse::<f64>`;
-/// everything else is `None`. Matches TS `cellNumber(cell)` (which
-/// `Number(v)` + NaN check — strings numeric or not, both work).
-fn cell_number(cell: Option<&Cell>) -> Option<f64> {
-    match cell? {
+/// Richer return shape for the amount column — the TS parser only
+/// distinguishes "number" from "not a number", but the real-client
+/// recipes sheet has cells like `"100g"` and `"1.00 ml"` where the
+/// unit is baked into Amount. Those used to surface as
+/// `"Amount must be greater than zero"` (because `cell_number`
+/// returned `None` → the row-level "ingredient rows must have amount
+/// and unit" error fired), which is misleading. `WithUnit` lets the
+/// row loop emit a specific message pointing the user at the fix.
+///
+/// See D3 of `docs/handoff-recipes-importer.md`.
+#[derive(Debug, PartialEq)]
+enum CellAmount {
+    /// Clean numeric value.
+    Ok(f64),
+    /// Cell was a string of the form `<number><letters>` — the number
+    /// and the trailing unit text, both trimmed. The caller surfaces
+    /// a specific "contains a unit; split into Amount + Unit" error.
+    WithUnit(f64, String),
+    /// Cell was absent, null, or an empty/whitespace string. Matches
+    /// the TS behaviour where `Number(undefined)` yielded `NaN` and
+    /// surfaced as "amount missing" downstream.
+    Empty,
+    /// Cell was present but neither a number, a `<num><letters>`
+    /// composite, nor a parseable numeric string. Matches TS's
+    /// `isNaN(Number(v))` branch.
+    NotANumber,
+}
+
+/// Parse a numeric cell. Numbers pass through; strings try
+/// `parse::<f64>` first, then the `<number><letters>` composite
+/// shape for the unit-baked-in case; everything else is `NotANumber`
+/// or `Empty`. Semantics are a superset of TS `cellNumber(cell)`:
+/// every input that TS parsed to a finite number parses to
+/// `CellAmount::Ok` here, every empty cell is `Empty`, and the two
+/// new variants (`WithUnit`, `NotANumber`) split what TS lumped into
+/// its implicit "amount missing" error.
+fn cell_number(cell: Option<&Cell>) -> CellAmount {
+    let Some(cell) = cell else {
+        return CellAmount::Empty;
+    };
+    match cell {
+        Cell::Null => CellAmount::Empty,
         Cell::Number(n) => {
             if n.is_finite() {
-                Some(*n)
+                CellAmount::Ok(*n)
             } else {
-                None
+                CellAmount::NotANumber
             }
         }
         Cell::String(s) => {
             let t = s.trim();
             if t.is_empty() {
-                None
-            } else {
-                t.parse::<f64>().ok().filter(|n| n.is_finite())
+                return CellAmount::Empty;
             }
+            // Clean numeric string first — the common case for cells
+            // ExcelJS/calamine typed as string (`"5"`, `"1.5"`).
+            if let Some(n) = t.parse::<f64>().ok().filter(|n| n.is_finite()) {
+                return CellAmount::Ok(n);
+            }
+            // Composite `<number><letters>` — e.g. `"100g"`, `"1.00 ml"`,
+            // `"0.10 g"`. Pure ASCII, no sign, optional whitespace between
+            // number and unit. Matches the regex spelled out in D3 of
+            // `docs/handoff-recipes-importer.md`:
+            //     ^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)$
+            // Hand-rolled rather than pulling in `regex` because this is
+            // the only pattern this parser needs.
+            if let Some((num, unit)) = split_amount_with_unit(t) {
+                if let Some(n) = num.parse::<f64>().ok().filter(|n| n.is_finite()) {
+                    return CellAmount::WithUnit(n, unit);
+                }
+            }
+            CellAmount::NotANumber
         }
-        _ => None,
+        _ => CellAmount::NotANumber,
     }
+}
+
+/// Try to split a trimmed string into `(<number>, <unit>)` where the
+/// number matches `\d+(\.\d+)?` and the unit is one-or-more ASCII
+/// letters. Whitespace between them is tolerated and dropped. Returns
+/// `None` on any shape mismatch.
+///
+/// Hand-rolled scanner — pulling in `regex` for one pattern isn't worth
+/// the dependency weight. The grammar is strict enough that a loop over
+/// `char_indices` is clearer than a regex here.
+fn split_amount_with_unit(s: &str) -> Option<(String, String)> {
+    let bytes = s.as_bytes();
+    if bytes.is_empty() {
+        return None;
+    }
+
+    // Scan integer part — one or more ASCII digits.
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == 0 {
+        return None;
+    }
+
+    // Optional fractional part — `.` followed by one or more digits.
+    if i < bytes.len() && bytes[i] == b'.' {
+        let frac_start = i + 1;
+        let mut j = frac_start;
+        while j < bytes.len() && bytes[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j == frac_start {
+            // Trailing dot with no digits — not our grammar.
+            return None;
+        }
+        i = j;
+    }
+    let num_end = i;
+
+    // Optional whitespace between number and unit.
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    let unit_start = i;
+
+    // Unit — one or more ASCII letters, then nothing else.
+    while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+        i += 1;
+    }
+    if i == unit_start {
+        return None;
+    }
+    if i != bytes.len() {
+        return None;
+    }
+
+    Some((s[..num_end].to_string(), s[unit_start..].to_string()))
 }
 
 #[cfg(test)]
@@ -492,6 +647,113 @@ mod tests {
         let result = parse_from_workbook(&wb).unwrap();
         assert_eq!(result.errors.len(), 0);
         assert_eq!(result.rows.len(), 1);
+    }
+
+    #[test]
+    fn amount_with_unit_errors_with_friendly_message() {
+        // D3: a string cell shaped `<number><letters>` ("100g",
+        // "1.00 ml", "0.10 g") used to trip the generic "Ingredient
+        // rows must have amount and unit" message because
+        // `cell_number` returned `None`. CellAmount::WithUnit now
+        // surfaces a specific error pointing at the fix.
+        let wb = mk_wb(
+            &["Recipe", "Ingredient", "Amount", "Unit", "Allergens"],
+            &[vec![
+                ("Recipe", Cell::String("R".into())),
+                ("Ingredient", Cell::String("I".into())),
+                ("Amount", Cell::String("100g".into())),
+                ("Unit", Cell::String("g".into())),
+            ]],
+        );
+        let result = parse_from_workbook(&wb).unwrap();
+        assert_eq!(result.rows.len(), 0);
+        assert_eq!(result.errors.len(), 1);
+        let e = &result.errors[0];
+        assert_eq!(e.row, 2);
+        assert_eq!(e.field.as_deref(), Some("amount"));
+        assert!(
+            e.message.contains("contains a unit"),
+            "message must point at the unit-split fix, got: {}",
+            e.message
+        );
+        assert!(
+            e.message.contains("`g`"),
+            "message must echo the detected unit, got: {}",
+            e.message
+        );
+    }
+
+    #[test]
+    fn amount_with_unit_handles_whitespace_and_decimals() {
+        // Shapes that appear in the real Recipes MoM sheet: `"1.00 ml"`
+        // and `"0.10 g"`. Both must trigger the WithUnit path.
+        for raw in ["1.00 ml", "0.10 g", "100g"] {
+            let wb = mk_wb(
+                &["Recipe", "Ingredient", "Amount", "Unit", "Allergens"],
+                &[vec![
+                    ("Recipe", Cell::String("R".into())),
+                    ("Ingredient", Cell::String("I".into())),
+                    ("Amount", Cell::String(raw.into())),
+                    ("Unit", Cell::String("g".into())),
+                ]],
+            );
+            let result = parse_from_workbook(&wb).unwrap();
+            assert_eq!(
+                result.errors.len(),
+                1,
+                "input {raw:?} must produce exactly one error"
+            );
+            assert!(
+                result.errors[0].message.contains("contains a unit"),
+                "input {raw:?} must trigger the WithUnit error, got: {}",
+                result.errors[0].message
+            );
+        }
+    }
+
+    #[test]
+    fn amount_bare_string_errors_as_not_a_number() {
+        // A non-numeric, non-composite string (`"a pinch"`) hits the
+        // NotANumber branch — the specific "Amount must be a number"
+        // error, not the generic amount+unit one.
+        let wb = mk_wb(
+            &["Recipe", "Ingredient", "Amount", "Unit", "Allergens"],
+            &[vec![
+                ("Recipe", Cell::String("R".into())),
+                ("Ingredient", Cell::String("I".into())),
+                ("Amount", Cell::String("a pinch".into())),
+                ("Unit", Cell::String("g".into())),
+            ]],
+        );
+        let result = parse_from_workbook(&wb).unwrap();
+        assert_eq!(result.errors.len(), 1);
+        assert_eq!(result.errors[0].field.as_deref(), Some("amount"));
+        assert!(
+            result.errors[0].message.contains("must be a number"),
+            "got: {}",
+            result.errors[0].message
+        );
+    }
+
+    #[test]
+    fn split_amount_with_unit_rejects_bad_shapes() {
+        // Direct test on the scanner — leading signs, exponents,
+        // trailing junk, pure numbers, pure letters all reject.
+        assert_eq!(super::split_amount_with_unit(""), None);
+        assert_eq!(super::split_amount_with_unit("100"), None);
+        assert_eq!(super::split_amount_with_unit("g"), None);
+        assert_eq!(super::split_amount_with_unit("-100g"), None);
+        assert_eq!(super::split_amount_with_unit("1e3g"), None);
+        assert_eq!(super::split_amount_with_unit("100g!"), None);
+        assert_eq!(super::split_amount_with_unit("100."), None);
+        assert_eq!(
+            super::split_amount_with_unit("100g"),
+            Some(("100".into(), "g".into()))
+        );
+        assert_eq!(
+            super::split_amount_with_unit("1.00 ml"),
+            Some(("1.00".into(), "ml".into()))
+        );
     }
 
     #[test]
