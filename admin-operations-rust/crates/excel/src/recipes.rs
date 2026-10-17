@@ -56,7 +56,17 @@ pub enum ParseRecipeError {
 }
 
 /// Required header names, in TS order. Any missing one aborts the parse.
-const REQUIRED: &[&str] = &["recipe", "ingredient", "amount", "unit", "allergens"];
+///
+/// `allergens` is intentionally NOT in this list — it's optional at the
+/// column level. When the column is absent, every row's `allergens`
+/// field comes out as `None` and ingredient-allergen tracking is simply
+/// not touched by this upload. When the column IS present, blank cells
+/// still mean "no allergens for this row" (same as today). The three-
+/// level degradation is: present-and-populated beats present-and-blank
+/// (= no allergens) beats column-absent (= skip allergen tracking for
+/// this upload). See D2 of `docs/handoff-recipes-importer.md` for the
+/// user decision.
+const REQUIRED: &[&str] = &["recipe", "ingredient", "amount", "unit"];
 
 /// Normalise a header the same way `normaliseHeader` does in TS:
 /// trim, lowercase, collapse runs of whitespace to a single underscore.
@@ -122,13 +132,18 @@ fn parse_from_workbook(wb: &ParsedWorkbook) -> Result<ParseRecipesResult, ParseR
         return Err(ParseRecipeError::MissingColumns(missing.join(", ")));
     }
 
-    // Pre-resolve the five original headers once — one hashmap lookup
-    // per row per column beats five per iteration.
+    // Pre-resolve the original headers once — one hashmap lookup per
+    // row per column beats re-resolving each iteration. `allergens` is
+    // optional at the column level: when the sheet omits it, the row
+    // loop below reads `None` for every row's allergens cell, and the
+    // downstream orchestrator skips allergen tracking entirely for this
+    // upload. See the `REQUIRED` comment above for the full three-level
+    // degradation contract.
     let h_recipe = &col_header["recipe"];
     let h_ingredient = &col_header["ingredient"];
     let h_amount = &col_header["amount"];
     let h_unit = &col_header["unit"];
-    let h_allergens = &col_header["allergens"];
+    let h_allergens: Option<&String> = col_header.get("allergens");
 
     let mut rows: Vec<RecipeExcelRowParsed> = Vec::with_capacity(wb.rows.len());
     let mut errors: Vec<ImportRowError> = Vec::new();
@@ -141,7 +156,10 @@ fn parse_from_workbook(wb: &ParsedWorkbook) -> Result<ParseRecipesResult, ParseR
         let ingredient = cell_text(raw.get(h_ingredient));
         let amount = cell_number(raw.get(h_amount));
         let unit = cell_text(raw.get(h_unit));
-        let allergens = cell_text(raw.get(h_allergens));
+        // Allergens column is optional at the sheet level. When absent,
+        // every row reports `None` here; when present-but-blank, the row
+        // reports `None` too — same wire shape, same downstream handling.
+        let allergens = h_allergens.and_then(|h| cell_text(raw.get(h)));
 
         // Skip blank rows (no recipe AND no ingredient). Matches TS.
         if recipe.is_none() && ingredient.is_none() {
@@ -289,10 +307,59 @@ mod tests {
             ParseRecipeError::MissingColumns(s) => {
                 assert!(s.contains("amount"));
                 assert!(s.contains("unit"));
-                assert!(s.contains("allergens"));
+                // `allergens` is intentionally NOT required at the
+                // column level — see D2 of
+                // `docs/handoff-recipes-importer.md`. Its absence must
+                // not surface here.
+                assert!(
+                    !s.contains("allergens"),
+                    "allergens must not appear in missing-columns error: {s:?}"
+                );
             }
             _ => panic!("expected MissingColumns, got {err:?}"),
         }
+    }
+
+    #[test]
+    fn allergens_column_absent_produces_none_rows() {
+        // Four-column sheet — no Allergens header at all. Valid rows
+        // parse with `allergens: None`; missing-columns error does NOT
+        // fire for allergens.
+        let wb = mk_wb(
+            &["Recipe", "Ingredient", "Amount", "Unit"],
+            &[vec![
+                ("Recipe", Cell::String("Caesar".into())),
+                ("Ingredient", Cell::String("Chicken".into())),
+                ("Amount", Cell::Number(200.0)),
+                ("Unit", Cell::String("g".into())),
+            ]],
+        );
+        let result = parse_from_workbook(&wb).expect("parse must succeed without Allergens column");
+        assert_eq!(result.errors.len(), 0);
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(result.rows[0].allergens, None);
+    }
+
+    #[test]
+    fn allergens_column_present_but_blank_produces_none() {
+        // Five-column sheet with a blank Allergens cell — same wire
+        // shape as the absent-column case (`None`), different source of
+        // truth. Locked in as a regression test so the two paths don't
+        // drift.
+        let wb = mk_wb(
+            &["Recipe", "Ingredient", "Amount", "Unit", "Allergens"],
+            &[vec![
+                ("Recipe", Cell::String("Caesar".into())),
+                ("Ingredient", Cell::String("Chicken".into())),
+                ("Amount", Cell::Number(200.0)),
+                ("Unit", Cell::String("g".into())),
+                ("Allergens", Cell::Null),
+            ]],
+        );
+        let result = parse_from_workbook(&wb).unwrap();
+        assert_eq!(result.errors.len(), 0);
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(result.rows[0].allergens, None);
     }
 
     #[test]
