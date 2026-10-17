@@ -69,3 +69,7 @@ coverage/
 tests/e2e/.auth/
 playwright-report/
 test-results/
+
+# Local-only data drops (sample xlsx, ad-hoc dumps). Lives beside
+# scripts/up.sh — see scripts/README.md.
+data/
