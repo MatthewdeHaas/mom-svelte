@@ -278,7 +278,15 @@ fn valid_row_strategy() -> impl Strategy<Value = ValidRow> {
 #[derive(Debug, Clone)]
 enum BadField {
     NegativeAmount,
-    ZeroAmount,
+    // NOTE: `ZeroAmount` was removed from the corruption set — literal
+    // `amount == 0` is now a WIDE placeholder filter at normalise time
+    // (STEP 4 in `plan_import_pure`) that emits a
+    // `ZeroAmountRowSkipped` warning and drops the row. The row never
+    // reaches `validate_row`, so a workbook with every row set to
+    // amount=0 produces `orders.is_empty() && errors.is_empty()` —
+    // which would break this property's "at least one error" invariant.
+    // See D1 of `docs/handoff-recipes-importer.md` and the dedicated
+    // filter tests in `tests/zero_amount_filter.rs`.
     NonNumericAmount,
     BadMeal,
     BadServingDate,
@@ -293,7 +301,6 @@ enum BadField {
 fn bad_field_strategy() -> impl Strategy<Value = BadField> {
     prop_oneof![
         Just(BadField::NegativeAmount),
-        Just(BadField::ZeroAmount),
         Just(BadField::NonNumericAmount),
         Just(BadField::BadMeal),
         Just(BadField::BadServingDate),
@@ -313,10 +320,6 @@ fn corrupt_row(row: &mut ValidRow, bad: &BadField) -> Option<(usize, Cell)> {
     match bad {
         BadField::NegativeAmount => {
             row.amount = -1.0;
-            None
-        }
-        BadField::ZeroAmount => {
-            row.amount = 0.0;
             None
         }
         BadField::NonNumericAmount => {

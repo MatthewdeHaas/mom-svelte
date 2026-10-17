@@ -97,6 +97,19 @@ pub enum ImportWarning {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         details: Option<Value>,
     },
+    /// Row-level: Amount cell was literal `0`. Admin convention is to
+    /// pre-populate the sheet with every active customer × recipe × day
+    /// slot and leave Amount at 0 for the ones NOT ordered this week.
+    /// Treat as a placeholder — skip the row, don't error. See
+    /// `plan_import_pure` STEP 4 and D1 of
+    /// `docs/handoff-recipes-importer.md` for the data behind this.
+    ZeroAmountRowSkipped {
+        #[serde(default)]
+        row: Option<i64>,
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        details: Option<Value>,
+    },
 }
 
 impl ImportWarning {
@@ -112,6 +125,7 @@ impl ImportWarning {
             Self::StorageMissingDefaultedChilled { .. } => "storage_missing_defaulted_chilled",
             Self::MealCaseNormalized { .. } => "meal_case_normalized",
             Self::BoilerplateRowStopped { .. } => "boilerplate_row_stopped",
+            Self::ZeroAmountRowSkipped { .. } => "zero_amount_row_skipped",
         }
     }
 
@@ -125,7 +139,8 @@ impl ImportWarning {
             | Self::StorageBothSet { row, .. }
             | Self::StorageMissingDefaultedChilled { row, .. }
             | Self::MealCaseNormalized { row, .. }
-            | Self::BoilerplateRowStopped { row, .. } => *row,
+            | Self::BoilerplateRowStopped { row, .. }
+            | Self::ZeroAmountRowSkipped { row, .. } => *row,
         }
     }
 }
