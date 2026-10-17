@@ -28,6 +28,7 @@ import {
 import { callerFromLocals } from '$lib/server/api-client';
 import { auth, sendInviteEmail } from '$lib/server/auth';
 import { pool } from '$lib/server/db';
+import { env } from '$env/dynamic/private';
 import { ConflictError } from '$lib/server/errors';
 import { parseFormData } from '$lib/server/form';
 import { CompanySchema } from '$lib/server/schemas/company';
@@ -137,7 +138,7 @@ export const actions: Actions = {
       caller,
     );
 
-    const baseUrl = process.env.BETTER_AUTH_URL ?? '';
+    const baseUrl = env.BETTER_AUTH_URL ?? '';
     await sendInviteEmail(parsed.data.email, `${baseUrl}/invite/${token}`);
 
     return { action: 'invite', success: true };
