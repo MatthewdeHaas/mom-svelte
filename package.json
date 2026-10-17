@@ -24,7 +24,7 @@
 		"rust:test": "pnpm run rust:sync-migrations && cargo test --manifest-path admin-operations-rust/Cargo.toml --workspace",
 		"rust:prepare": "bash scripts/rust-sqlx-prepare.sh",
 		"rust:prepare-check": "pnpm run rust:sync-migrations && cd admin-operations-rust && SQLX_OFFLINE=true cargo sqlx prepare --workspace --check -- --tests",
-		"seed:admin": "tsx scripts/seed-admin.ts",
+		"seed:admin": "tsx --env-file=.env scripts/seed-admin.ts",
 		"seed:dev": "tsx --env-file=.env scripts/seed-dev.ts",
 		"backfill": "tsx --env-file=.env scripts/backfill.ts"
 	},
